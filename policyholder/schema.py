@@ -77,8 +77,6 @@ class Query(graphene.ObjectType):
 
 
     def resolve_policy_holder(self, info, **kwargs):
-        if not info.context.user.has_perms(PolicyholderConfig.gql_query_policyholder_perms):
-            raise PermissionDenied(_("unauthorized"))
         filters = []
         additional_filter = kwargs.get('additional_filter', None)
         # go to process additional filter only when this arg of filter was passed into query
@@ -86,14 +84,11 @@ class Query(graphene.ObjectType):
             # then check perms
             if info.context.user.has_perms(PolicyholderConfig.gql_query_policyholder_portal_perms):
                 # check if user is linked to ph in policy holder user table
-                type_user = f"{info.context.user}"
-                # related to user object output (i) or (t)
-                # check if we have interactive user from current context
-                if '(i)' in type_user:
+                if info.context.user.i_user_id:
                     from core import datetime
                     now = datetime.datetime.now()
                     uuids = PolicyHolderUser.objects.filter(
-                        Q(user_id=info.context.user.i_user.id)
+                        Q(user_id=info.context.user.id)
                     ).filter(
                         Q(date_valid_from__lte=now),
                         Q(date_valid_to__isnull=True) | Q(date_valid_to__gte=now),
