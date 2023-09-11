@@ -78,7 +78,6 @@ class Query(graphene.ObjectType):
 
     def resolve_policy_holder(self, info, **kwargs):
         filters = []
-        additional_filter = kwargs.get('additional_filter', None)
         # go to process additional filter only when this arg of filter was passed into query
         if not info.context.user.has_perms(PolicyholderConfig.gql_query_policyholder_perms):
             # then check perms
@@ -96,15 +95,14 @@ class Query(graphene.ObjectType):
                     ).values_list('policy_holder', flat=True).distinct()
                  
                     if uuids:
-                       filters.append(Q(id__in=uuids))
+                        filters.append(Q(id__in=uuids))
                     else:
-                        raise PermissionError("Unauthorized")
+                        raise PermissionError("Unauthorized, no PolicyHolder found for this portal user")
                 else:
-                    raise PermissionError("Unauthorized") 
+                    raise PermissionError("Unauthorized, no active user")
             else:
-                raise PermissionError("Unauthorized") 
-        #if there is a filter it means that there is  restricted permission  found by a signal
-        
+                raise PermissionError("Unauthorized, user has neither policyholder perms nor policyholder portal perms")
+        # if there is a filter it means that there is restricted permission found by a signal
 
         filters += append_validity_filter(**kwargs)
         parent_location = kwargs.get('parent_location')
