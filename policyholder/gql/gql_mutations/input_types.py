@@ -7,7 +7,7 @@ from core.gql.gql_mutations import ReplaceInputType
 class PolicyHolderInputType(OpenIMISMutation.Input):
     id = graphene.UUID(required=False)
 
-    code = graphene.String(max_length=255, required=True)
+    code = graphene.String(max_length=255, required=False)
     trade_name = graphene.String(max_length=255, required=True)
     locations_id = graphene.Int(required=False, name="locationsId")
     address = graphene.types.json.JSONString(max_length=255, required=False)
