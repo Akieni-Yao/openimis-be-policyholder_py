@@ -22,8 +22,8 @@ class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutati
 
     @classmethod
     def _validate_mutation(cls, user, **data):
-        if PolicyHolderServices.check_unique_code_policy_holder(code=data['code']):
-            raise ValidationError(_("mutation.ph_code_duplicated"))
+        # if PolicyHolderServices.check_unique_code_policy_holder(code=data['code']):
+        #     raise ValidationError(_("mutation.ph_code_duplicated"))
         super()._validate_mutation(user, **data)
         PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_create_policyholder_perms)
         PolicyHolderValidation.validate_create(user, **data)
