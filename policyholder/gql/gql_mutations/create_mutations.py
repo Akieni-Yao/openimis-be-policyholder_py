@@ -44,7 +44,7 @@ class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutati
     @classmethod
     def generate_camu_registration_number(cls, code):
         # Define the fixed components of the number
-        series1 = "CM"
+        series1 = "CAMU"
         series2 = str(code)  # You mentioned "construction" as the sector of activity
         series3 = datetime.datetime.now().strftime("%H")  # Registration time (hour)
         series4 = datetime.datetime.now().strftime("%m")  # Month of registration
