@@ -153,8 +153,8 @@ class PolicyHolderUser(core_models.HistoryBusinessModel):
         db_table = 'tblPolicyHolderUser'
 
 
-class PolicyHolderMutation(core_models.UUIDModel):
-    policy_holder = models.ForeignKey(PolicyHolder, models.DO_NOTHING,
+class PolicyHolderMutation(core_models.UUIDModel, core_models.ObjectMutation):
+    policyholder = models.ForeignKey(PolicyHolder, models.DO_NOTHING, db_column="policy_holder_id",
                                  related_name='mutations')
     mutation = models.ForeignKey(
         core_models.MutationLog, models.DO_NOTHING, related_name='policy_holder')

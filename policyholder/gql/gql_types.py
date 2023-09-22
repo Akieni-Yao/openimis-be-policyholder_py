@@ -6,7 +6,8 @@ from graphene_django import DjangoObjectType
 from insuree.schema import InsureeGQLType
 from location.gql_queries import LocationGQLType
 
-from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderUser, PolicyHolderContributionPlan
+from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderUser, PolicyHolderContributionPlan, \
+    PolicyHolderMutation
 
 
 class PolicyHolderGQLType(DjangoObjectType):
@@ -110,3 +111,7 @@ class PolicyHolderUserGQLType(DjangoObjectType):
     @classmethod
     def get_queryset(cls, queryset, info):
         return PolicyHolderUser.get_queryset(queryset, info)
+
+class PolicyHolderMutationGQLType(DjangoObjectType):
+    class Meta:
+        model = PolicyHolderMutation
