@@ -29,7 +29,8 @@ setup(
         'openimis-be-payment',
         'openimis-be-policy',
         'openimis-be-insuree',
-        'openimis-be-contribution_plan'
+        'openimis-be-contribution_plan',
+        'pandas'
     ],
     classifiers=[
         'Environment :: Web Environment',
