@@ -40,6 +40,9 @@ GENDERS = {
     "M": Gender.objects.get(code='M'),
 }
 
+RANDOM_INSUREE_ID_MIN_VALUE = 900_000_000_000
+RANDOM_INSUREE_ID_MAX_VALUE = 999_999_999_999
+
 
 def check_user_with_rights(rights):
     class UserWithRights(IsAuthenticated):
@@ -56,11 +59,18 @@ def clean_line(line):
         value = line[header]
         if isinstance(value, str):
             line[header] = value.strip()
+
+
+def validate_line(line):
+    errors = ""
     # add here any additional cleaning/conditions/formatting:
     # make sure gender is "M" or "F"
     # make sure dob is in the right format
     # make sure the IDs are in the right format
     # make sure mandatory values are not null and len(str) > 0
+    # ...
+    # if something is not right, append an error message to errors
+    return errors
 
 
 def get_village_from_line(line):
@@ -75,7 +85,7 @@ def get_village_from_line(line):
 def get_or_create_family_from_line(line, village: Location, audit_user_id: int):
     head_id = line[HEADER_FAMILY_HEAD]
     family = (Family.objects.filter(validity_to__isnull=True,
-                                   head_insuree_id=head_id,
+                                   head_insuree__chf_id=head_id,
                                    location=village)
                             .first())
     created = False
@@ -92,22 +102,22 @@ def get_or_create_family_from_line(line, village: Location, audit_user_id: int):
 
 
 def generate_available_chf_id():
-    random_id = random.randint(900_000_000_000_000, 999_999_999_999_999)
+    random_id = random.randint(RANDOM_INSUREE_ID_MIN_VALUE, RANDOM_INSUREE_ID_MAX_VALUE)
     insuree = Insuree.objects.filter(validity_to__isnull=True, chf_id=random_id).first()
     while insuree is not None:
-        random_id = random.randint(900_000_000_000_000, 999_999_999_999_999)
+        random_id = random.randint(RANDOM_INSUREE_ID_MIN_VALUE, RANDOM_INSUREE_ID_MAX_VALUE)
         insuree = Insuree.objects.filter(validity_to__isnull=True, chf_id=random_id).first()
-    return insuree
+    return random_id
 
 
-def get_or_create_insuree_from_line(line, family: Family, audit_user_id: int):
+def get_or_create_insuree_from_line(line, family: Family, is_family_created: bool, audit_user_id: int):
     id = line[HEADER_INSUREE_ID]
     insuree = (Insuree.objects.filter(validity_to__isnull=True, id=id)
                               .first())
     created = False
 
     if not insuree:
-        available_chf_id = generate_available_chf_id()
+        insureee_id = generate_available_chf_id()
         insuree = Insuree.objects.create(
             other_names=line[HEADER_INSUREE_OTHER_NAMES],
             last_name=line[HEADER_INSUREE_LAST_NAME],
@@ -115,8 +125,9 @@ def get_or_create_insuree_from_line(line, family: Family, audit_user_id: int):
             family=family,
             audit_user_id=audit_user_id,
             card_issued=False,
-            chf_id=available_chf_id,
-            gender=GENDERS[line[HEADER_INSUREE_GENDER]]
+            chf_id=insureee_id,
+            gender=GENDERS[line[HEADER_INSUREE_GENDER]],
+            head=is_family_created,
         )
         created = True
 
@@ -156,6 +167,7 @@ def import_phi(request, policy_holder_code):
     total_phi_created = 0
     total_locations_not_found = 0
     total_contribution_plan_not_found = 0
+    total_validation_errors = 0
 
     df = pd.read_excel(file)
 
@@ -177,6 +189,12 @@ def import_phi(request, policy_holder_code):
         total_lines += 1
         clean_line(line)
 
+        validation_errors = validate_line(line)
+        if validation_errors:
+            errors.append(f"Error line {total_lines} - validation issues ({validation_errors})")
+            total_validation_errors += 1
+            continue
+
         village = get_village_from_line(line)
         if not village:
             errors.append(f"Error line {total_lines} - unknown village ({line[HEADER_FAMILY_LOCATION_CODE]})")
@@ -193,18 +211,19 @@ def import_phi(request, policy_holder_code):
         if family_created:
             total_families_created += 1
 
-        insuree, insuree_created = get_or_create_insuree_from_line(line, family, user_id)
+        insuree, insuree_created = get_or_create_insuree_from_line(line, family, family_created, user_id)
         if insuree_created:
             total_insurees_created += 1
         if family_created:
             family.head_insuree = insuree
             family.save()
 
-        PolicyHolderInsuree.objects.create(
+        phi = PolicyHolderInsuree(
             insuree=insuree,
             policy_holder=policy_holder,
             contribution_plan_bundle=cpb,
         )
+        phi.save(username=request.user.username)
         total_phi_created += 1
 
     result = {
@@ -215,6 +234,8 @@ def import_phi(request, policy_holder_code):
         "total_errors": total_locations_not_found + total_contribution_plan_not_found,
         "total_locations_not_found": total_locations_not_found,
         "total_contribution_plan_not_found": total_contribution_plan_not_found,
+        "total_validation_errors": total_validation_errors,
         "errors": errors,
     }
+    logger.info("Import of PolicyHolderInsurees done")
     return JsonResponse(data=result)
