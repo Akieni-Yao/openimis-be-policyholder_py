@@ -12,6 +12,7 @@ from django.utils.translation import gettext as _
 import datetime
 import pytz
 from django.db import connection
+from django.apps import apps
 
 class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
     _mutation_class = "PolicyHolderMutation"
@@ -37,10 +38,13 @@ class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutati
         generated_number = cls.generate_camu_registration_number(activitycode)
         data["code"] = generated_number
         if "client_mutation_id" in data:
-            data.pop('client_mutation_id')
+            client_mutation_id = data.pop('client_mutation_id')
         if "client_mutation_label" in data:
             data.pop('client_mutation_label')
-        cls.create_object(user=user, object_data=data)
+        created_object = cls.create_object(user=user, object_data=data)
+        model_class = apps.get_model(cls._mutation_module, cls._mutation_class)
+        if model_class and hasattr(model_class, "object_mutated") and client_mutation_id is not None:
+            model_class.object_mutated(user, client_mutation_id=client_mutation_id, **{cls._mutation_module:created_object})
 
     @classmethod
     def generate_camu_registration_number(cls, code):
