@@ -24,6 +24,7 @@ HEADER_INSUREE_LAST_NAME = "insuree_last_names"
 HEADER_INSUREE_DOB = "insuree_dob"
 HEADER_INSUREE_GENDER = "insuree_gender"
 HEADER_INSUREE_ID = "insuree_id"
+HEADER_INCOME = "income"
 HEADERS = [
     HEADER_FAMILY_HEAD,
     HEADER_FAMILY_LOCATION_CODE,
@@ -32,7 +33,8 @@ HEADERS = [
     HEADER_INSUREE_LAST_NAME,
     HEADER_INSUREE_DOB,
     HEADER_INSUREE_GENDER,
-    HEADER_INSUREE_ID
+    HEADER_INSUREE_ID,
+    HEADER_INCOME,
 ]
 
 GENDERS = {
@@ -181,11 +183,12 @@ def import_phi(request, policy_holder_code):
         "Village": HEADER_FAMILY_LOCATION_CODE,
         "ID Famille": HEADER_FAMILY_HEAD,
         "Plan": HEADER_CONTRIBUTION_PLAN_BUNDLE_CODE,
+        "Salaire": HEADER_INCOME,
     }
     df.rename(columns=rename_columns, inplace=True)
 
     errors = []
-    for index, line in df.iterrows():  # for each line in the excel file
+    for index, line in df.iterrows():  # for each line in the Excel file
         total_lines += 1
         clean_line(line)
 
@@ -222,6 +225,7 @@ def import_phi(request, policy_holder_code):
             insuree=insuree,
             policy_holder=policy_holder,
             contribution_plan_bundle=cpb,
+            json_ext={"calculation_rule": {"income": line[HEADER_INCOME]}} if line[HEADER_INCOME] else {},
         )
         phi.save(username=request.user.username)
         total_phi_created += 1
