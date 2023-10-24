@@ -159,7 +159,7 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
 
 def get_contrib_plan_bundle_from_line(line):
     cpb_code = line[HEADER_CONTRIBUTION_PLAN_BUNDLE_CODE]
-    return ContributionPlanBundle.objects.filter(code=cpb_code, is_deleted=False).first()
+    return ContributionPlanBundle.objects.filter(code=cpb_code, is_deleted=False, date_valid_to__isnull=True).first()
 
 
 def get_policy_holder_from_code(ph_code: str):
