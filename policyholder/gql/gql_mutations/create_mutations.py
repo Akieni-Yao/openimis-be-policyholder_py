@@ -1,6 +1,7 @@
 from core.gql.gql_mutations.base_mutation import BaseMutation, BaseHistoryModelCreateMutationMixin
 from core.models import InteractiveUser
 from policyholder.apps import PolicyholderConfig
+from policyholder.dms_utils import create_policyholder_openkmfolder
 from policyholder.services import PolicyHolder as PolicyHolderServices
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, PolicyHolderUser
 from policyholder.gql.gql_mutations import PolicyHolderInputType, PolicyHolderInsureeInputType, \
@@ -34,9 +35,9 @@ class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutati
     def _mutate(cls, user, **data):
         json_ext_dict = data["json_ext"]["jsonExt"]
         activitycode = json_ext_dict.get("activityCode")
-        # activitycode = int(data["activity_code"])
         generated_number = cls.generate_camu_registration_number(activitycode)
         data["code"] = generated_number
+        create_policyholder_openkmfolder(data)
         if "client_mutation_id" in data:
             client_mutation_id = data.pop('client_mutation_id')
         if "client_mutation_label" in data:
