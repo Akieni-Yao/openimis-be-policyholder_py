@@ -107,6 +107,7 @@ def get_or_create_family_from_line(line, village: Location, audit_user_id: int):
             head_insuree_id=1,  # dummy
             location=village,
             audit_user_id=audit_user_id,
+            status="PRE_REGISTERED",
         )
         created = True
 
