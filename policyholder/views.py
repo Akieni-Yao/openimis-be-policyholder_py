@@ -14,6 +14,8 @@ from insuree.models import Insuree, Gender, Family
 from location.models import Location
 from policyholder.apps import PolicyholderConfig
 from policyholder.models import PolicyHolder, PolicyHolderInsuree
+from workflow.workflow_stage import insuree_add_to_workflow
+from insuree.abis_api import create_abis_insuree
 
 logger = logging.getLogger(__name__)
 
@@ -249,6 +251,12 @@ def import_phi(request, policy_holder_code):
         logger.debug("insuree_created: %s", insuree_created)
         if insuree_created:
             total_insurees_created += 1
+            try:
+                insuree_add_to_workflow(None, insuree.id, "INSUREE_ENROLLMENT", "Pre_Register")
+                create_abis_insuree(None, insuree)
+                #TODO: GED Folder Creation
+            except Exception as e:
+                logger.error(f"insuree bulk upload error : {e}")
         if family_created:
             family.head_insuree = insuree
             family.save()
