@@ -9,6 +9,8 @@ from rest_framework.decorators import permission_classes, api_view
 from rest_framework.permissions import IsAuthenticated
 
 from contribution_plan.models import ContributionPlanBundle
+
+from insuree.dms_utils import create_openKm_folder_for_insuree
 from insuree.gql_mutations import temp_generate_employee_camu_registration_number
 from insuree.models import Insuree, Gender, Family
 from location.models import Location
@@ -255,7 +257,7 @@ def import_phi(request, policy_holder_code):
             try:
                 insuree_add_to_workflow(None, insuree.id, "INSUREE_ENROLLMENT", "Pre_Register")
                 create_abis_insuree(None, insuree)
-                #TODO: GED Folder Creation
+                create_openKm_folder_for_insuree(insuree)
             except Exception as e:
                 logger.error(f"insuree bulk upload error : {e}")
         if family_created:
