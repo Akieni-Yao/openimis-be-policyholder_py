@@ -253,8 +253,12 @@ def import_phi(request, policy_holder_code):
             total_insurees_created += 1
             try:
                 create_openKm_folder_for_bulkupload(insuree)
+                logger.info("====  policyholder  ====  import_phi  ====  insuree_add_to_workflow  ====  Start")
                 insuree_add_to_workflow(None, insuree.id, "INSUREE_ENROLLMENT", "Pre_Register")
+                logger.info("====  policyholder  ====  import_phi  ====  insuree_add_to_workflow  ====  End")
+                logger.info("====  policyholder  ====  import_phi  ====  create_abis_insuree  ====  Start")
                 create_abis_insuree(None, insuree)
+                logger.info("====  policyholder  ====  import_phi  ====  create_abis_insuree  ====  End")
             except Exception as e:
                 logger.error(f"insuree bulk upload error : {e}")
         if family_created:
