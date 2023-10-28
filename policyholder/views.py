@@ -10,7 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 
 from contribution_plan.models import ContributionPlanBundle
 
-from insuree.dms_utils import create_openKm_folder_for_insuree
+from insuree.dms_utils import create_openKm_folder_for_bulkupload
 from insuree.gql_mutations import temp_generate_employee_camu_registration_number
 from insuree.models import Insuree, Gender, Family
 from location.models import Location
@@ -116,11 +116,12 @@ def get_or_create_family_from_line(line, village: Location, audit_user_id: int):
     return family, created
 
 
-def generate_available_chf_id(gender, village, dob):
+def generate_available_chf_id(gender, village, dob,insureeEnrolmentType):
     data = {
         "gender_id": gender.upper(),
         "json_ext": {"insureelocations": {"parent": {"parent": {"parent": {"code": village.parent.parent.parent.code}}}}},
         "dob": dob,
+        "insureeEnrolmentType": insureeEnrolmentType
     }
     return temp_generate_employee_camu_registration_number(None, data)
 
@@ -135,7 +136,8 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
         insuree_id = generate_available_chf_id(
             line[HEADER_INSUREE_GENDER],
             location if location else family.location,
-            line[HEADER_INSUREE_DOB]
+            line[HEADER_INSUREE_DOB],
+            line[HEADER_ENROLMENT_TYPE]
         )
         insuree = Insuree.objects.create(
             other_names=line[HEADER_INSUREE_OTHER_NAMES],
@@ -150,12 +152,7 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
             current_village=location if location else family.location,
             current_address=line[HEADER_ADDRESS],
             phone=line[HEADER_PHONE],
-            json_ext={"enrolmentType": line[HEADER_ENROLMENT_TYPE].lower() if line[HEADER_ENROLMENT_TYPE].lower() in [
-                            "government",
-                            "private",
-                            "selfEmployed",
-                           ] else "government",
-                      }
+            json_ext={"enrolmentType":line[HEADER_ENROLMENT_TYPE] }
         )
         created = True
 
@@ -255,9 +252,9 @@ def import_phi(request, policy_holder_code):
         if insuree_created:
             total_insurees_created += 1
             try:
+                create_openKm_folder_for_bulkupload(insuree)
                 insuree_add_to_workflow(None, insuree.id, "INSUREE_ENROLLMENT", "Pre_Register")
                 create_abis_insuree(None, insuree)
-                create_openKm_folder_for_insuree(insuree)
             except Exception as e:
                 logger.error(f"insuree bulk upload error : {e}")
         if family_created:
