@@ -22,7 +22,6 @@ from insuree.abis_api import create_abis_insuree
 
 logger = logging.getLogger(__name__)
 
-
 HEADER_ENROLMENT_TYPE = "enrolment_type"
 HEADER_FAMILY_HEAD = "family_head"
 HEADER_FAMILY_LOCATION_CODE = "family_location_code"
@@ -91,18 +90,18 @@ def validate_line(line):
 def get_village_from_line(line):
     village_code = line[HEADER_FAMILY_LOCATION_CODE]
     village = (Location.objects.filter(validity_to__isnull=True,
-                                      type="V",
-                                      code=village_code)
-                               .first())
+                                       type="V",
+                                       code=village_code)
+               .first())
     return village
 
 
 def get_or_create_family_from_line(line, village: Location, audit_user_id: int):
     head_id = line[HEADER_FAMILY_HEAD]
     family = (Family.objects.filter(validity_to__isnull=True,
-                                   head_insuree__chf_id=head_id,
-                                   location=village)
-                            .first())
+                                    head_insuree__chf_id=head_id,
+                                    location=village)
+              .first())
     created = False
 
     if not family:
@@ -111,27 +110,28 @@ def get_or_create_family_from_line(line, village: Location, audit_user_id: int):
             location=village,
             audit_user_id=audit_user_id,
             status="PRE_REGISTERED",
-            json_ext={"enrolmentType": line[HEADER_ENROLMENT_TYPE]}
+            json_ext={"enrolmentType": map_enrolment_type_to_category(line[HEADER_ENROLMENT_TYPE])}
         )
         created = True
 
     return family, created
 
 
-def generate_available_chf_id(gender, village, dob,insureeEnrolmentType):
+def generate_available_chf_id(gender, village, dob, insureeEnrolmentType):
     data = {
         "gender_id": gender.upper(),
-        "json_ext": {"insureelocations": {"parent": {"parent": {"parent": {"code": village.parent.parent.parent.code}}}}},
+        "json_ext": {
+            "insureelocations": {"parent": {"parent": {"parent": {"code": village.parent.parent.parent.code}}}}},
         "dob": dob,
-        "insureeEnrolmentType": insureeEnrolmentType
+        "insureeEnrolmentType": map_enrolment_type_to_category(insureeEnrolmentType)
     }
     return temp_generate_employee_camu_registration_number(None, data)
 
 
-def get_or_create_insuree_from_line(line, family: Family, is_family_created: bool, audit_user_id: int, location = None):
+def get_or_create_insuree_from_line(line, family: Family, is_family_created: bool, audit_user_id: int, location=None):
     id = line[HEADER_INSUREE_ID]
     insuree = (Insuree.objects.filter(validity_to__isnull=True, chf_id=id)
-                              .first())
+               .first())
     created = False
 
     if not insuree:
@@ -156,7 +156,7 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
             current_address=line[HEADER_ADDRESS],
             phone=line[HEADER_PHONE],
             json_ext={
-                "insureeEnrolmentType": line[HEADER_ENROLMENT_TYPE],
+                "insureeEnrolmentType": map_enrolment_type_to_category(line[HEADER_ENROLMENT_TYPE]),
                 "insureelocations": json.dumps(current_village, cls=LocationEncoder)
             }
         )
@@ -243,8 +243,10 @@ def import_phi(request, policy_holder_code):
 
         cpb = get_contrib_plan_bundle_from_line(line)
         if not cpb:
-            errors.append(f"Error line {total_lines} - unknown contribution plan bundle ({line[HEADER_CONTRIBUTION_PLAN_BUNDLE_CODE]})")
-            logger.debug(f"Error line {total_lines} - unknown contribution plan bundle ({line[HEADER_CONTRIBUTION_PLAN_BUNDLE_CODE]})")
+            errors.append(
+                f"Error line {total_lines} - unknown contribution plan bundle ({line[HEADER_CONTRIBUTION_PLAN_BUNDLE_CODE]})")
+            logger.debug(
+                f"Error line {total_lines} - unknown contribution plan bundle ({line[HEADER_CONTRIBUTION_PLAN_BUNDLE_CODE]})")
             total_locations_not_found += 1
             continue
 
@@ -320,3 +322,23 @@ class LocationEncoder(json.JSONEncoder):
                 "parent": self.default(obj.parent) if obj.parent else None
             }
         return super().default(obj)
+
+
+def map_enrolment_type_to_category(enrolment_type):
+    # Define the mapping from input values to categories
+    enrolment_type_mapping = {
+        "Agents de l'Etat": "public_Employees",
+        "Salariés du privé": "private_sector_employees",
+        "Travailleurs indépendants et professions libérales": "Selfemployed_and_liberal_professions",
+        "Pensionnés CRF et CNSS": "CRF_and_CNSS_pensioners",
+        "Personnes vulnérables": "vulnerable_Persons",
+        "Etudiants": "students",
+    }
+
+    # Check if the enrolment type exists in the mapping dictionary
+    if enrolment_type in enrolment_type_mapping:
+        return enrolment_type_mapping[enrolment_type]
+    else:
+        # If the value doesn't match any predefined category, you can handle it accordingly.
+        # For example, set a default category or raise an exception.
+        return None
