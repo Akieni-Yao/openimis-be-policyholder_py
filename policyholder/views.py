@@ -1,3 +1,4 @@
+import json
 import logging
 import random
 from datetime import datetime
@@ -110,6 +111,7 @@ def get_or_create_family_from_line(line, village: Location, audit_user_id: int):
             location=village,
             audit_user_id=audit_user_id,
             status="PRE_REGISTERED",
+            json_ext={"enrolmentType": line[HEADER_ENROLMENT_TYPE]}
         )
         created = True
 
@@ -139,6 +141,7 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
             line[HEADER_INSUREE_DOB],
             line[HEADER_ENROLMENT_TYPE]
         )
+        current_village = location if location else family.location
         insuree = Insuree.objects.create(
             other_names=line[HEADER_INSUREE_OTHER_NAMES],
             last_name=line[HEADER_INSUREE_LAST_NAME],
@@ -149,10 +152,13 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
             chf_id=insuree_id,
             gender=GENDERS[line[HEADER_INSUREE_GENDER]],
             head=is_family_created,
-            current_village=location if location else family.location,
+            current_village=current_village,
             current_address=line[HEADER_ADDRESS],
             phone=line[HEADER_PHONE],
-            json_ext={"enrolmentType":line[HEADER_ENROLMENT_TYPE] }
+            json_ext={
+                "insureeEnrolmentType": line[HEADER_ENROLMENT_TYPE],
+                "insureelocations": json.dumps(current_village, cls=LocationEncoder)
+            }
         )
         created = True
 
@@ -299,3 +305,18 @@ def import_phi(request, policy_holder_code):
     }
     logger.info("Import of PolicyHolderInsurees done")
     return JsonResponse(data=result)
+
+
+class LocationEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Location):
+            # Define how to serialize a Location object
+            return {
+                "id": obj.id,
+                "uuid": obj.uuid,
+                "type": obj.type,
+                "code": obj.code,
+                "name": obj.name,
+                "parent": self.default(obj.parent) if obj.parent else None
+            }
+        return super().default(obj)
