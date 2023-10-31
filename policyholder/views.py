@@ -142,6 +142,8 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
             line[HEADER_ENROLMENT_TYPE]
         )
         current_village = location if location else family.location
+        response_string = json.dumps(current_village, cls=LocationEncoder)
+        response_data = json.loads(response_string)
         insuree = Insuree.objects.create(
             other_names=line[HEADER_INSUREE_OTHER_NAMES],
             last_name=line[HEADER_INSUREE_LAST_NAME],
@@ -157,7 +159,7 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
             phone=line[HEADER_PHONE],
             json_ext={
                 "insureeEnrolmentType": map_enrolment_type_to_category(line[HEADER_ENROLMENT_TYPE]),
-                "insureelocations": json.dumps(current_village, cls=LocationEncoder)
+                "insureelocations": response_data
             }
         )
         created = True
