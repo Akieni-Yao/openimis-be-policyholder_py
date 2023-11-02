@@ -1,19 +1,16 @@
 from core.gql.gql_mutations.base_mutation import BaseMutation, BaseHistoryModelCreateMutationMixin
-from core.models import InteractiveUser
 from policyholder.apps import PolicyholderConfig
-from policyholder.dms_utils import create_policyholder_openkmfolder
-from policyholder.services import PolicyHolder as PolicyHolderServices
+from policyholder.dms_utils import create_policyholder_openkmfolder, send_mail_to_policyholder_with_pdf
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, PolicyHolderUser
 from policyholder.gql.gql_mutations import PolicyHolderInputType, PolicyHolderInsureeInputType, \
     PolicyHolderContributionPlanInputType, PolicyHolderUserInputType
 from policyholder.validation import PolicyHolderValidation
 from policyholder.validation.permission_validation import PermissionValidation
-from django.core.exceptions import ValidationError
-from django.utils.translation import gettext as _
 import datetime
 import pytz
 from django.db import connection
 from django.apps import apps
+
 
 class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
     _mutation_class = "PolicyHolderMutation"
@@ -43,6 +40,10 @@ class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutati
         if "client_mutation_label" in data:
             data.pop('client_mutation_label')
         created_object = cls.create_object(user=user, object_data=data)
+        # if email having inside the policyholder then it is executed
+        if isinstance(created_object, PolicyHolder):
+            if created_object.email:
+                send_mail_to_policyholder_with_pdf(created_object, 'registration_application')
         model_class = apps.get_model(cls._mutation_module, cls._mutation_class)
         if model_class and hasattr(model_class, "object_mutated") and client_mutation_id is not None:
             model_class.object_mutated(user, client_mutation_id=client_mutation_id, **{cls._mutation_module:created_object})
@@ -65,6 +66,7 @@ class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutati
         # Concatenate the series to generate the final number
         generated_number = f"{series1}{series2}{series3}{series4}{series5}{series6}{series7}"
         return generated_number
+
 
 class CreatePolicyHolderInsureeMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
     _mutation_class = "PolicyHolderInsureeMutation"
@@ -121,4 +123,3 @@ class CreatePolicyHolderUserMutation(BaseHistoryModelCreateMutationMixin, BaseMu
     def _validate_mutation(cls, user, **data):
         super()._validate_mutation(user, **data)
         PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_create_policyholderuser_perms)
-
