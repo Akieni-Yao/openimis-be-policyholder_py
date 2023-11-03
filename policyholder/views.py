@@ -128,7 +128,7 @@ def generate_available_chf_id(gender, village, dob, insureeEnrolmentType):
     return temp_generate_employee_camu_registration_number(None, data)
 
 
-def get_or_create_insuree_from_line(line, family: Family, is_family_created: bool, audit_user_id: int, location=None):
+def get_or_create_insuree_from_line(line, family: Family, is_family_created: bool, audit_user_id: int, location=None, core_user_id=None):
     id = line[HEADER_INSUREE_ID]
     insuree = (Insuree.objects.filter(validity_to__isnull=True, chf_id=id)
                .first())
@@ -157,6 +157,7 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
             current_village=current_village,
             current_address=line[HEADER_ADDRESS],
             phone=line[HEADER_PHONE],
+            created_by=core_user_id,
             json_ext={
                 "insureeEnrolmentType": map_enrolment_type_to_category(line[HEADER_ENROLMENT_TYPE]),
                 "insureelocations": response_data
@@ -188,6 +189,7 @@ def get_policy_holder_from_code(ph_code: str):
 def import_phi(request, policy_holder_code):
     file = request.FILES["file"]
     user_id = request.user.id_for_audit
+    core_user_id = request.user.id
     logger.info("User (audit id %s) requested import of PolicyHolderInsurees", user_id)
 
     policy_holder = get_policy_holder_from_code(policy_holder_code)
@@ -257,7 +259,7 @@ def import_phi(request, policy_holder_code):
         if family_created:
             total_families_created += 1
 
-        insuree, insuree_created = get_or_create_insuree_from_line(line, family, family_created, user_id)
+        insuree, insuree_created = get_or_create_insuree_from_line(line, family, family_created, user_id, None, core_user_id)
         logger.debug("insuree_created: %s", insuree_created)
         if insuree_created:
             total_insurees_created += 1
