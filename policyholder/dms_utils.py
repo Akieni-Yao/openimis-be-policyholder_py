@@ -48,9 +48,7 @@ Cordialement.
 """
 
 
-def send_mail_to_policyholder_with_pdf(policyholder, report_name):
-    subject = "Certificat d’Immatriculation"
-    email_body = policyholder_body.format(trade_name=policyholder.trade_name)
+def generate_pdf_for_policyholder(policyholder, report_name):
     report_config = ReportConfig.get_report(report_name)
     if not report_config:
         raise Http404("Poll does not exist")
@@ -58,13 +56,14 @@ def send_mail_to_policyholder_with_pdf(policyholder, report_name):
         report_name, report_config["default_report"]
     )
     template_dict = json.loads(report_definition)
+    formatted_date = policyholder.date_created.strftime('%Y-%m-%d')
     data = {"data": {"email": policyholder.email if hasattr(policyholder, 'email') else "",
                      "camucode": policyholder.code if hasattr(policyholder, 'code') else "",
                      "activitycode": policyholder.json_ext['jsonExt']['activityCode'] if hasattr(policyholder,
                                                                                                  'json_ext') and 'jsonExt' in policyholder.json_ext and 'activityCode' in
                                                                                          policyholder.json_ext[
                                                                                              'jsonExt'] else "",
-                     "regdate": "2023-01-01",
+                     "regdate": str(formatted_date),
                      "tradename": policyholder.trade_name if hasattr(policyholder, 'trade_name') else "",
                      "shortname": policyholder.json_ext['jsonExt']['shortName'] if hasattr(policyholder,
                                                                                            'json_ext') and 'jsonExt' in policyholder.json_ext and 'shortName' in
@@ -85,12 +84,17 @@ def send_mail_to_policyholder_with_pdf(policyholder, report_name):
                      "mailbox": policyholder.fax if hasattr(policyholder, 'fax') else "",
                      "legalform": str(policyholder.legal_form) if hasattr(policyholder, 'legal_form') else "",
                      "phone": str(policyholder.phone) if hasattr(policyholder, 'phone') else "",
-                     "address": policyholder.address['address'] if hasattr(policyholder,
-                                                                           'address') and 'address' in policyholder.address else "",
-                     "city": policyholder.address['address'] if hasattr(policyholder,
-                                                                        'address') and 'address' in policyholder.address else ""}}
+                     "address": policyholder.address['address'],
+                     "city": policyholder.locations.parent.parent.name}}
 
     pdf = generate_report(report_name, template_dict, data)
+    return pdf
+
+
+def send_mail_to_policyholder_with_pdf(policyholder, report_name):
+    subject = "Certificat d’Immatriculation"
+    email_body = policyholder_body.format(trade_name=policyholder.trade_name)
+    pdf = generate_pdf_for_policyholder(policyholder, report_name)
     email_message = EmailMessage(subject, email_body, settings.EMAIL_HOST_USER, [policyholder.email])
     email_message.attach('report.pdf', pdf, "application/pdf")
     email_message.send()
