@@ -5,7 +5,6 @@ from django.conf import settings
 from django.core.mail import EmailMessage
 from django.http import JsonResponse, Http404
 from insuree.dms_utils import CNSS_CREATE_FOLDER_API_URL, get_headers_with_token
-from insuree.reports.code_converstion_for_report import convert_activity_data
 from report.apps import ReportConfig
 from report.services import get_report_definition, generate_report
 
@@ -58,11 +57,12 @@ def generate_pdf_for_policyholder(policyholder, report_name):
     )
     template_dict = json.loads(report_definition)
     formatted_date = policyholder.date_created.strftime('%Y-%m-%d')
-    activity_code = policyholder.json_ext['jsonExt']['activityCode']
-    converted_activity_code = convert_activity_data(activity_code)
     data = {"data": {"email": policyholder.email if hasattr(policyholder, 'email') else "",
                      "camucode": policyholder.code if hasattr(policyholder, 'code') else "",
-                     "activitycode": converted_activity_code if converted_activity_code else "",
+                     "activitycode": policyholder.json_ext['jsonExt']['activityCode'] if hasattr(policyholder,
+                                                                                                 'json_ext') and 'jsonExt' in policyholder.json_ext and 'activityCode' in
+                                                                                         policyholder.json_ext[
+                                                                                             'jsonExt'] else "",
                      "regdate": str(formatted_date),
                      "tradename": policyholder.trade_name if hasattr(policyholder, 'trade_name') else "",
                      "shortname": policyholder.json_ext['jsonExt']['shortName'] if hasattr(policyholder,
