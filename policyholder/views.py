@@ -74,7 +74,7 @@ def clean_line(line):
         value = line[header]
         if isinstance(value, str):
             line[header] = value.strip()
-        elif value == math.isnan():
+        elif math.isnan(value):
             logger.info(f" ======    value is nan : {value}   =======")
             line[header] = None
             logger.info(f" ======    after change value is : {line[header]}   =======")
