@@ -74,6 +74,8 @@ def clean_line(line):
         value = line[header]
         if isinstance(value, str):
             line[header] = value.strip()
+        elif isinstance(value, datetime):
+            logger.info(f" ======    value is datetime : {value}   =======")
         elif math.isnan(value):
             logger.info(f" ======    value is nan : {value}   =======")
             line[header] = None
