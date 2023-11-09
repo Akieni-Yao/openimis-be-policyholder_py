@@ -1,6 +1,7 @@
 import json
 import logging
 import random
+import math
 from datetime import datetime
 
 import pandas as pd
@@ -73,6 +74,10 @@ def clean_line(line):
         value = line[header]
         if isinstance(value, str):
             line[header] = value.strip()
+        elif value == math.isnan():
+            logger.info(f" ======    value is nan : {value}   =======")
+            line[header] = None
+            logger.info(f" ======    after change value is : {line[header]}   =======")
 
 
 def validate_line(line):
