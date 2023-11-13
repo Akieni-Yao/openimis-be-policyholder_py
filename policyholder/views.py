@@ -30,11 +30,15 @@ HEADER_CONTRIBUTION_PLAN_BUNDLE_CODE = "contrib_code"
 HEADER_INSUREE_OTHER_NAMES = "insuree_other_names"
 HEADER_INSUREE_LAST_NAME = "insuree_last_names"
 HEADER_INSUREE_DOB = "insuree_dob"
+HEADER_BIRTH_LOCATION_CODE = "birth_location_code"
 HEADER_INSUREE_GENDER = "insuree_gender"
+HEADER_CIVILITY = "civility"
 HEADER_PHONE = "phone"
 HEADER_ADDRESS = "address"
 HEADER_INSUREE_ID = "insuree_id"
 HEADER_INCOME = "income"
+HEADER_EMAIL = "email"
+HEADER_EMPLOYEE_NUMBER = "employee_number"
 HEADERS = [
     HEADER_FAMILY_HEAD,
     HEADER_FAMILY_LOCATION_CODE,
@@ -47,7 +51,11 @@ HEADERS = [
     HEADER_INCOME,
     HEADER_PHONE,
     HEADER_ADDRESS,
+    HEADER_BIRTH_LOCATION_CODE,
+    HEADER_CIVILITY,
+    HEADER_EMAIL,
     HEADER_ENROLMENT_TYPE,
+    HEADER_EMPLOYEE_NUMBER
 ]
 
 GENDERS = {
@@ -165,9 +173,13 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
             current_address=line[HEADER_ADDRESS],
             phone=line[HEADER_PHONE],
             created_by=core_user_id,
+            marital=mapping_marital_status(line[HEADER_CIVILITY]),
+            email=line[HEADER_EMAIL],
             json_ext={
                 "insureeEnrolmentType": map_enrolment_type_to_category(line[HEADER_ENROLMENT_TYPE]),
-                "insureelocations": response_data
+                "insureelocations": response_data,
+                "BirthPlace": line[HEADER_BIRTH_LOCATION_CODE],
+                "employee_number":line[HEADER_EMPLOYEE_NUMBER]
             }
         )
         created = True
@@ -213,7 +225,7 @@ def import_phi(request, policy_holder_code):
     total_validation_errors = 0
 
     df = pd.read_excel(file)
-
+    df.columns = [col.strip() for col in df.columns]
     # Renaming the headers
     rename_columns = {
         "Type d'enrôlement": HEADER_ENROLMENT_TYPE,
@@ -221,6 +233,8 @@ def import_phi(request, policy_holder_code):
         "Nom": HEADER_INSUREE_LAST_NAME,
         "ID": HEADER_INSUREE_ID,
         "Date de naissance": HEADER_INSUREE_DOB,
+        "Lieu de naissance": HEADER_BIRTH_LOCATION_CODE,
+        "Civilité": HEADER_CIVILITY,
         "Sexe": HEADER_INSUREE_GENDER,
         "Téléphone": HEADER_PHONE,
         "Adresse": HEADER_ADDRESS,
@@ -228,9 +242,10 @@ def import_phi(request, policy_holder_code):
         "ID Famille": HEADER_FAMILY_HEAD,
         "Plan": HEADER_CONTRIBUTION_PLAN_BUNDLE_CODE,
         "Salaire": HEADER_INCOME,
+        "Email": HEADER_EMAIL,
+        "Matricule":HEADER_EMPLOYEE_NUMBER,
     }
     df.rename(columns=rename_columns, inplace=True)
-
     errors = []
     logger.debug("Importing %s lines", len(df))
     for index, line in df.iterrows():  # for each line in the Excel file
@@ -358,3 +373,16 @@ def map_enrolment_type_to_category(enrolment_type):
         # If the value doesn't match any predefined category, you can handle it accordingly.
         # For example, set a default category or raise an exception.
         return None
+
+
+def mapping_marital_status(marital):
+    mapping = {
+        "Veuf\/veuve": "W",
+        "Célibataire": "S",
+        "Divorcé": "D",
+        "Marié": "M",
+    }
+    if marital in mapping:
+        return mapping[marital]
+    else:
+        ""
