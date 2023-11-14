@@ -57,9 +57,11 @@ def generate_pdf_for_policyholder(policyholder, report_name):
         report_name, report_config["default_report"]
     )
     template_dict = json.loads(report_definition)
-    formatted_date = policyholder.date_created.strftime('%Y-%m-%d')
+    formatted_date = policyholder.date_created.strftime('%d-%m-%Y')
     activity_code = policyholder.json_ext['jsonExt']['activityCode']
     converted_activity_code = convert_activity_data(activity_code)
+    legal_form = str(policyholder.legal_form)
+    coverted_legal_form = get_french_value(legal_form)
     data = {"data": {"email": policyholder.email if hasattr(policyholder, 'email') else "",
                      "camucode": policyholder.code if hasattr(policyholder, 'code') else "",
                      "activitycode": converted_activity_code if converted_activity_code else "",
@@ -82,7 +84,7 @@ def generate_pdf_for_policyholder(policyholder, report_name):
                                                                                          policyholder.json_ext[
                                                                                              'jsonExt'] else "",
                      "mailbox": policyholder.fax if hasattr(policyholder, 'fax') else "",
-                     "legalform": str(policyholder.legal_form) if hasattr(policyholder, 'legal_form') else "",
+                     "legalform": coverted_legal_form if coverted_legal_form else "",
                      "phone": str(policyholder.phone) if hasattr(policyholder, 'phone') else "",
                      "address": policyholder.address['address'],
                      "city": policyholder.locations.parent.parent.name}}
@@ -98,3 +100,21 @@ def send_mail_to_policyholder_with_pdf(policyholder, report_name):
     email_message = EmailMessage(subject, email_body, settings.EMAIL_HOST_USER, [policyholder.email])
     email_message.attach('report.pdf', pdf, "application/pdf")
     email_message.send()
+
+
+def get_french_value(number):
+    legal_form_options = {
+        "1": "Association/ Syndicat physique",
+        "2": "SA/ SAU/ SAS",
+        "3": "Confession religieuse",
+        "4": "Collectivité publique",
+        "5": "Coopérative/ Société mutualiste/ GIE",
+        "6": "Établissement individuel/ EURL",
+        "7": "Établissement public",
+        "8": "Fondation/ ONG",
+        "9": "Organisation Internationale/ Représentation diplo",
+        "10": "SARL/ SARLU",
+        "11": "Autre à risque limité"
+    }
+
+    return legal_form_options.get(number, "")
