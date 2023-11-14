@@ -40,6 +40,35 @@ class PolicyHolderGQLType(DjangoObjectType):
         return PolicyHolder.get_queryset(queryset, info)
 
 
+class PolicyHolderByFamilyGQLType(DjangoObjectType):
+
+    class Meta:
+        model = PolicyHolder
+        interfaces = (graphene.relay.Node,)
+        filter_fields = {
+            "id": ["exact"],
+            "code": ["exact", "istartswith", "icontains", "iexact"],
+            "version": ["exact"],
+            "trade_name": ["exact", "istartswith", "icontains", "iexact"],
+            "phone": ["exact", "istartswith", "icontains", "iexact"],
+            "fax": ["exact", "istartswith", "icontains", "iexact"],
+            "email": ["exact", "istartswith", "icontains", "iexact"],
+            "legal_form": ["exact"],
+            "activity_code": ["exact"],
+            "accountancy_account": ["exact"],
+            "payment_reference": ["exact"],
+            "date_created": ["exact", "lt", "lte", "gt", "gte"],
+            "date_updated": ["exact", "lt", "lte", "gt", "gte"],
+            "is_deleted": ["exact"]
+        }
+
+        connection_class = ExtendedConnection
+
+    @classmethod
+    def get_queryset(cls, queryset, info):
+        return PolicyHolder.get_queryset(queryset, info)
+
+
 class PolicyHolderInsureeGQLType(DjangoObjectType):
 
     class Meta:
