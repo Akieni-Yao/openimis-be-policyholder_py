@@ -37,8 +37,8 @@ HEADER_PHONE = "phone"
 HEADER_ADDRESS = "address"
 HEADER_INSUREE_ID = "insuree_id"
 HEADER_INCOME = "income"
-# HEADER_EMAIL = "email"
-# HEADER_EMPLOYEE_NUMBER = "employee_number"
+HEADER_EMAIL = "email"
+HEADER_EMPLOYEE_NUMBER = "employee_number"
 HEADERS = [
     HEADER_FAMILY_HEAD,
     HEADER_FAMILY_LOCATION_CODE,
@@ -53,7 +53,9 @@ HEADERS = [
     HEADER_ADDRESS,
     HEADER_BIRTH_LOCATION_CODE,
     HEADER_CIVILITY,
-    HEADER_ENROLMENT_TYPE
+    HEADER_EMAIL,
+    HEADER_ENROLMENT_TYPE,
+    HEADER_EMPLOYEE_NUMBER
 ]
 
 GENDERS = {
@@ -172,10 +174,12 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
             phone=line[HEADER_PHONE],
             created_by=core_user_id,
             marital=mapping_marital_status(line[HEADER_CIVILITY]),
+            email=line[HEADER_EMAIL],
             json_ext={
                 "insureeEnrolmentType": map_enrolment_type_to_category(line[HEADER_ENROLMENT_TYPE]),
                 "insureelocations": response_data,
-                "BirthPlace": line[HEADER_BIRTH_LOCATION_CODE]
+                "BirthPlace": line[HEADER_BIRTH_LOCATION_CODE],
+                "employee_number":line[HEADER_EMPLOYEE_NUMBER]
             }
         )
         created = True
@@ -237,7 +241,9 @@ def import_phi(request, policy_holder_code):
         "Village": HEADER_FAMILY_LOCATION_CODE,
         "ID Famille": HEADER_FAMILY_HEAD,
         "Plan": HEADER_CONTRIBUTION_PLAN_BUNDLE_CODE,
-        "Salaire": HEADER_INCOME
+        "Salaire": HEADER_INCOME,
+        "Email": HEADER_EMAIL,
+        "Matricule":HEADER_EMPLOYEE_NUMBER
     }
     df.rename(columns=rename_columns, inplace=True)
     errors = []
