@@ -37,8 +37,8 @@ HEADER_PHONE = "phone"
 HEADER_ADDRESS = "address"
 HEADER_INSUREE_ID = "insuree_id"
 HEADER_INCOME = "income"
-# HEADER_EMAIL = "email"
-# HEADER_EMPLOYEE_NUMBER = "employee_number"
+HEADER_EMAIL = "email"
+HEADER_EMPLOYEE_NUMBER = "employee_number"
 HEADERS = [
     HEADER_FAMILY_HEAD,
     HEADER_FAMILY_LOCATION_CODE,
@@ -53,7 +53,9 @@ HEADERS = [
     HEADER_ADDRESS,
     HEADER_BIRTH_LOCATION_CODE,
     HEADER_CIVILITY,
-    HEADER_ENROLMENT_TYPE
+    HEADER_EMAIL,
+    HEADER_ENROLMENT_TYPE,
+    HEADER_EMPLOYEE_NUMBER
 ]
 
 GENDERS = {
@@ -86,7 +88,8 @@ def clean_line(line):
             logger.info(f" ======    value is nan : {value}   =======")
             line[header] = None
             logger.info(f" ======    after change value is : {line[header]}   =======")
-
+        elif header == HEADER_PHONE and isinstance(value, float):
+            line[header] = int(value)
 
 def validate_line(line):
     errors = ""
@@ -111,10 +114,12 @@ def get_village_from_line(line):
 
 def get_or_create_family_from_line(line, village: Location, audit_user_id: int):
     head_id = line[HEADER_FAMILY_HEAD]
-    family = (Family.objects.filter(validity_to__isnull=True,
-                                    head_insuree__chf_id=head_id,
-                                    location=village)
-              .first())
+    family = None
+    if head_id:
+        family = (Family.objects.filter(validity_to__isnull=True,
+                                        head_insuree__chf_id=head_id,
+                                        location=village)
+                  .first())
     created = False
 
     if not family:
@@ -143,8 +148,10 @@ def generate_available_chf_id(gender, village, dob, insureeEnrolmentType):
 
 def get_or_create_insuree_from_line(line, family: Family, is_family_created: bool, audit_user_id: int, location=None, core_user_id=None):
     id = line[HEADER_INSUREE_ID]
-    insuree = (Insuree.objects.filter(validity_to__isnull=True, chf_id=id)
-               .first())
+    insuree = None
+    if id:
+        insuree = (Insuree.objects.filter(validity_to__isnull=True, chf_id=id)
+                   .first())
     created = False
 
     if not insuree:
@@ -172,10 +179,12 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
             phone=line[HEADER_PHONE],
             created_by=core_user_id,
             marital=mapping_marital_status(line[HEADER_CIVILITY]),
+            email=line[HEADER_EMAIL],
             json_ext={
                 "insureeEnrolmentType": map_enrolment_type_to_category(line[HEADER_ENROLMENT_TYPE]),
                 "insureelocations": response_data,
-                "BirthPlace": line[HEADER_BIRTH_LOCATION_CODE]
+                "BirthPlace": line[HEADER_BIRTH_LOCATION_CODE],
+                "employeeNumber":line[HEADER_EMPLOYEE_NUMBER]
             }
         )
         created = True
@@ -237,7 +246,9 @@ def import_phi(request, policy_holder_code):
         "Village": HEADER_FAMILY_LOCATION_CODE,
         "ID Famille": HEADER_FAMILY_HEAD,
         "Plan": HEADER_CONTRIBUTION_PLAN_BUNDLE_CODE,
-        "Salaire": HEADER_INCOME
+        "Salaire": HEADER_INCOME,
+        "Email": HEADER_EMAIL,
+        "Matricule":HEADER_EMPLOYEE_NUMBER
     }
     df.rename(columns=rename_columns, inplace=True)
     errors = []

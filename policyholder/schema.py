@@ -20,7 +20,7 @@ from policyholder.gql.gql_mutations.replace_mutation import ReplacePolicyHolderI
 from policyholder.apps import PolicyholderConfig
 from policyholder.services import PolicyHolder as PolicyHolderServices
 from policyholder.gql.gql_types import PolicyHolderUserGQLType, PolicyHolderGQLType, PolicyHolderInsureeGQLType, \
-    PolicyHolderContributionPlanGQLType, PolicyHolderByFamilyGQLType
+    PolicyHolderContributionPlanGQLType, PolicyHolderByFamilyGQLType, PolicyHolderByInureeGQLType
 
 from django.core.exceptions import PermissionDenied
 from django.utils.translation import gettext as _
@@ -53,6 +53,23 @@ class Query(graphene.ObjectType):
         family_uuid=kwargs.pop('family_uuid')
         print("family_uuid : ", family_uuid)
         policy_holder_insuree = PolicyHolderInsuree.objects.filter(insuree__family__uuid=family_uuid, insuree__head=True).all()
+        policy_holder_ids = [phi.policy_holder.id for phi in policy_holder_insuree]
+        print("policy_holder_ids : ", policy_holder_ids)
+        return gql_optimizer.query(PolicyHolder.objects.filter(id__in=policy_holder_ids).all(), info)
+    
+    policy_holder_by_insuree = OrderedDjangoFilterConnectionField(
+        PolicyHolderByInureeGQLType,
+        insuree_uuid=graphene.String(required=True),
+        # active_or_last_expired_only=graphene.Boolean(),
+        # show_history=graphene.Boolean(),
+        # order_by=graphene.String(),
+    )
+
+    def resolve_policy_holder_by_insuree(self, info, **kwargs):
+        # family_uuid=kwargs.get('family_uuid')
+        insuree_uuid=kwargs.pop('insuree_uuid')
+        print("insuree_uuid : ", insuree_uuid)
+        policy_holder_insuree = PolicyHolderInsuree.objects.filter(insuree__uuid=insuree_uuid).all()
         policy_holder_ids = [phi.policy_holder.id for phi in policy_holder_insuree]
         print("policy_holder_ids : ", policy_holder_ids)
         return gql_optimizer.query(PolicyHolder.objects.filter(id__in=policy_holder_ids).all(), info)
