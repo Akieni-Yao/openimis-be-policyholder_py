@@ -113,10 +113,12 @@ def get_village_from_line(line):
 
 def get_or_create_family_from_line(line, village: Location, audit_user_id: int):
     head_id = line[HEADER_FAMILY_HEAD]
-    family = (Family.objects.filter(validity_to__isnull=True,
-                                    head_insuree__chf_id=head_id,
-                                    location=village)
-              .first())
+    family = None
+    if head_id:
+        family = (Family.objects.filter(validity_to__isnull=True,
+                                        head_insuree__chf_id=head_id,
+                                        location=village)
+                  .first())
     created = False
 
     if not family:
@@ -145,8 +147,10 @@ def generate_available_chf_id(gender, village, dob, insureeEnrolmentType):
 
 def get_or_create_insuree_from_line(line, family: Family, is_family_created: bool, audit_user_id: int, location=None, core_user_id=None):
     id = line[HEADER_INSUREE_ID]
-    insuree = (Insuree.objects.filter(validity_to__isnull=True, chf_id=id)
-               .first())
+    insuree = None
+    if id:
+        insuree = (Insuree.objects.filter(validity_to__isnull=True, chf_id=id)
+                   .first())
     created = False
 
     if not insuree:
@@ -179,7 +183,7 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
                 "insureeEnrolmentType": map_enrolment_type_to_category(line[HEADER_ENROLMENT_TYPE]),
                 "insureelocations": response_data,
                 "BirthPlace": line[HEADER_BIRTH_LOCATION_CODE],
-                "employee_number":line[HEADER_EMPLOYEE_NUMBER]
+                "employeeNumber":line[HEADER_EMPLOYEE_NUMBER]
             }
         )
         created = True
