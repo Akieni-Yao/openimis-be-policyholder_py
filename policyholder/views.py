@@ -88,7 +88,8 @@ def clean_line(line):
             logger.info(f" ======    value is nan : {value}   =======")
             line[header] = None
             logger.info(f" ======    after change value is : {line[header]}   =======")
-
+        elif header == HEADER_PHONE and isinstance(value, float):
+            line[header] = int(value)
 
 def validate_line(line):
     errors = ""
