@@ -10,23 +10,19 @@ from django.http import JsonResponse
 from rest_framework.decorators import permission_classes, api_view
 from rest_framework.permissions import IsAuthenticated
 
-from contribution_plan.models import ContributionPlanBundle
-
 from insuree.dms_utils import create_openKm_folder_for_bulkupload
 from insuree.gql_mutations import temp_generate_employee_camu_registration_number
 from insuree.models import Insuree, Gender, Family
 from location.models import Location
 from policyholder.apps import PolicyholderConfig
-from policyholder.models import PolicyHolder, PolicyHolderInsuree
+from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan
 from workflow.workflow_stage import insuree_add_to_workflow
 from insuree.abis_api import create_abis_insuree
 
 logger = logging.getLogger(__name__)
 
-HEADER_ENROLMENT_TYPE = "enrolment_type"
 HEADER_FAMILY_HEAD = "family_head"
 HEADER_FAMILY_LOCATION_CODE = "family_location_code"
-HEADER_CONTRIBUTION_PLAN_BUNDLE_CODE = "contrib_code"
 HEADER_INSUREE_OTHER_NAMES = "insuree_other_names"
 HEADER_INSUREE_LAST_NAME = "insuree_last_names"
 HEADER_INSUREE_DOB = "insuree_dob"
@@ -42,7 +38,6 @@ HEADER_EMPLOYEE_NUMBER = "employee_number"
 HEADERS = [
     HEADER_FAMILY_HEAD,
     HEADER_FAMILY_LOCATION_CODE,
-    HEADER_CONTRIBUTION_PLAN_BUNDLE_CODE,
     HEADER_INSUREE_OTHER_NAMES,
     HEADER_INSUREE_LAST_NAME,
     HEADER_INSUREE_DOB,
@@ -54,7 +49,6 @@ HEADERS = [
     HEADER_BIRTH_LOCATION_CODE,
     HEADER_CIVILITY,
     HEADER_EMAIL,
-    HEADER_ENROLMENT_TYPE,
     HEADER_EMPLOYEE_NUMBER
 ]
 
@@ -112,7 +106,7 @@ def get_village_from_line(line):
     return village
 
 
-def get_or_create_family_from_line(line, village: Location, audit_user_id: int):
+def get_or_create_family_from_line(line, village: Location, audit_user_id: int,enrolment_type):
     head_id = line[HEADER_FAMILY_HEAD]
     family = None
     if head_id:
@@ -128,7 +122,7 @@ def get_or_create_family_from_line(line, village: Location, audit_user_id: int):
             location=village,
             audit_user_id=audit_user_id,
             status="PRE_REGISTERED",
-            json_ext={"enrolmentType": map_enrolment_type_to_category(line[HEADER_ENROLMENT_TYPE])}
+            json_ext={"enrolmentType": map_enrolment_type_to_category(enrolment_type)}
         )
         created = True
 
@@ -146,7 +140,7 @@ def generate_available_chf_id(gender, village, dob, insureeEnrolmentType):
     return temp_generate_employee_camu_registration_number(None, data)
 
 
-def get_or_create_insuree_from_line(line, family: Family, is_family_created: bool, audit_user_id: int, location=None, core_user_id=None):
+def get_or_create_insuree_from_line(line, family: Family, is_family_created: bool, audit_user_id: int, location=None, core_user_id=None,enrolment_type=None):
     id = line[HEADER_INSUREE_ID]
     insuree = None
     if id:
@@ -159,7 +153,7 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
             line[HEADER_INSUREE_GENDER],
             location if location else family.location,
             line[HEADER_INSUREE_DOB],
-            line[HEADER_ENROLMENT_TYPE]
+            enrolment_type
         )
         current_village = location if location else family.location
         response_string = json.dumps(current_village, cls=LocationEncoder)
@@ -181,7 +175,7 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
             marital=mapping_marital_status(line[HEADER_CIVILITY]),
             email=line[HEADER_EMAIL],
             json_ext={
-                "insureeEnrolmentType": map_enrolment_type_to_category(line[HEADER_ENROLMENT_TYPE]),
+                "insureeEnrolmentType": map_enrolment_type_to_category(enrolment_type),
                 "insureelocations": response_data,
                 "BirthPlace": line[HEADER_BIRTH_LOCATION_CODE],
                 "employeeNumber":line[HEADER_EMPLOYEE_NUMBER]
@@ -190,11 +184,6 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
         created = True
 
     return insuree, created
-
-
-def get_contrib_plan_bundle_from_line(line):
-    cpb_code = line[HEADER_CONTRIBUTION_PLAN_BUNDLE_CODE]
-    return ContributionPlanBundle.objects.filter(code=cpb_code, is_deleted=False, date_valid_to__isnull=True).first()
 
 
 def get_policy_holder_from_code(ph_code: str):
@@ -233,7 +222,6 @@ def import_phi(request, policy_holder_code):
     df.columns = [col.strip() for col in df.columns]
     # Renaming the headers
     rename_columns = {
-        "Type d'enrôlement": HEADER_ENROLMENT_TYPE,
         "Prénom": HEADER_INSUREE_OTHER_NAMES,
         "Nom": HEADER_INSUREE_LAST_NAME,
         "ID": HEADER_INSUREE_ID,
@@ -245,7 +233,6 @@ def import_phi(request, policy_holder_code):
         "Adresse": HEADER_ADDRESS,
         "Village": HEADER_FAMILY_LOCATION_CODE,
         "ID Famille": HEADER_FAMILY_HEAD,
-        "Plan": HEADER_CONTRIBUTION_PLAN_BUNDLE_CODE,
         "Salaire": HEADER_INCOME,
         "Email": HEADER_EMAIL,
         "Matricule":HEADER_EMPLOYEE_NUMBER
@@ -271,22 +258,33 @@ def import_phi(request, policy_holder_code):
             logger.debug(f"Error line {total_lines} - unknown village ({line[HEADER_FAMILY_LOCATION_CODE]})")
             total_locations_not_found += 1
             continue
-
-        cpb = get_contrib_plan_bundle_from_line(line)
-        if not cpb:
-            errors.append(
-                f"Error line {total_lines} - unknown contribution plan bundle ({line[HEADER_CONTRIBUTION_PLAN_BUNDLE_CODE]})")
-            logger.debug(
-                f"Error line {total_lines} - unknown contribution plan bundle ({line[HEADER_CONTRIBUTION_PLAN_BUNDLE_CODE]})")
-            total_locations_not_found += 1
-            continue
-
-        family, family_created = get_or_create_family_from_line(line, village, user_id)
+        try:
+            ph_cpb = PolicyHolderContributionPlan.objects.filter(policy_holder=policy_holder, is_deleted=False).first()
+            if not ph_cpb:
+                errors.append(
+                    f"Error line {total_lines} - No contribution plan bundle with ({policy_holder.trade_name})")
+                logger.debug(
+                    f"Error line {total_lines} - No contribution plan bundle with ({policy_holder.trade_name})")
+                total_contribution_plan_not_found += 1
+                continue
+            cpb = ph_cpb.contribution_plan_bundle
+            if not cpb:
+                errors.append(
+                    f"Error line {total_lines} - unknown contribution plan bundle ({ph_cpb.contribution_plan_bundle})")
+                logger.debug(
+                    f"Error line {total_lines} - unknown contribution plan bundle ({ph_cpb.contribution_plan_bundle})")
+                total_locations_not_found += 1
+                continue
+            enrolment_type = cpb.name
+        except Exception as e:
+            logger.error(f"Error occurred while retrieving Contribution Plan Bundle: {e}")
+            enrolment_type = None
+        family, family_created = get_or_create_family_from_line(line, village, user_id,enrolment_type)
         logger.debug("family_created: %s", family_created)
         if family_created:
             total_families_created += 1
 
-        insuree, insuree_created = get_or_create_insuree_from_line(line, family, family_created, user_id, None, core_user_id)
+        insuree, insuree_created = get_or_create_insuree_from_line(line, family, family_created, user_id, None, core_user_id,enrolment_type)
         logger.debug("insuree_created: %s", insuree_created)
         if insuree_created:
             total_insurees_created += 1
