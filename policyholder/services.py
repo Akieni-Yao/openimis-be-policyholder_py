@@ -1,5 +1,6 @@
 import core
 import json
+import logging
 
 from django.core.serializers.json import DjangoJSONEncoder
 from django.core.exceptions import PermissionDenied
@@ -12,7 +13,76 @@ from policyholder.apps import PolicyholderConfig
 from policyholder.models import PolicyHolder as PolicyHolderModel, PolicyHolderUser as PolicyHolderUserModel, \
     PolicyHolderContributionPlan as PolicyHolderContributionPlanModel, PolicyHolderInsuree as PolicyHolderInsureeModel
 from policyholder.validation import PolicyHolderValidation
+from insuree.models import Insuree, InsureePolicy
+from payment.models import PaymentDetail
 
+logger = logging.getLogger("openimis." + __name__)
+
+def activate_policy_of_insuree(ccpds):
+    logger.info("====  activate_policy_of_insuree  ====  start  ====")
+    from core import datetime, datetimedelta
+    if ccpds:
+        for ccpd in ccpds:
+            insuree = ccpd.contract_details.insuree
+            pi = InsureePolicy.objects.create(
+                **{
+                    "insuree": insuree,
+                    "policy": ccpd.policy,
+                    "enrollment_date": ccpd.date_valid_from,
+                    "start_date": ccpd.date_valid_from,
+                    "effective_date": ccpd.date_valid_from,
+                    "expiry_date": ccpd.date_valid_to + datetimedelta(
+                        ccpd.contribution_plan.get_contribution_length()
+                    ),
+                    "audit_user_id": -1,
+                }
+            )
+            ccpd.policy.status = Policy.STATUS_ACTIVE
+            ccpd.policy.save()
+    logger.info("====  activate_policy_of_insuree  ====  end  ====")
+    return True
+
+def check_payment_done_by_policyholder(insuree_id):
+    logger.info("====  check_payment_done_by_policyholder  ====  start  ====")
+    insuree = Insuree.objects.filter(id=insuree_id).first()
+    # if insuree.is_payment_done and not insuree.is_rights and insuree.document_status and insuree.biometrics_is_master:
+        # insuree_policies = PolicyHolderInsuree.objects.filter(insuree_id=insuree.id).all()
+        # for inpo in insuree_policies:
+    insuree_policies = PolicyHolderInsuree.objects.filter(insuree_id=insuree.id, is_deleted=False).first()
+    if insuree_policies.is_payment_done_by_policy_holder and insuree_policies.is_rights_enable_for_insuree:
+        return True
+    elif insuree_policies.is_payment_done_by_policy_holder:
+        contribution_plan_bundle_ids = []
+        for ip in insuree_policies:
+            if ip.contribution_plan_bundle.is_deleted == False:
+                contribution_plan_bundle_ids.append(ip.contribution_plan_bundle.uuid)
+
+        contract_details = None
+        contract_details_ids = []
+        if len(contribution_plan_bundle_ids)>0:
+            contract_details = ContractDetails.objects.filter(contribution_plan_bundle__uuid__in=contribution_plan_bundle_ids, insuree_id=insuree_id, is_deleted=False).all()
+            if contract_details:
+                for cd in contract_details:
+                    contract_details_ids.append(cd.uuid)
+
+        contract_contribution_plan_details = None
+        premium_ids = []
+        if len(contract_details_ids)>0:
+            contract_contribution_plan_details = ContractContributionPlanDetails.objects.filter(contract_details__uuid__in=contract_details_ids, is_deleted=False).all()
+            if contract_contribution_plan_details:
+                for ccpd in contract_contribution_plan_details:
+                    if ccpd.contribution.legacy_id == None:
+                        premium_ids.append(ccpd.contribution.id)
+
+        if contract_contribution_plan_details and insuree_policies.is_payment_done_by_policy_holder:
+            if insuree.status == "APPROVED" and insuree.document_status and insuree.biometrics_is_master:
+                PolicyHolderInsuree.objects.filter(id=insuree_policies.id).update(is_rights_enable_for_insuree=True)
+                Insuree.objects.filter(id=insuree_id).update(status="ACTIVE")
+                activate_policy_of_insuree(contract_contribution_plan_details)
+                return True
+
+    logger.info("====  check_payment_done_by_policyholder  ====  end  ====")
+    return True
 
 def check_authentication(function):
     def wrapper(self, *args, **kwargs):
