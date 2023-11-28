@@ -46,9 +46,9 @@ def check_payment_done_by_policyholder(insuree_id):
     logger.info("====  check_payment_done_by_policyholder  ====  start  ====")
     insuree = Insuree.objects.filter(id=insuree_id).first()
     # if insuree.is_payment_done and not insuree.is_rights and insuree.document_status and insuree.biometrics_is_master:
-        # insuree_policies = PolicyHolderInsuree.objects.filter(insuree_id=insuree.id).all()
+        # insuree_policies = PolicyHolderInsureeModel.objects.filter(insuree_id=insuree.id).all()
         # for inpo in insuree_policies:
-    insuree_policies = PolicyHolderInsuree.objects.filter(insuree_id=insuree.id, is_deleted=False).first()
+    insuree_policies = PolicyHolderInsureeModel.objects.filter(insuree_id=insuree.id, is_deleted=False).first()
     if insuree_policies.is_payment_done_by_policy_holder and insuree_policies.is_rights_enable_for_insuree:
         return True
     elif insuree_policies.is_payment_done_by_policy_holder:
