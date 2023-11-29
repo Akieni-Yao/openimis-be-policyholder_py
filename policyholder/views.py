@@ -5,10 +5,11 @@ import math
 from datetime import datetime
 
 import pandas as pd
-from django.http import JsonResponse
+from django.http import JsonResponse, FileResponse, HttpResponse
 
 from rest_framework.decorators import permission_classes, api_view
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 from insuree.dms_utils import create_openKm_folder_for_bulkupload
 from insuree.gql_mutations import temp_generate_employee_camu_registration_number
@@ -16,6 +17,7 @@ from insuree.models import Insuree, Gender, Family
 from location.models import Location
 from policyholder.apps import PolicyholderConfig
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan
+from policyholder.services import InsureeExportService
 from workflow.workflow_stage import insuree_add_to_workflow
 from insuree.abis_api import create_abis_insuree
 
@@ -342,6 +344,29 @@ def import_phi(request, policy_holder_code):
     logger.info("Import of PolicyHolderInsurees done")
     return JsonResponse(data=result)
 
+
+def export_phi(request, policy_holder_code):
+    try: 
+        export_format = request.GET.get("file_format", "csv")
+        user = request.user
+        # user_id = request.user.id_for_audit
+        # core_user_id = request.user.id
+        # logger.info("User (audit id %s) requested import of PolicyHolderInsurees", user_id)
+        
+        policy_holder = get_policy_holder_from_code(policy_holder_code)
+        if not policy_holder:
+            return JsonResponse({"errors": f"Unknown policy holder ({policy_holder_code})"})
+        
+        content_type, export = InsureeExportService(user, policy_holder_code).export_insurees(export_format)
+        response = HttpResponse(export, content_type=content_type)
+        response['Content-Disposition'] = f'attachment; filename="insurees.{export_format}"'
+        return response
+    except ValueError as e:
+        logger.error("Error while exporting insurees", exc_info=e)
+        return Response({'success': False, 'error': str(e)}, status=400)
+    except Exception as e:
+        logger.error("Unexpected error while exporting insurees", exc_info=e)
+        return Response({'success': False, 'error': str(e)}, status=500)
 
 class LocationEncoder(json.JSONEncoder):
     def default(self, obj):
