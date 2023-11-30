@@ -13,7 +13,6 @@ from policyholder.apps import PolicyholderConfig
 from policyholder.models import PolicyHolder as PolicyHolderModel, PolicyHolderUser as PolicyHolderUserModel, \
     PolicyHolderContributionPlan as PolicyHolderContributionPlanModel, PolicyHolderInsuree as PolicyHolderInsureeModel
 from policyholder.validation import PolicyHolderValidation
-from policyholder.resources import InsureeResource
 from insuree.models import Insuree, InsureePolicy
 from payment.models import PaymentDetail
 
@@ -420,24 +419,3 @@ def _output_result_success(dict_representation):
         "detail": "",
         "data": json.loads(json.dumps(dict_representation, cls=DjangoJSONEncoder)),
     }
-
-
-class InsureeExportService:
-    supported_content_types = {
-        'xls': 'application/vnd.ms-excel',
-        'csv': 'text/csv',
-        'json': 'application/json',
-        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    }
-
-    def __init__(self, user, policy_holder):
-        self._user = user
-        self._policy_holder = policy_holder
-        self._resource = InsureeResource(user, policy_holder)
-
-    def export_insurees(self, export_format: str = 'csv') -> tuple[str, any]:
-        if export_format not in self.supported_content_types:
-            raise ValueError(f'Non-supported export format: {export_format}')
-
-        # All supported formats match Tablib attrs, to update if that's not valid anymore
-        return self.supported_content_types[export_format], getattr(self._resource.export(), export_format)

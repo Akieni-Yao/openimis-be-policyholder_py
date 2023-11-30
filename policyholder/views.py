@@ -346,24 +346,66 @@ def import_phi(request, policy_holder_code):
 
 
 def export_phi(request, policy_holder_code):
-    try: 
-        export_format = request.GET.get("file_format", "csv")
-        user = request.user
-        # user_id = request.user.id_for_audit
-        # core_user_id = request.user.id
-        # logger.info("User (audit id %s) requested import of PolicyHolderInsurees", user_id)
+    try:
+        insuree_headers = ['Tempoprary CAMU Number', 'CAMU Number', 'Prénom', 'Nom', 'ID', 'Date de naissance', 'Lieu de naissance', 
+                        'Sexe', 'Civilité', 'Téléphone', 'Adresse', 'Village', 'ID Famille', 'Email', 'Matricule', 'Salaire']
+        insuree_ids = PolicyHolderInsuree.objects.filter(policy_holder__code=policy_holder_code, policy_holder__date_valid_to__isnull=True, 
+                                                            policy_holder__is_deleted=False, date_valid_to__isnull=True, 
+                                                            is_deleted=False).values_list('insuree_id', flat=True).distinct()
         
-        policy_holder = get_policy_holder_from_code(policy_holder_code)
-        if not policy_holder:
-            return JsonResponse({"errors": f"Unknown policy holder ({policy_holder_code})"})
+        queryset = Insuree.objects.filter(validity_to__isnull=True, id__in=insuree_ids) \
+                .select_related('gender', 'current_village', 'family', 'family__location', 'family__location__parent',
+                                'family__location__parent__parent', 'family__location__parent__parent__parent')
+
+        data = list(queryset.values('chf_id', 'camu_number', 'other_names', 'last_name', 'id', 'dob', 'gender__gender', 'phone', 
+                                    'current_village__name', 'family__id', 'email', 'json_ext'))
+
+        df = pd.DataFrame(data)
         
-        content_type, export = InsureeExportService(user, policy_holder_code).export_insurees(export_format)
-        response = HttpResponse(export, content_type=content_type)
-        response['Content-Disposition'] = f'attachment; filename="insurees.{export_format}"'
+        def extract_birth_place(json_data):
+            return json_data.get('BirthPlace', None)
+        birth_place = [extract_birth_place(json_data) for json_data in df['json_ext']]
+        df.insert(loc=6, column='Lieu de naissance', value=birth_place)
+        
+        def extract_civility(json_data):
+            return json_data.get('civilQuality', None)
+        civility = [extract_civility(json_data) for json_data in df['json_ext']]
+        df.insert(loc=8, column='Civilité', value=civility)
+        
+        def extract_address(json_data):
+            return json_data.get('insureeaddress', None)
+        address = [extract_address(json_data) for json_data in df['json_ext']]
+        df.insert(loc=10, column='Adresse', value=address)
+        
+        def extract_emp_no(json_data):
+            return json_data.get('employeeNumber', None)
+        emp_no = [extract_emp_no(json_data) for json_data in df['json_ext']]
+        df.insert(loc=14, column='Matricule', value=emp_no)
+        
+        def extract_income(insuree_id, policy_holder_code):
+            phn_json = PolicyHolderInsuree.objects.filter(policy_holder__code=policy_holder_code, policy_holder__date_valid_to__isnull=True, 
+                                                            policy_holder__is_deleted=False, date_valid_to__isnull=True, 
+                                                            is_deleted=False).first()
+            json_data = phn_json.json_ext
+            return json_data.get('calculation_rule', None).get('income', None)
+        income = [extract_income(insuree_id, policy_holder_code) for insuree_id in df['id']]
+        df.insert(loc=15, column='Salaire', value=income)
+
+        df.rename(columns={'chf_id': 'Tempoprary CAMU Number', 'camu_number': 'NewFieldName2', 'other_names': 'Prénom', 
+                        'last_name': 'Nom', 'id': 'ID', 'dob': 'Date de naissance', 'gender__gender': 'Sexe', 'phone': 'Téléphone',
+                        'current_village__name': 'Village', 'family__id': 'ID Famille', 'email': 'Email'}, inplace=True)
+
+        df.drop(columns=['json_ext'], inplace=True)
+        
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = 'attachment; filename="data.xlsx"'
+
+        # Write DataFrame to response as an Excel file
+        df.to_excel(response, index=False, header=True)
+        # Write DataFrame to response as an csv file
+        # df.to_csv(response, index=False, header=True)
+
         return response
-    except ValueError as e:
-        logger.error("Error while exporting insurees", exc_info=e)
-        return Response({'success': False, 'error': str(e)}, status=400)
     except Exception as e:
         logger.error("Unexpected error while exporting insurees", exc_info=e)
         return Response({'success': False, 'error': str(e)}, status=500)
