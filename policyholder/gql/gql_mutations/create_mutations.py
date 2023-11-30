@@ -1,3 +1,5 @@
+import logging
+
 from core.gql.gql_mutations.base_mutation import BaseMutation, BaseHistoryModelCreateMutationMixin
 from policyholder.apps import PolicyholderConfig
 from policyholder.dms_utils import create_policyholder_openkmfolder, send_mail_to_policyholder_with_pdf
@@ -10,7 +12,7 @@ import datetime
 import pytz
 from django.db import connection
 from django.apps import apps
-
+logger = logging.getLogger(__name__)
 
 class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
     _mutation_class = "PolicyHolderMutation"
@@ -40,10 +42,13 @@ class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutati
         if "client_mutation_label" in data:
             data.pop('client_mutation_label')
         created_object = cls.create_object(user=user, object_data=data)
-        # if email having inside the policyholder then it is executed
-        if isinstance(created_object, PolicyHolder):
-            if created_object.email:
-                send_mail_to_policyholder_with_pdf(created_object, 'registration_application')
+        try:
+            # if email having inside the policyholder then it is executed
+            if isinstance(created_object, PolicyHolder):
+                if created_object.email:
+                    send_mail_to_policyholder_with_pdf(created_object, 'registration_application')
+        except Exception as exc:
+            logger.exception("failed to send message", str(exc))
         model_class = apps.get_model(cls._mutation_module, cls._mutation_class)
         if model_class and hasattr(model_class, "object_mutated") and client_mutation_id is not None:
             model_class.object_mutated(user, client_mutation_id=client_mutation_id, **{cls._mutation_module:created_object})
