@@ -17,12 +17,13 @@ from insuree.models import Insuree, Gender, Family
 from location.models import Location
 from policyholder.apps import PolicyholderConfig
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan
-from policyholder.services import InsureeExportService
 from workflow.workflow_stage import insuree_add_to_workflow
 from insuree.abis_api import create_abis_insuree
 
 logger = logging.getLogger(__name__)
 
+HEADER_INSUREE_CHFID = 'chf_id'
+HEADER_INSUREE_CAMU_NO = 'camu_number'
 HEADER_FAMILY_HEAD = "family_head"
 HEADER_FAMILY_LOCATION_CODE = "family_location_code"
 HEADER_INSUREE_OTHER_NAMES = "insuree_other_names"
@@ -224,6 +225,8 @@ def import_phi(request, policy_holder_code):
     df.columns = [col.strip() for col in df.columns]
     # Renaming the headers
     rename_columns = {
+        "Tempoprary CAMU Number": HEADER_INSUREE_CHFID,
+        "CAMU Number": HEADER_INSUREE_CAMU_NO,
         "Prénom": HEADER_INSUREE_OTHER_NAMES,
         "Nom": HEADER_INSUREE_LAST_NAME,
         "ID": HEADER_INSUREE_ID,
@@ -347,8 +350,8 @@ def import_phi(request, policy_holder_code):
 
 def export_phi(request, policy_holder_code):
     try:
-        insuree_headers = ['Tempoprary CAMU Number', 'CAMU Number', 'Prénom', 'Nom', 'ID', 'Date de naissance', 'Lieu de naissance', 
-                        'Sexe', 'Civilité', 'Téléphone', 'Adresse', 'Village', 'ID Famille', 'Email', 'Matricule', 'Salaire']
+        # insuree_headers = ['Tempoprary CAMU Number', 'CAMU Number', 'Prénom', 'Nom', 'ID', 'Date de naissance', 'Lieu de naissance', 
+        #                 'Sexe', 'Civilité', 'Téléphone', 'Adresse', 'Village', 'ID Famille', 'Email', 'Matricule', 'Salaire']
         insuree_ids = PolicyHolderInsuree.objects.filter(policy_holder__code=policy_holder_code, policy_holder__date_valid_to__isnull=True, 
                                                             policy_holder__is_deleted=False, date_valid_to__isnull=True, 
                                                             is_deleted=False).values_list('insuree_id', flat=True).distinct()
@@ -357,8 +360,7 @@ def export_phi(request, policy_holder_code):
                 .select_related('gender', 'current_village', 'family', 'family__location', 'family__location__parent',
                                 'family__location__parent__parent', 'family__location__parent__parent__parent')
 
-        data = list(queryset.values('chf_id', 'camu_number', 'other_names', 'last_name', 'id', 'dob', 'gender__gender', 'phone', 
-                                    'current_village__name', 'family__id', 'email', 'json_ext'))
+        data = list(queryset.values('chf_id', 'camu_number', 'other_names', 'last_name', 'id', 'dob', 'gender__code', 'phone', 'current_village__code', 'family__id', 'email', 'json_ext'))
 
         df = pd.DataFrame(data)
         
@@ -382,6 +384,14 @@ def export_phi(request, policy_holder_code):
         emp_no = [extract_emp_no(json_data) for json_data in df['json_ext']]
         df.insert(loc=14, column='Matricule', value=emp_no)
         
+        # def extract_current_village(insuree_id):
+        #     insuree_village = Insuree.objects.filter(id=insuree_id).first()
+        #     print("&"*50)
+        #     print(insuree_village.current_village)
+        #     return str(insuree_village.current_village.code) if insuree_village.current_village else "yoyo"
+        # current_village = [extract_current_village(insuree_id) for insuree_id in df['id']]
+        # df.insert(loc=12, column='Village', value=current_village) 
+        
         def extract_income(insuree_id, policy_holder_code):
             phn_json = PolicyHolderInsuree.objects.filter(policy_holder__code=policy_holder_code, policy_holder__date_valid_to__isnull=True, 
                                                             policy_holder__is_deleted=False, date_valid_to__isnull=True, 
@@ -392,8 +402,8 @@ def export_phi(request, policy_holder_code):
         df.insert(loc=15, column='Salaire', value=income)
 
         df.rename(columns={'chf_id': 'Tempoprary CAMU Number', 'camu_number': 'NewFieldName2', 'other_names': 'Prénom', 
-                        'last_name': 'Nom', 'id': 'ID', 'dob': 'Date de naissance', 'gender__gender': 'Sexe', 'phone': 'Téléphone',
-                        'current_village__name': 'Village', 'family__id': 'ID Famille', 'email': 'Email'}, inplace=True)
+                        'last_name': 'Nom', 'id': 'ID', 'dob': 'Date de naissance', 'gender__code': 'Sexe', 'phone': 'Téléphone',
+                        'current_village__code': 'Village', 'family__id': 'ID Famille', 'email': 'Email'}, inplace=True)
 
         df.drop(columns=['json_ext'], inplace=True)
         
@@ -404,7 +414,6 @@ def export_phi(request, policy_holder_code):
         df.to_excel(response, index=False, header=True)
         # Write DataFrame to response as an csv file
         # df.to_csv(response, index=False, header=True)
-
         return response
     except Exception as e:
         logger.error("Unexpected error while exporting insurees", exc_info=e)
