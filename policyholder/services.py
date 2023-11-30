@@ -48,38 +48,49 @@ def check_payment_done_by_policyholder(insuree_id):
     # if insuree.is_payment_done and not insuree.is_rights and insuree.document_status and insuree.biometrics_is_master:
         # insuree_policies = PolicyHolderInsureeModel.objects.filter(insuree_id=insuree.id).all()
         # for inpo in insuree_policies:
-    insuree_policies = PolicyHolderInsureeModel.objects.filter(insuree_id=insuree.id, is_deleted=False).first()
-    if insuree_policies.is_payment_done_by_policy_holder and insuree_policies.is_rights_enable_for_insuree:
-        return True
-    elif insuree_policies.is_payment_done_by_policy_holder:
-        contribution_plan_bundle_ids = []
-        for ip in insuree_policies:
-            if ip.contribution_plan_bundle.is_deleted == False:
-                contribution_plan_bundle_ids.append(ip.contribution_plan_bundle.uuid)
+    if insuree.head:
+        insuree_policies = PolicyHolderInsureeModel.objects.filter(insuree_id=insuree.id, is_deleted=False).first()
+        if insuree_policies.is_payment_done_by_policy_holder and insuree_policies.is_rights_enable_for_insuree:
+            return True
+        elif insuree_policies.is_payment_done_by_policy_holder:
+            contribution_plan_bundle_ids = []
+            for ip in insuree_policies:
+                if ip.contribution_plan_bundle.is_deleted == False:
+                    contribution_plan_bundle_ids.append(ip.contribution_plan_bundle.uuid)
 
-        contract_details = None
-        contract_details_ids = []
-        if len(contribution_plan_bundle_ids)>0:
-            contract_details = ContractDetails.objects.filter(contribution_plan_bundle__uuid__in=contribution_plan_bundle_ids, insuree_id=insuree_id, is_deleted=False).all()
-            if contract_details:
-                for cd in contract_details:
-                    contract_details_ids.append(cd.uuid)
+            contract_details = None
+            contract_details_ids = []
+            if len(contribution_plan_bundle_ids)>0:
+                contract_details = ContractDetails.objects.filter(contribution_plan_bundle__uuid__in=contribution_plan_bundle_ids, insuree_id=insuree_id, is_deleted=False).all()
+                if contract_details:
+                    for cd in contract_details:
+                        contract_details_ids.append(cd.uuid)
 
-        contract_contribution_plan_details = None
-        premium_ids = []
-        if len(contract_details_ids)>0:
-            contract_contribution_plan_details = ContractContributionPlanDetails.objects.filter(contract_details__uuid__in=contract_details_ids, is_deleted=False).all()
-            if contract_contribution_plan_details:
-                for ccpd in contract_contribution_plan_details:
-                    if ccpd.contribution.legacy_id == None:
-                        premium_ids.append(ccpd.contribution.id)
+            contract_contribution_plan_details = None
+            premium_ids = []
+            if len(contract_details_ids)>0:
+                contract_contribution_plan_details = ContractContributionPlanDetails.objects.filter(contract_details__uuid__in=contract_details_ids, is_deleted=False).all()
+                if contract_contribution_plan_details:
+                    for ccpd in contract_contribution_plan_details:
+                        if ccpd.contribution.legacy_id == None:
+                            premium_ids.append(ccpd.contribution.id)
 
-        if contract_contribution_plan_details and insuree_policies.is_payment_done_by_policy_holder:
-            if insuree.status == "APPROVED" and insuree.document_status and insuree.biometrics_is_master:
-                PolicyHolderInsuree.objects.filter(id=insuree_policies.id).update(is_rights_enable_for_insuree=True)
-                Insuree.objects.filter(id=insuree_id).update(status="ACTIVE")
-                activate_policy_of_insuree(contract_contribution_plan_details)
-                return True
+            if contract_contribution_plan_details and insuree_policies.is_payment_done_by_policy_holder:
+                if insuree.status == "APPROVED" and insuree.document_status and insuree.biometrics_is_master:
+                    PolicyHolderInsuree.objects.filter(id=insuree_policies.id).update(is_rights_enable_for_insuree=True)
+                    Insuree.objects.filter(id=insuree_id).update(status="ACTIVE")
+                    activate_policy_of_insuree(contract_contribution_plan_details)
+                    insuree = Insuree.objects.filter(id=insuree_id).first()
+                    family_members = Insuree.objects.filter(family_id=insuree.family.id, legacy_id=None).all()
+                    for member in family_members:
+                        if member.status == 'APPROVED':
+                            Insuree.objects.filter(id=member.id).update(status="ACTIVE")
+    else:
+        family_members = Insuree.objects.filter(family_id=insuree.family.id, legacy_id=None).all()
+        for member in family_members:
+            if member.head and member.status == 'ACTIVE':
+                Insuree.objects.filter(id=insuree.id).update(status="ACTIVE")
+                break
 
     logger.info("====  check_payment_done_by_policyholder  ====  end  ====")
     return True
