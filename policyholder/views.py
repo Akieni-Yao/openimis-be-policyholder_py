@@ -317,7 +317,7 @@ def import_phi(request, policy_holder_code):
             }
         employer_number = None
         if line[HEADER_INCOME]:
-            employer_number = line[HEADER_INCOME]
+            employer_number = line[HEADER_EMPLOYER_NUMBER]
         # PolicyHolderInsuree is HistoryModel that prevents the use of .objects.update_or_create() :(
         phi = PolicyHolderInsuree.objects.filter(insuree=insuree, policy_holder=policy_holder).first()
         if phi:
