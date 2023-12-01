@@ -144,10 +144,13 @@ def generate_available_chf_id(gender, village, dob, insureeEnrolmentType):
 
 def get_or_create_insuree_from_line(line, family: Family, is_family_created: bool, audit_user_id: int, location=None, core_user_id=None,enrolment_type=None):
     id = line[HEADER_INSUREE_ID]
+    camu_num = line[HEADER_INSUREE_CAMU_NO]
     insuree = None
     if id:
-        insuree = (Insuree.objects.filter(validity_to__isnull=True, chf_id=id)
-                   .first())
+        insuree = (Insuree.objects.filter(validity_to__isnull=True, chf_id=id).first())
+    if not insuree:
+        insuree = (Insuree.objects.filter(validity_to__isnull=True, camu_number=camu_num).first())
+
     created = False
     if insuree:
         json_ext = insuree.json_ext
