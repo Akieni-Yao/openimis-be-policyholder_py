@@ -331,10 +331,14 @@ def import_phi(request, policy_holder_code):
         # PolicyHolderInsuree is HistoryModel that prevents the use of .objects.update_or_create() :(
         phi = PolicyHolderInsuree.objects.filter(insuree=insuree, policy_holder=policy_holder).first()
         if phi:
-            phi.contribution_plan_bundle = cpb
-            phi.employer_number = employer_number
-            phi.json_ext = {**phi.json_ext, **phi_json_ext} if phi.json_ext else phi_json_ext
-            total_phi_updated += 1
+            phi._state.adding = True
+            if phi.contribution_plan_bundle != cpb or phi.employer_number != employer_number or phi.json_ext != phi_json_ext:
+                phi.contribution_plan_bundle = cpb
+                phi.employer_number = employer_number
+                # phi.json_ext = {**phi.json_ext, **phi_json_ext} if phi.json_ext else phi_json_ext
+                phi.json_ext = phi_json_ext
+                phi.save(username=request.user.username)
+                total_phi_updated += 1
         else:
             phi = PolicyHolderInsuree(
                 insuree=insuree,
@@ -344,7 +348,7 @@ def import_phi(request, policy_holder_code):
                 employer_number=employer_number
             )
             total_phi_created += 1
-        phi.save(username=request.user.username)
+            phi.save(username=request.user.username)
 
     result = {
         "total_lines": total_lines,
