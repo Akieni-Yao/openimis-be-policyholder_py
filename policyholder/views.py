@@ -22,7 +22,6 @@ from insuree.abis_api import create_abis_insuree
 
 logger = logging.getLogger(__name__)
 
-HEADER_INSUREE_CHFID = 'chf_id'
 HEADER_INSUREE_CAMU_NO = 'camu_number'
 HEADER_FAMILY_HEAD = "family_head"
 HEADER_FAMILY_LOCATION_CODE = "family_location_code"
@@ -37,7 +36,7 @@ HEADER_ADDRESS = "address"
 HEADER_INSUREE_ID = "insuree_id"
 HEADER_INCOME = "income"
 HEADER_EMAIL = "email"
-HEADER_EMPLOYEE_NUMBER = "employee_number"
+HEADER_EMPLOYER_NUMBER = "employer_number"
 HEADERS = [
     HEADER_FAMILY_HEAD,
     HEADER_FAMILY_LOCATION_CODE,
@@ -52,7 +51,7 @@ HEADERS = [
     HEADER_BIRTH_LOCATION_CODE,
     HEADER_CIVILITY,
     HEADER_EMAIL,
-    HEADER_EMPLOYEE_NUMBER
+    HEADER_EMPLOYER_NUMBER
 ]
 
 GENDERS = {
@@ -150,6 +149,13 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
         insuree = (Insuree.objects.filter(validity_to__isnull=True, chf_id=id)
                    .first())
     created = False
+    if insuree:
+        json_ext = insuree.json_ext
+        json_ext['employeeNumber'] = line[HEADER_EMPLOYER_NUMBER]
+        insuree.json_ext = json_ext
+        insuree.save()
+        
+        
 
     if not insuree:
         insuree_id = generate_available_chf_id(
@@ -181,7 +187,6 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
                 "insureeEnrolmentType": map_enrolment_type_to_category(enrolment_type),
                 "insureelocations": response_data,
                 "BirthPlace": line[HEADER_BIRTH_LOCATION_CODE],
-                "employeeNumber":line[HEADER_EMPLOYEE_NUMBER]
             }
         )
         created = True
@@ -225,11 +230,12 @@ def import_phi(request, policy_holder_code):
     df.columns = [col.strip() for col in df.columns]
     # Renaming the headers
     rename_columns = {
-        "Tempoprary CAMU Number": HEADER_INSUREE_CHFID,
+        # "Tempoprary CAMU Number": HEADER_INSUREE_CHFID,
         "CAMU Number": HEADER_INSUREE_CAMU_NO,
         "Prénom": HEADER_INSUREE_OTHER_NAMES,
         "Nom": HEADER_INSUREE_LAST_NAME,
-        "ID": HEADER_INSUREE_ID,
+        # "ID": HEADER_INSUREE_ID,
+        "Tempoprary CAMU Number": HEADER_INSUREE_ID,
         "Date de naissance": HEADER_INSUREE_DOB,
         "Lieu de naissance": HEADER_BIRTH_LOCATION_CODE,
         "Civilité": HEADER_CIVILITY,
@@ -240,7 +246,7 @@ def import_phi(request, policy_holder_code):
         "ID Famille": HEADER_FAMILY_HEAD,
         "Salaire": HEADER_INCOME,
         "Email": HEADER_EMAIL,
-        "Matricule":HEADER_EMPLOYEE_NUMBER
+        "Matricule":HEADER_EMPLOYER_NUMBER
     }
     df.rename(columns=rename_columns, inplace=True)
     errors = []
@@ -316,10 +322,14 @@ def import_phi(request, policy_holder_code):
             phi_json_ext["calculation_rule"] = {
                 "income": line[HEADER_INCOME]
             }
+        employer_number = None
+        if line[HEADER_INCOME]:
+            employer_number = line[HEADER_EMPLOYER_NUMBER]
         # PolicyHolderInsuree is HistoryModel that prevents the use of .objects.update_or_create() :(
         phi = PolicyHolderInsuree.objects.filter(insuree=insuree, policy_holder=policy_holder).first()
         if phi:
             phi.contribution_plan_bundle = cpb
+            phi.employer_number = employer_number
             phi.json_ext = {**phi.json_ext, **phi_json_ext} if phi.json_ext else phi_json_ext
             total_phi_updated += 1
         else:
@@ -328,6 +338,7 @@ def import_phi(request, policy_holder_code):
                 policy_holder=policy_holder,
                 contribution_plan_bundle=cpb,
                 json_ext=phi_json_ext,
+                employer_number=employer_number
             )
             total_phi_created += 1
         phi.save(username=request.user.username)
@@ -350,50 +361,44 @@ def import_phi(request, policy_holder_code):
 
 def export_phi(request, policy_holder_code):
     try:
-        # insuree_headers = ['Tempoprary CAMU Number', 'CAMU Number', 'Prénom', 'Nom', 'ID', 'Date de naissance', 'Lieu de naissance', 
-        #                 'Sexe', 'Civilité', 'Téléphone', 'Adresse', 'Village', 'ID Famille', 'Email', 'Matricule', 'Salaire']
         insuree_ids = PolicyHolderInsuree.objects.filter(policy_holder__code=policy_holder_code, policy_holder__date_valid_to__isnull=True, 
                                                             policy_holder__is_deleted=False, date_valid_to__isnull=True, 
                                                             is_deleted=False).values_list('insuree_id', flat=True).distinct()
         
-        queryset = Insuree.objects.filter(validity_to__isnull=True, id__in=insuree_ids) \
+        queryset = Insuree.objects.filter(validity_to__isnull=True, id__in=insuree_ids, head=True) \
                 .select_related('gender', 'current_village', 'family', 'family__location', 'family__location__parent',
                                 'family__location__parent__parent', 'family__location__parent__parent__parent')
 
-        data = list(queryset.values('chf_id', 'camu_number', 'other_names', 'last_name', 'id', 'dob', 'gender__code', 'phone', 'current_village__code', 'family__id', 'email', 'json_ext'))
-
+        data = list(queryset.values('camu_number', 'other_names', 'last_name', 'chf_id', 'gender__code', 'phone', 
+                                    'family__location__code', 'family__head_insuree__chf_id', 'email', 'json_ext', 'id', 'dob'))
+        
         df = pd.DataFrame(data)
         
+        insuree_dob = [dob.strftime("%d/%m/%Y") for dob in df['dob']]
+        df.insert(loc=4, column='Date de naissance', value=insuree_dob)
+
         def extract_birth_place(json_data):
             return json_data.get('BirthPlace', None)
         birth_place = [extract_birth_place(json_data) for json_data in df['json_ext']]
-        df.insert(loc=6, column='Lieu de naissance', value=birth_place)
+        df.insert(loc=5, column='Lieu de naissance', value=birth_place)
         
         def extract_civility(json_data):
             return json_data.get('civilQuality', None)
         civility = [extract_civility(json_data) for json_data in df['json_ext']]
-        df.insert(loc=8, column='Civilité', value=civility)
+        df.insert(loc=7, column='Civilité', value=civility)
         
         def extract_address(json_data):
             return json_data.get('insureeaddress', None)
         address = [extract_address(json_data) for json_data in df['json_ext']]
-        df.insert(loc=10, column='Adresse', value=address)
+        df.insert(loc=9, column='Adresse', value=address)
         
         def extract_emp_no(json_data):
             return json_data.get('employeeNumber', None)
         emp_no = [extract_emp_no(json_data) for json_data in df['json_ext']]
-        df.insert(loc=14, column='Matricule', value=emp_no)
-        
-        # def extract_current_village(insuree_id):
-        #     insuree_village = Insuree.objects.filter(id=insuree_id).first()
-        #     print("&"*50)
-        #     print(insuree_village.current_village)
-        #     return str(insuree_village.current_village.code) if insuree_village.current_village else "yoyo"
-        # current_village = [extract_current_village(insuree_id) for insuree_id in df['id']]
-        # df.insert(loc=12, column='Village', value=current_village) 
-        
+        df.insert(loc=13, column='Matricule', value=emp_no)
+
         def extract_income(insuree_id, policy_holder_code):
-            phn_json = PolicyHolderInsuree.objects.filter(policy_holder__code=policy_holder_code, policy_holder__date_valid_to__isnull=True, 
+            phn_json = PolicyHolderInsuree.objects.filter(insuree_id=insuree_id, policy_holder__code=policy_holder_code, policy_holder__date_valid_to__isnull=True, 
                                                             policy_holder__is_deleted=False, date_valid_to__isnull=True, 
                                                             is_deleted=False).first()
             json_data = phn_json.json_ext
@@ -401,12 +406,12 @@ def export_phi(request, policy_holder_code):
         income = [extract_income(insuree_id, policy_holder_code) for insuree_id in df['id']]
         df.insert(loc=15, column='Salaire', value=income)
 
-        df.rename(columns={'chf_id': 'Tempoprary CAMU Number', 'camu_number': 'NewFieldName2', 'other_names': 'Prénom', 
-                        'last_name': 'Nom', 'id': 'ID', 'dob': 'Date de naissance', 'gender__code': 'Sexe', 'phone': 'Téléphone',
-                        'current_village__code': 'Village', 'family__id': 'ID Famille', 'email': 'Email'}, inplace=True)
+        df.rename(columns={'camu_number': 'CAMU Number', 'other_names': 'Prénom', 'last_name': 'Nom', 
+                        'chf_id': 'Tempoprary CAMU Number', 'gender__code': 'Sexe', 'phone': 'Téléphone',
+                        'family__location__code': 'Village', 'family__head_insuree__chf_id': 'ID Famille', 'email': 'Email'}, inplace=True)
 
-        df.drop(columns=['json_ext'], inplace=True)
-        
+        df.drop(columns=['json_ext', 'id', 'dob'], inplace=True)
+
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         response['Content-Disposition'] = 'attachment; filename="data.xlsx"'
 
