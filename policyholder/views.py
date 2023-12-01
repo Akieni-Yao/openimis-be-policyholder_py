@@ -37,7 +37,7 @@ HEADER_ADDRESS = "address"
 HEADER_INSUREE_ID = "insuree_id"
 HEADER_INCOME = "income"
 HEADER_EMAIL = "email"
-HEADER_EMPLOYEE_NUMBER = "employee_number"
+HEADER_EMPLOYER_NUMBER = "employer_number"
 HEADERS = [
     HEADER_FAMILY_HEAD,
     HEADER_FAMILY_LOCATION_CODE,
@@ -52,7 +52,7 @@ HEADERS = [
     HEADER_BIRTH_LOCATION_CODE,
     HEADER_CIVILITY,
     HEADER_EMAIL,
-    HEADER_EMPLOYEE_NUMBER
+    HEADER_EMPLOYER_NUMBER
 ]
 
 GENDERS = {
@@ -181,7 +181,6 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
                 "insureeEnrolmentType": map_enrolment_type_to_category(enrolment_type),
                 "insureelocations": response_data,
                 "BirthPlace": line[HEADER_BIRTH_LOCATION_CODE],
-                "employeeNumber":line[HEADER_EMPLOYEE_NUMBER]
             }
         )
         created = True
@@ -240,7 +239,7 @@ def import_phi(request, policy_holder_code):
         "ID Famille": HEADER_FAMILY_HEAD,
         "Salaire": HEADER_INCOME,
         "Email": HEADER_EMAIL,
-        "Matricule":HEADER_EMPLOYEE_NUMBER
+        "Matricule":HEADER_EMPLOYER_NUMBER
     }
     df.rename(columns=rename_columns, inplace=True)
     errors = []
@@ -316,10 +315,14 @@ def import_phi(request, policy_holder_code):
             phi_json_ext["calculation_rule"] = {
                 "income": line[HEADER_INCOME]
             }
+        employer_number = None
+        if line[HEADER_INCOME]:
+            employer_number = line[HEADER_INCOME]
         # PolicyHolderInsuree is HistoryModel that prevents the use of .objects.update_or_create() :(
         phi = PolicyHolderInsuree.objects.filter(insuree=insuree, policy_holder=policy_holder).first()
         if phi:
             phi.contribution_plan_bundle = cpb
+            phi.employer_number = employer_number
             phi.json_ext = {**phi.json_ext, **phi_json_ext} if phi.json_ext else phi_json_ext
             total_phi_updated += 1
         else:
@@ -328,6 +331,7 @@ def import_phi(request, policy_holder_code):
                 policy_holder=policy_holder,
                 contribution_plan_bundle=cpb,
                 json_ext=phi_json_ext,
+                employer_number=employer_number
             )
             total_phi_created += 1
         phi.save(username=request.user.username)
