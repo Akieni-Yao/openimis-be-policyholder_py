@@ -156,7 +156,7 @@ class Query(graphene.ObjectType):
             if not info.context.user.has_perms(PolicyholderConfig.gql_query_policyholderinsuree_portal_perms):
                 raise PermissionError("Unauthorized")
 
-        filters = append_validity_filter(**kwargs), filter_is_deleted('is_deleted', **kwargs)
+        filters = append_validity_filter(**kwargs)
         query = PolicyHolderInsuree.objects
         return gql_optimizer.query(query.filter(*filters).all(), info)
 
