@@ -408,8 +408,10 @@ def export_phi(request, policy_holder_code):
             phn_json = PolicyHolderInsuree.objects.filter(insuree_id=insuree_id, policy_holder__code=policy_holder_code, policy_holder__date_valid_to__isnull=True, 
                                                             policy_holder__is_deleted=False, date_valid_to__isnull=True, 
                                                             is_deleted=False).first()
-            json_data = phn_json.json_ext
-            return json_data.get('calculation_rule', None).get('income', None)
+            if phn_json:
+                json_data = phn_json.json_ext
+                return json_data.get('calculation_rule', None).get('income', None)
+            return None
         income = [extract_income(insuree_id, policy_holder_code) for insuree_id in df['id']]
         df.insert(loc=15, column='Salaire', value=income)
 
