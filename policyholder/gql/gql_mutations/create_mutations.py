@@ -8,6 +8,7 @@ from policyholder.gql.gql_mutations import PolicyHolderInputType, PolicyHolderIn
     PolicyHolderContributionPlanInputType, PolicyHolderUserInputType
 from policyholder.validation import PolicyHolderValidation
 from policyholder.validation.permission_validation import PermissionValidation
+from django.core.exceptions import ValidationError
 import datetime
 import pytz
 from django.db import connection
@@ -83,8 +84,14 @@ class CreatePolicyHolderInsureeMutation(BaseHistoryModelCreateMutationMixin, Bas
 
     @classmethod
     def _validate_mutation(cls, user, **data):
+        code = data.get('code')
+        ph_insuree = PolicyHolderInsuree.objects.get(policyholder__code=code)
+        if ph_insuree:
+            raise ValidationError(message="Policy holder insuree already exists")
         super()._validate_mutation(user, **data)
         PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_create_policyholderinsuree_perms)
+        
+
 
 
 class CreatePolicyHolderContributionPlanMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
