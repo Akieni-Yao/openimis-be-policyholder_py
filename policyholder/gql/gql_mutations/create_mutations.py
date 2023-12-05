@@ -85,8 +85,10 @@ class CreatePolicyHolderInsureeMutation(BaseHistoryModelCreateMutationMixin, Bas
     @classmethod
     def _validate_mutation(cls, user, **data):
         code = data.get('code')
-        ph_insuree = PolicyHolderInsuree.objects.get(insuree__camu_number=code)
-        if ph_insuree:
+        pk = data.get('id')
+        ph = PolicyHolderInsuree.objects.get(policy_holder__code=code)
+        ph_insuree = PolicyHolderInsuree.objects.get(pk=pk)
+        if ph and ph_insuree:
             raise ValidationError(message="Policy holder insuree already exists")
         super()._validate_mutation(user, **data)
         PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_create_policyholderinsuree_perms)
