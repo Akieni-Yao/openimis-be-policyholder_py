@@ -11,6 +11,7 @@ from policyholder.validation.permission_validation import PermissionValidation
 from django.core.exceptions import ValidationError
 import datetime
 import pytz
+import base64
 from django.db import connection
 from django.apps import apps
 logger = logging.getLogger(__name__)
@@ -84,11 +85,10 @@ class CreatePolicyHolderInsureeMutation(BaseHistoryModelCreateMutationMixin, Bas
 
     @classmethod
     def _validate_mutation(cls, user, **data):
-        code = data.get('code')
         pk = data.get('id')
-        ph = PolicyHolderInsuree.objects.get(policy_holder__code=code)
-        ph_insuree = PolicyHolderInsuree.objects.get(pk=pk)
-        if ph and ph_insuree:
+        id = base64.decode(pk)
+        ph_insuree = PolicyHolderInsuree.objects.get(pk=id)
+        if ph_insuree:
             raise ValidationError(message="Policy holder insuree already exists")
         super()._validate_mutation(user, **data)
         PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_create_policyholderinsuree_perms)
