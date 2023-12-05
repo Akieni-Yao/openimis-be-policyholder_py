@@ -37,6 +37,7 @@ HEADER_INSUREE_ID = "insuree_id"
 HEADER_INCOME = "income"
 HEADER_EMAIL = "email"
 HEADER_EMPLOYER_NUMBER = "employer_number"
+HEADER_DELETE = "No"
 HEADERS = [
     HEADER_FAMILY_HEAD,
     HEADER_FAMILY_LOCATION_CODE,
@@ -51,7 +52,8 @@ HEADERS = [
     HEADER_BIRTH_LOCATION_CODE,
     HEADER_CIVILITY,
     HEADER_EMAIL,
-    HEADER_EMPLOYER_NUMBER
+    HEADER_EMPLOYER_NUMBER,
+    HEADER_DELETE
 ]
 
 GENDERS = {
@@ -249,11 +251,16 @@ def import_phi(request, policy_holder_code):
         "ID Famille": HEADER_FAMILY_HEAD,
         "Salaire": HEADER_INCOME,
         "Email": HEADER_EMAIL,
-        "Matricule":HEADER_EMPLOYER_NUMBER
+        "Matricule":HEADER_EMPLOYER_NUMBER,
+        "Delete": HEADER_DELETE
     }
     df.rename(columns=rename_columns, inplace=True)
     errors = []
     logger.debug("Importing %s lines", len(df))
+    
+    delete_indexes = df[df['Delete'] == "Yes"].index
+    df.drop(delete_indexes)
+        
     for index, line in df.iterrows():  # for each line in the Excel file
         total_lines += 1
         clean_line(line)
