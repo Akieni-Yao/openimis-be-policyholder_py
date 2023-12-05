@@ -54,9 +54,9 @@ def check_payment_done_by_policyholder(insuree_id):
             return True
         elif insuree_policies.is_payment_done_by_policy_holder:
             contribution_plan_bundle_ids = []
-            for ip in insuree_policies:
-                if ip.contribution_plan_bundle.is_deleted == False:
-                    contribution_plan_bundle_ids.append(ip.contribution_plan_bundle.uuid)
+            # for ip in insuree_policies:
+            if insuree_policies.contribution_plan_bundle.is_deleted == False:
+                contribution_plan_bundle_ids.append(ip.contribution_plan_bundle.uuid)
 
             contract_details = None
             contract_details_ids = []
