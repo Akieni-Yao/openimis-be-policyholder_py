@@ -4,7 +4,7 @@ import graphene_django_optimizer as gql_optimizer
 from django.db.models import Q
 from location.apps import LocationConfig
 from core.schema import OrderedDjangoFilterConnectionField, signal_mutation_module_validate
-from core.utils import append_validity_filter
+from core.utils import append_validity_filter, filter_is_deleted
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderUser, \
     PolicyHolderContributionPlan, PolicyHolderMutation, PolicyHolderInsureeMutation, \
     PolicyHolderContributionPlanMutation, PolicyHolderUserMutation
@@ -156,7 +156,7 @@ class Query(graphene.ObjectType):
             if not info.context.user.has_perms(PolicyholderConfig.gql_query_policyholderinsuree_portal_perms):
                 raise PermissionError("Unauthorized")
 
-        filters = append_validity_filter(**kwargs)
+        filters = append_validity_filter(**kwargs), filter_is_deleted('is_deleted', **kwargs)
         query = PolicyHolderInsuree.objects
         return gql_optimizer.query(query.filter(*filters).all(), info)
 
