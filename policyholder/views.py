@@ -258,7 +258,7 @@ def import_phi(request, policy_holder_code):
     errors = []
     logger.debug("Importing %s lines", len(df))
 
-    for index, line in df.iterrows():  # for each line in the Excel file
+    for index, line in df.iterrows():  # deleting lines with df["Delete"] == "Yes"
         if line[15] == "Yes":
             df.drop(index, inplace=True)
     
