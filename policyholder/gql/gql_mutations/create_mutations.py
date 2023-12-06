@@ -3,13 +3,16 @@ import logging
 from core.gql.gql_mutations.base_mutation import BaseMutation, BaseHistoryModelCreateMutationMixin
 from policyholder.apps import PolicyholderConfig
 from policyholder.dms_utils import create_policyholder_openkmfolder, send_mail_to_policyholder_with_pdf
-from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, PolicyHolderUser
+from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, PolicyHolderUser, Insuree
 from policyholder.gql.gql_mutations import PolicyHolderInputType, PolicyHolderInsureeInputType, \
     PolicyHolderContributionPlanInputType, PolicyHolderUserInputType
 from policyholder.validation import PolicyHolderValidation
 from policyholder.validation.permission_validation import PermissionValidation
+from django.core.exceptions import ValidationError
 import datetime
+import graphene
 import pytz
+import base64
 from django.db import connection
 from django.apps import apps
 logger = logging.getLogger(__name__)
@@ -83,8 +86,14 @@ class CreatePolicyHolderInsureeMutation(BaseHistoryModelCreateMutationMixin, Bas
 
     @classmethod
     def _validate_mutation(cls, user, **data):
+        insuree_id = data.get('insuree_id')
+        policyholder_id = data.get('policy_holder_id')
+        is_insuree = PolicyHolderInsuree.objects.filter(policy_holder__id=policyholder_id, insuree__id=insuree_id, is_deleted=False).first()
+        if is_insuree:
+            raise ValidationError(message="Already Exists")
         super()._validate_mutation(user, **data)
         PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_create_policyholderinsuree_perms)
+        
 
 
 class CreatePolicyHolderContributionPlanMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):

@@ -4,7 +4,7 @@ import graphene_django_optimizer as gql_optimizer
 from django.db.models import Q
 from location.apps import LocationConfig
 from core.schema import OrderedDjangoFilterConnectionField, signal_mutation_module_validate
-from core.utils import append_validity_filter
+from core.utils import append_validity_filter, filter_is_deleted
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderUser, \
     PolicyHolderContributionPlan, PolicyHolderMutation, PolicyHolderInsureeMutation, \
     PolicyHolderContributionPlanMutation, PolicyHolderUserMutation
