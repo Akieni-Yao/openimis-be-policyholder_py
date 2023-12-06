@@ -86,8 +86,6 @@ class CreatePolicyHolderInsureeMutation(BaseHistoryModelCreateMutationMixin, Bas
 
     @classmethod
     def _validate_mutation(cls, user, **data):
-        import pdb
-        pdb.set_trace()
         insuree_id = data.get('insuree_id')
         policyholder_id = data.get('policy_holder_id')
         if PolicyHolder.objects.get(id=policyholder_id) or Insuree.objects.get(pk=insuree_id):
