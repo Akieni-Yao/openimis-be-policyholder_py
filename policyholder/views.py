@@ -316,7 +316,8 @@ def import_phi(request, policy_holder_code):
             total_insurees_created += 1
             try:
                 logger.info("====  policyholder  ====  import_phi  ====  create_openKm_folder_for_bulkupload  ====  Start")
-                create_openKm_folder_for_bulkupload(insuree)
+                user = request.user
+                create_openKm_folder_for_bulkupload(user,insuree)
                 logger.info("====  policyholder  ====  import_phi  ====  create_openKm_folder_for_bulkupload  ====  End")
             except Exception as e:
                 logger.error(f"insuree bulk upload error for dms: {e}")
