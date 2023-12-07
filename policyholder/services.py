@@ -13,8 +13,10 @@ from policyholder.apps import PolicyholderConfig
 from policyholder.models import PolicyHolder as PolicyHolderModel, PolicyHolderUser as PolicyHolderUserModel, \
     PolicyHolderContributionPlan as PolicyHolderContributionPlanModel, PolicyHolderInsuree as PolicyHolderInsureeModel
 from policyholder.validation import PolicyHolderValidation
+from policy.models import Policy
 from insuree.models import Insuree, InsureePolicy
 from payment.models import PaymentDetail
+from contract.models import ContractDetails, ContractContributionPlanDetails
 
 logger = logging.getLogger("openimis." + __name__)
 
@@ -56,12 +58,12 @@ def check_payment_done_by_policyholder(insuree_id):
             contribution_plan_bundle_ids = []
             # for ip in insuree_policies:
             if insuree_policies.contribution_plan_bundle.is_deleted == False:
-                contribution_plan_bundle_ids.append(ip.contribution_plan_bundle.uuid)
+                contribution_plan_bundle_ids.append(insuree_policies.contribution_plan_bundle.uuid)
 
             contract_details = None
             contract_details_ids = []
             if len(contribution_plan_bundle_ids)>0:
-                contract_details = ContractDetails.objects.filter(contribution_plan_bundle__uuid__in=contribution_plan_bundle_ids, insuree_id=insuree_id, is_deleted=False).all()
+                contract_details = ContractDetails.objects.filter(contribution_plan_bundle__id__in=contribution_plan_bundle_ids, insuree_id=insuree_id, is_deleted=False).all()
                 if contract_details:
                     for cd in contract_details:
                         contract_details_ids.append(cd.uuid)
@@ -69,7 +71,7 @@ def check_payment_done_by_policyholder(insuree_id):
             contract_contribution_plan_details = None
             premium_ids = []
             if len(contract_details_ids)>0:
-                contract_contribution_plan_details = ContractContributionPlanDetails.objects.filter(contract_details__uuid__in=contract_details_ids, is_deleted=False).all()
+                contract_contribution_plan_details = ContractContributionPlanDetails.objects.filter(contract_details__id__in=contract_details_ids, is_deleted=False).all()
                 if contract_contribution_plan_details:
                     for ccpd in contract_contribution_plan_details:
                         if ccpd.contribution.legacy_id == None:
@@ -77,8 +79,10 @@ def check_payment_done_by_policyholder(insuree_id):
 
             if contract_contribution_plan_details and insuree_policies.is_payment_done_by_policy_holder:
                 if insuree.status == "APPROVED" and insuree.document_status and insuree.biometrics_is_master:
-                    PolicyHolderInsuree.objects.filter(id=insuree_policies.id).update(is_rights_enable_for_insuree=True)
+                    PolicyHolderInsureeModel.objects.filter(id=insuree_policies.id).update(is_rights_enable_for_insuree=True)
                     Insuree.objects.filter(id=insuree_id).update(status="ACTIVE")
+                    if insuree.head:
+                        Family.objects.filter(id=insuree.family.id).update(status="ACTIVE")
                     activate_policy_of_insuree(contract_contribution_plan_details)
                     insuree = Insuree.objects.filter(id=insuree_id).first()
                     family_members = Insuree.objects.filter(family_id=insuree.family.id, legacy_id=None).all()
