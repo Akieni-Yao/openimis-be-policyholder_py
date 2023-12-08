@@ -14,7 +14,7 @@ from policyholder.models import PolicyHolder as PolicyHolderModel, PolicyHolderU
     PolicyHolderContributionPlan as PolicyHolderContributionPlanModel, PolicyHolderInsuree as PolicyHolderInsureeModel
 from policyholder.validation import PolicyHolderValidation
 from policy.models import Policy
-from insuree.models import Insuree, InsureePolicy
+from insuree.models import Insuree, InsureePolicy, Family
 from payment.models import PaymentDetail
 from contract.models import ContractDetails, ContractContributionPlanDetails
 
