@@ -58,54 +58,55 @@ def check_payment_done_by_policyholder(insuree_id):
     if insuree.head:
         logger.debug(f"====  check_payment_done_by_policyholder  ====  insuree.head  ====  {insuree.head}")
         insuree_policies = PolicyHolderInsureeModel.objects.filter(insuree_id=insuree.id, is_deleted=False).first()
-        if insuree_policies.is_payment_done_by_policy_holder and insuree_policies.is_rights_enable_for_insuree:
-            return True
-        elif insuree_policies.is_payment_done_by_policy_holder:
-            contribution_plan_bundle_ids = []
-            # for ip in insuree_policies:
-            if insuree_policies.contribution_plan_bundle.is_deleted == False:
-                contribution_plan_bundle_ids.append(insuree_policies.contribution_plan_bundle.id)
-            logger.debug(f"====  check_payment_done_by_policyholder  ====  contribution_plan_bundle_ids  ====  {contribution_plan_bundle_ids}")
-            
-            contract_details = None
-            contract_details_ids = []
-            if len(contribution_plan_bundle_ids)>0:
-                contract_details = ContractDetails.objects.filter(contribution_plan_bundle__id__in=contribution_plan_bundle_ids, insuree_id=insuree_id, is_deleted=False).all()
-                if contract_details:
-                    for cd in contract_details:
-                        contract_details_ids.append(cd.uuid)
-            logger.debug(f"====  check_payment_done_by_policyholder  ====  contract_details_ids  ====  {contract_details_ids}")
+        if insuree_policies:
+            if insuree_policies.is_payment_done_by_policy_holder and insuree_policies.is_rights_enable_for_insuree:
+                return True
+            elif insuree_policies.is_payment_done_by_policy_holder:
+                contribution_plan_bundle_ids = []
+                # for ip in insuree_policies:
+                if insuree_policies.contribution_plan_bundle.is_deleted == False:
+                    contribution_plan_bundle_ids.append(insuree_policies.contribution_plan_bundle.id)
+                logger.debug(f"====  check_payment_done_by_policyholder  ====  contribution_plan_bundle_ids  ====  {contribution_plan_bundle_ids}")
+                
+                contract_details = None
+                contract_details_ids = []
+                if len(contribution_plan_bundle_ids)>0:
+                    contract_details = ContractDetails.objects.filter(contribution_plan_bundle__id__in=contribution_plan_bundle_ids, insuree_id=insuree_id, is_deleted=False).all()
+                    if contract_details:
+                        for cd in contract_details:
+                            contract_details_ids.append(cd.uuid)
+                logger.debug(f"====  check_payment_done_by_policyholder  ====  contract_details_ids  ====  {contract_details_ids}")
 
-            contract_contribution_plan_details = None
-            premium_ids = []
-            if len(contract_details_ids)>0:
-                contract_contribution_plan_details = ContractContributionPlanDetails.objects.filter(contract_details__id__in=contract_details_ids, is_deleted=False).all()
-                if contract_contribution_plan_details:
-                    for ccpd in contract_contribution_plan_details:
-                        if ccpd.contribution.legacy_id == None:
-                            premium_ids.append(ccpd.contribution.id)
-            logger.debug(f"====  check_payment_done_by_policyholder  ====  contract_contribution_plan_details  ====  {contract_contribution_plan_details}")
-            logger.debug(f"====  check_payment_done_by_policyholder  ====  premium_ids  ====  {premium_ids}")
+                contract_contribution_plan_details = None
+                premium_ids = []
+                if len(contract_details_ids)>0:
+                    contract_contribution_plan_details = ContractContributionPlanDetails.objects.filter(contract_details__id__in=contract_details_ids, is_deleted=False).all()
+                    if contract_contribution_plan_details:
+                        for ccpd in contract_contribution_plan_details:
+                            if ccpd.contribution.legacy_id == None:
+                                premium_ids.append(ccpd.contribution.id)
+                logger.debug(f"====  check_payment_done_by_policyholder  ====  contract_contribution_plan_details  ====  {contract_contribution_plan_details}")
+                logger.debug(f"====  check_payment_done_by_policyholder  ====  premium_ids  ====  {premium_ids}")
 
-            if contract_contribution_plan_details and insuree_policies.is_payment_done_by_policy_holder:
-                logger.debug(f"====  check_payment_done_by_policyholder  ====  insuree_policies.is_payment_done_by_policy_holder  ====  {insuree_policies.is_payment_done_by_policy_holder}")
-                if insuree.status == "APPROVED" and insuree.document_status and insuree.biometrics_is_master:
-                    logger.debug(f"====  check_payment_done_by_policyholder  ====  insuree.status  ====  {insuree.status}")
-                    logger.debug(f"====  check_payment_done_by_policyholder  ====  insuree.document_status  ====  {insuree.document_status}")
-                    logger.debug(f"====  check_payment_done_by_policyholder  ====  insuree.biometrics_is_master  ====  {insuree.biometrics_is_master}")
-                    PolicyHolderInsureeModel.objects.filter(id=insuree_policies.id).update(is_rights_enable_for_insuree=True)
-                    Insuree.objects.filter(id=insuree_id).update(status="ACTIVE")
-                    if insuree.head:
-                        Family.objects.filter(id=insuree.family.id).update(status="ACTIVE")
-                        family_members = Insuree.objects.filter(family_id=insuree.family.id, legacy_id=None).all()
-                        for member in family_members:
-                            if member.status == 'APPROVED':
-                                Insuree.objects.filter(id=member.id).update(status="ACTIVE")
-                    activate_policy_of_insuree(contract_contribution_plan_details)
-                    insuree = Insuree.objects.filter(id=insuree_id).first()
-                    family =  Family.objects.filter(id=insuree.family.id).first()
-                    logger.debug(f"====  check_payment_done_by_policyholder  ====  insuree.status  ====  {insuree.status}")
-                    logger.debug(f"====  check_payment_done_by_policyholder  ====  family.status  ====  {family.status}")
+                if contract_contribution_plan_details and insuree_policies.is_payment_done_by_policy_holder:
+                    logger.debug(f"====  check_payment_done_by_policyholder  ====  insuree_policies.is_payment_done_by_policy_holder  ====  {insuree_policies.is_payment_done_by_policy_holder}")
+                    if insuree.status == "APPROVED" and insuree.document_status and insuree.biometrics_is_master:
+                        logger.debug(f"====  check_payment_done_by_policyholder  ====  insuree.status  ====  {insuree.status}")
+                        logger.debug(f"====  check_payment_done_by_policyholder  ====  insuree.document_status  ====  {insuree.document_status}")
+                        logger.debug(f"====  check_payment_done_by_policyholder  ====  insuree.biometrics_is_master  ====  {insuree.biometrics_is_master}")
+                        PolicyHolderInsureeModel.objects.filter(id=insuree_policies.id).update(is_rights_enable_for_insuree=True)
+                        Insuree.objects.filter(id=insuree_id).update(status="ACTIVE")
+                        if insuree.head:
+                            Family.objects.filter(id=insuree.family.id).update(status="ACTIVE")
+                            family_members = Insuree.objects.filter(family_id=insuree.family.id, legacy_id=None).all()
+                            for member in family_members:
+                                if member.status == 'APPROVED':
+                                    Insuree.objects.filter(id=member.id).update(status="ACTIVE")
+                        activate_policy_of_insuree(contract_contribution_plan_details)
+                        insuree = Insuree.objects.filter(id=insuree_id).first()
+                        family =  Family.objects.filter(id=insuree.family.id).first()
+                        logger.debug(f"====  check_payment_done_by_policyholder  ====  insuree.status  ====  {insuree.status}")
+                        logger.debug(f"====  check_payment_done_by_policyholder  ====  family.status  ====  {family.status}")
     else:
         family_members = Insuree.objects.filter(family_id=insuree.family.id, legacy_id=None).all()
         for member in family_members:
