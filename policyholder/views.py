@@ -252,9 +252,6 @@ def import_phi(request, policy_holder_code):
         "Matricule":HEADER_EMPLOYER_NUMBER,
     }
 
-    import pdb
-    pdb.set_trace()
-    
     if "Delete" in df.columns:
 
         if not df["Delete"].isna().any():
