@@ -252,14 +252,19 @@ def import_phi(request, policy_holder_code):
         "Matricule":HEADER_EMPLOYER_NUMBER,
     }
 
- 
-    if "Delete" in df.columns and not df["Delete"].isna().any():
-        HEADER_DELETE = "Delete"
-        HEADERS.append(HEADER_DELETE)
-        rename_columns["Delete"]: HEADER_DELETE
-        
-        df.drop(df[df['Delete'] == 'Yes'].index, inplace=True)
+    import pdb
+    pdb.set_trace()
     
+    if "Delete" in df.columns:
+
+        if not df["Delete"].isna().any():
+
+            HEADER_DELETE = "Delete"
+            HEADERS.append(HEADER_DELETE)
+            rename_columns["Delete"]: HEADER_DELETE
+            
+            df.drop(df[df['Delete'] == 'Yes'].index, inplace=True)
+
     df.rename(columns=rename_columns, inplace=True)
 
     errors = []
