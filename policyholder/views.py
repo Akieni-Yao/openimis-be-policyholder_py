@@ -155,14 +155,12 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
         insuree = (Insuree.objects.filter(validity_to__isnull=True, camu_number=camu_num).first())
 
     created = False
-    if insuree:
-        json_ext = insuree.json_ext
-        json_ext['employeeNumber'] = line[HEADER_EMPLOYER_NUMBER]
-        insuree.json_ext = json_ext
-        insuree.save()
+    # if insuree:
+    #     json_ext = insuree.json_ext
+    #     json_ext['employeeNumber'] = line[HEADER_EMPLOYER_NUMBER]
+    #     insuree.json_ext = json_ext
+    #     insuree.save()
         
-        
-
     if not insuree:
         insuree_id = generate_available_chf_id(
             line[HEADER_INSUREE_GENDER],
@@ -431,10 +429,16 @@ def export_phi(request, policy_holder_code):
         address = [extract_address(json_data) for json_data in df['json_ext']]
         df.insert(loc=9, column='Adresse', value=address)
         
-        def extract_emp_no(json_data):
-            return json_data.get('employeeNumber', None) if json_data else None
+        def extract_emp_no(insuree_id, policy_holder_code):
+            phn_json = PolicyHolderInsuree.objects.filter(insuree_id=insuree_id, policy_holder__code=policy_holder_code, policy_holder__date_valid_to__isnull=True, 
+                                                            policy_holder__is_deleted=False, date_valid_to__isnull=True, 
+                                                            is_deleted=False).first()
+            # return json_data.get('employeeNumber', None) if json_data else None
+            if phn_json:
+                return phn_json.employer_number
+            return None
         
-        emp_no = [extract_emp_no(json_data) for json_data in df['json_ext']]
+        emp_no = [extract_emp_no(insuree_id, policy_holder_code) for insuree_id in df['id']]
         df.insert(loc=13, column='Matricule', value=emp_no)
 
         def extract_income(insuree_id, policy_holder_code):
