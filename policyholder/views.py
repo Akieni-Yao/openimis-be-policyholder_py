@@ -212,11 +212,11 @@ def soft_delete_insuree(line, policy_holder_code, user_id):
     if not insuree:
         insuree = (Insuree.objects.filter(validity_to__isnull=True, camu_number=camu_num).first())
     if insuree:
-        phn = PolicyHolderInsuree.objects.filter(insuree_id=insuree_id, policy_holder__code=policy_holder_code, policy_holder__date_valid_to__isnull=True, 
+        phn = PolicyHolderInsuree.objects.filter(insuree_id=insuree.id, policy_holder__code=policy_holder_code, policy_holder__date_valid_to__isnull=True, 
                                                             policy_holder__is_deleted=False, date_valid_to__isnull=True, 
                                                             is_deleted=False).first()
         if phn:
-            PolicyHolderInsuree.filter(id=phn.id).update(is_deleted=True)
+            PolicyHolderInsuree.filter(id=phn.id).update(is_deleted=True, date_valid_to=datetime.now())
             return True
     return False
 
