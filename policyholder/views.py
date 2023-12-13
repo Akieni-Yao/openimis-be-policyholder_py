@@ -79,7 +79,9 @@ def check_user_with_rights(rights):
 def clean_line(line):
     for header in HEADERS:
         value = line[header]
-        if isinstance(value, str):
+        if value is None:
+            pass
+        elif isinstance(value, str):
             line[header] = value.strip()
         elif isinstance(value, datetime):
             logger.info(f" ======    value is datetime : {value}   =======")
