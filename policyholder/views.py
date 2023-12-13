@@ -203,7 +203,7 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
 def get_policy_holder_from_code(ph_code: str):
     return PolicyHolder.objects.filter(code=ph_code, is_deleted=False).first()
 
-def soft_delete_insuree(line, user_id):
+def soft_delete_insuree(line, policy_holder_code, user_id):
     id = line[HEADER_INSUREE_ID]
     camu_num = line[HEADER_INSUREE_CAMU_NO]
     insuree = None
@@ -212,10 +212,13 @@ def soft_delete_insuree(line, user_id):
     if not insuree:
         insuree = (Insuree.objects.filter(validity_to__isnull=True, camu_number=camu_num).first())
     if insuree:
-        Insuree.objects.filter(id=insuree.id).update(validity_to=datetime.now())
-        return True
-    else:
-        return False
+        phn = PolicyHolderInsuree.objects.filter(insuree_id=insuree_id, policy_holder__code=policy_holder_code, policy_holder__date_valid_to__isnull=True, 
+                                                            policy_holder__is_deleted=False, date_valid_to__isnull=True, 
+                                                            is_deleted=False).first()
+        if phn:
+            PolicyHolderInsuree.filter(id=phn.id).update(is_deleted=True)
+            return True
+    return False
 
 
 @api_view(["POST"])
@@ -290,7 +293,7 @@ def import_phi(request, policy_holder_code):
             continue
         
         if line[HEADER_DELETE] and line[HEADER_DELETE].lower() == "yes":
-            is_deleted = soft_delete_insuree(line, user_id)
+            is_deleted = soft_delete_insuree(line, policy_holder_code, user_id)
             if is_deleted:
                 continue
 
