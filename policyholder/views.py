@@ -216,7 +216,7 @@ def soft_delete_insuree(line, policy_holder_code, user_id):
                                                             policy_holder__is_deleted=False, date_valid_to__isnull=True, 
                                                             is_deleted=False).first()
         if phn:
-            PolicyHolderInsuree.filter(id=phn.id).update(is_deleted=True, date_valid_to=datetime.now())
+            PolicyHolderInsuree.objects.filter(id=phn.id).update(is_deleted=True, date_valid_to=datetime.now())
             return True
     return False
 
