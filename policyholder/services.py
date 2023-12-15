@@ -1,5 +1,6 @@
 import core
 import json
+import logging
 
 from django.core.serializers.json import DjangoJSONEncoder
 from django.core.exceptions import PermissionDenied
@@ -12,7 +13,109 @@ from policyholder.apps import PolicyholderConfig
 from policyholder.models import PolicyHolder as PolicyHolderModel, PolicyHolderUser as PolicyHolderUserModel, \
     PolicyHolderContributionPlan as PolicyHolderContributionPlanModel, PolicyHolderInsuree as PolicyHolderInsureeModel
 from policyholder.validation import PolicyHolderValidation
+from policy.models import Policy
+from insuree.models import Insuree, InsureePolicy, Family
+from payment.models import PaymentDetail
+from contract.models import ContractDetails, ContractContributionPlanDetails
 
+logger = logging.getLogger("openimis." + __name__)
+
+def activate_policy_of_insuree(ccpds):
+    logger.debug("====  activate_policy_of_insuree  ====  start  ====")
+    from core import datetime, datetimedelta
+    if ccpds:
+        logger.debug(f"====  activate_policy_of_insuree  ====  ccpds  ====  {ccpds}")
+        for ccpd in ccpds:
+            logger.debug(f"====  activate_policy_of_insuree  ====  ccpd  ====  {ccpd}")
+            insuree = ccpd.contract_details.insuree
+            pi = InsureePolicy.objects.create(
+                **{
+                    "insuree": insuree,
+                    "policy": ccpd.policy,
+                    "enrollment_date": ccpd.date_valid_from,
+                    "start_date": ccpd.date_valid_from,
+                    "effective_date": ccpd.date_valid_from,
+                    "expiry_date": ccpd.date_valid_to + datetimedelta(
+                        ccpd.contribution_plan.get_contribution_length()
+                    ),
+                    "audit_user_id": -1,
+                }
+            )
+            logger.debug(f"====  activate_policy_of_insuree  ====  Policy.STATUS_ACTIVE  ====  {Policy.STATUS_ACTIVE}")
+            ccpd.policy.status = Policy.STATUS_ACTIVE
+            ccpd.policy.save()
+            logger.debug(f"====  activate_policy_of_insuree  ====  ccpd.policy  ====  {ccpd.policy}")
+            logger.debug(f"====  activate_policy_of_insuree  ====  ccpd.policy.status  ====  {ccpd.policy.status}")
+    logger.debug("====  activate_policy_of_insuree  ====  end  ====")
+    return True
+
+def check_payment_done_by_policyholder(insuree_id):
+    logger.debug("====  check_payment_done_by_policyholder  ====  start  ====")
+    insuree = Insuree.objects.filter(id=insuree_id).first()
+    # if insuree.is_payment_done and not insuree.is_rights and insuree.document_status and insuree.biometrics_is_master:
+        # insuree_policies = PolicyHolderInsureeModel.objects.filter(insuree_id=insuree.id).all()
+        # for inpo in insuree_policies:
+    if insuree.head:
+        logger.debug(f"====  check_payment_done_by_policyholder  ====  insuree.head  ====  {insuree.head}")
+        insuree_policies = PolicyHolderInsureeModel.objects.filter(insuree_id=insuree.id, is_deleted=False).first()
+        if insuree_policies:
+            if insuree_policies.is_payment_done_by_policy_holder and insuree_policies.is_rights_enable_for_insuree:
+                return True
+            elif insuree_policies.is_payment_done_by_policy_holder:
+                contribution_plan_bundle_ids = []
+                # for ip in insuree_policies:
+                if insuree_policies.contribution_plan_bundle.is_deleted == False:
+                    contribution_plan_bundle_ids.append(insuree_policies.contribution_plan_bundle.id)
+                logger.debug(f"====  check_payment_done_by_policyholder  ====  contribution_plan_bundle_ids  ====  {contribution_plan_bundle_ids}")
+                
+                contract_details = None
+                contract_details_ids = []
+                if len(contribution_plan_bundle_ids)>0:
+                    contract_details = ContractDetails.objects.filter(contribution_plan_bundle__id__in=contribution_plan_bundle_ids, insuree_id=insuree_id, is_deleted=False).all()
+                    if contract_details:
+                        for cd in contract_details:
+                            contract_details_ids.append(cd.uuid)
+                logger.debug(f"====  check_payment_done_by_policyholder  ====  contract_details_ids  ====  {contract_details_ids}")
+
+                contract_contribution_plan_details = None
+                premium_ids = []
+                if len(contract_details_ids)>0:
+                    contract_contribution_plan_details = ContractContributionPlanDetails.objects.filter(contract_details__id__in=contract_details_ids, is_deleted=False).all()
+                    if contract_contribution_plan_details:
+                        for ccpd in contract_contribution_plan_details:
+                            if ccpd.contribution.legacy_id == None:
+                                premium_ids.append(ccpd.contribution.id)
+                logger.debug(f"====  check_payment_done_by_policyholder  ====  contract_contribution_plan_details  ====  {contract_contribution_plan_details}")
+                logger.debug(f"====  check_payment_done_by_policyholder  ====  premium_ids  ====  {premium_ids}")
+
+                if contract_contribution_plan_details and insuree_policies.is_payment_done_by_policy_holder:
+                    logger.debug(f"====  check_payment_done_by_policyholder  ====  insuree_policies.is_payment_done_by_policy_holder  ====  {insuree_policies.is_payment_done_by_policy_holder}")
+                    if insuree.status == "APPROVED" and insuree.document_status and insuree.biometrics_is_master:
+                        logger.debug(f"====  check_payment_done_by_policyholder  ====  insuree.status  ====  {insuree.status}")
+                        logger.debug(f"====  check_payment_done_by_policyholder  ====  insuree.document_status  ====  {insuree.document_status}")
+                        logger.debug(f"====  check_payment_done_by_policyholder  ====  insuree.biometrics_is_master  ====  {insuree.biometrics_is_master}")
+                        PolicyHolderInsureeModel.objects.filter(id=insuree_policies.id).update(is_rights_enable_for_insuree=True)
+                        Insuree.objects.filter(id=insuree_id).update(status="ACTIVE")
+                        if insuree.head:
+                            Family.objects.filter(id=insuree.family.id).update(status="ACTIVE")
+                            family_members = Insuree.objects.filter(family_id=insuree.family.id, legacy_id=None).all()
+                            for member in family_members:
+                                if member.status == 'APPROVED':
+                                    Insuree.objects.filter(id=member.id).update(status="ACTIVE")
+                        activate_policy_of_insuree(contract_contribution_plan_details)
+                        insuree = Insuree.objects.filter(id=insuree_id).first()
+                        family =  Family.objects.filter(id=insuree.family.id).first()
+                        logger.debug(f"====  check_payment_done_by_policyholder  ====  insuree.status  ====  {insuree.status}")
+                        logger.debug(f"====  check_payment_done_by_policyholder  ====  family.status  ====  {family.status}")
+    else:
+        family_members = Insuree.objects.filter(family_id=insuree.family.id, legacy_id=None).all()
+        for member in family_members:
+            if member.head and member.status == 'ACTIVE':
+                Insuree.objects.filter(id=insuree.id).update(status="ACTIVE")
+                break
+
+    logger.debug("====  check_payment_done_by_policyholder  ====  end  ====")
+    return True
 
 def check_authentication(function):
     def wrapper(self, *args, **kwargs):

@@ -71,7 +71,9 @@ class PolicyHolderInsuree(core_models.HistoryBusinessModel):
     contribution_plan_bundle = models.ForeignKey(ContributionPlanBundle, db_column='ContributionPlanBundleId',
                                                  on_delete=models.deletion.DO_NOTHING, blank=True, null=True)
     last_policy = models.ForeignKey(Policy, db_column='LastPolicyId', on_delete=models.deletion.DO_NOTHING, blank=True, null=True)
-
+    is_payment_done_by_policy_holder = models.BooleanField(db_column='IsPaymentDoneByPolicyHolder', default=False)
+    is_rights_enable_for_insuree = models.BooleanField(db_column='IsRightsEnableForInsuree', default=False)
+    employer_number = models.CharField(db_column='EmployerNumber', blank=True, null=True, max_length=50)
     objects = PolicyHolderInsureeManager()
 
     @classmethod
