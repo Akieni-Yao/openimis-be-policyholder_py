@@ -3,6 +3,7 @@ import logging
 import random
 import math
 from datetime import datetime
+from django.utils import timezone
 
 import pandas as pd
 from django.http import JsonResponse, FileResponse, HttpResponse
@@ -164,6 +165,11 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
     #     insuree.save()
         
     if not insuree:
+        insuree_dob = line[HEADER_INSUREE_DOB]
+        if not isinstance(insuree_dob, datetime):
+            datetime_obj = datetime.strptime(insuree_dob, "%d/%m/%Y")
+            line[HEADER_INSUREE_DOB] = timezone.make_aware(datetime_obj).date()            
+        
         insuree_id = generate_available_chf_id(
             line[HEADER_INSUREE_GENDER],
             location if location else family.location,
