@@ -199,7 +199,6 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
                 "insureeEnrolmentType": map_enrolment_type_to_category(enrolment_type),
                 "insureelocations": response_data,
                 "BirthPlace": line[HEADER_BIRTH_LOCATION_CODE],
-                "employeeNumber":line[HEADER_EMPLOYEE_NUMBER]
             }
         )
         created = True
