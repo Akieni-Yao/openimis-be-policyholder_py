@@ -509,6 +509,7 @@ def map_enrolment_type_to_category(enrolment_type):
         "Pensionnés CRF et CNSS": "CRF_and_CNSS_pensioners",
         "Personnes vulnérables": "vulnerable_Persons",
         "Etudiants": "students",
+        "Pensionnés de la CRF et CNSS": "CRF_and_CNSS_pensioners",
     }
 
     # Check if the enrolment type exists in the mapping dictionary
