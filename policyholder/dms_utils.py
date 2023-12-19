@@ -4,6 +4,8 @@ import requests
 from django.conf import settings
 from django.core.mail import EmailMessage
 from django.http import JsonResponse, Http404
+
+from core.utils import generate_qr
 from insuree.dms_utils import CNSS_CREATE_FOLDER_API_URL, get_headers_with_token
 from insuree.reports.code_converstion_for_report import convert_activity_data
 from report.apps import ReportConfig
@@ -50,18 +52,34 @@ Cordialement.
 
 
 def generate_pdf_for_policyholder(policyholder, report_name):
+    # Get report configuration
     report_config = ReportConfig.get_report(report_name)
     if not report_config:
-        raise Http404("Poll does not exist")
+        raise Http404("Report does not exist")
+
+    # Get report definition
     report_definition = get_report_definition(
         report_name, report_config["default_report"]
     )
     template_dict = json.loads(report_definition)
+
+    # Format date and retrieve necessary data from policyholder
     formatted_date = policyholder.date_created.strftime('%d-%m-%Y')
-    activity_code = policyholder.json_ext['jsonExt']['activityCode']
+    activity_code = policyholder.json_ext.get('jsonExt', {}).get('activityCode')
     converted_activity_code = convert_activity_data(activity_code)
     legal_form = str(policyholder.legal_form)
     coverted_legal_form = get_french_value(legal_form)
+
+    # Generate QR code based on policyholder data
+    data_to_encode = (
+        f"Raison sociale: {policyholder.trade_name}, "
+        f"N° du récépissé: {policyholder.code}, "
+        f"Date d’impression du document: {formatted_date}"
+    )
+    generated_qr_string = generate_qr(data_to_encode)
+    final_img = 'data:image/png;base64,' + generated_qr_string if generated_qr_string else ""
+
+    # Prepare data for the report
     data = {"data": {"email": policyholder.email if hasattr(policyholder, 'email') else "",
                      "camucode": policyholder.code if hasattr(policyholder, 'code') else "",
                      "activitycode": converted_activity_code if converted_activity_code else "",
@@ -86,9 +104,19 @@ def generate_pdf_for_policyholder(policyholder, report_name):
                      "mailbox": policyholder.fax if hasattr(policyholder, 'fax') else "",
                      "legalform": coverted_legal_form if coverted_legal_form else "",
                      "phone": str(policyholder.phone) if hasattr(policyholder, 'phone') else "",
-                     "address": policyholder.address['address'],
-                     "city": policyholder.locations.parent.parent.name}}
-
+                     "address": policyholder.address['address'], "city": policyholder.locations.parent.parent.name,
+                     "muncipality": policyholder.locations.parent.name if policyholder.locations else "",
+                     "village":policyholder.locations.name if policyholder.locations else "",
+                     "qrcode": final_img}}
+    if final_img:
+        elements = template_dict.get("docElements")
+        for e in elements:
+            if "source" in e.keys():
+                if e["source"] == "${data.qrcode}":
+                    e["image"] = final_img
+                    e.pop("source")
+                    # e["source"] = ""
+                    break
     pdf = generate_report(report_name, template_dict, data)
     return pdf
 
