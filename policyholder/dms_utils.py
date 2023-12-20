@@ -72,7 +72,7 @@ def generate_pdf_for_policyholder(policyholder, report_name):
 
     # Generate QR code based on policyholder data
     data_to_encode = (
-        f"Raison sociale: {policyholder.trade_name}, "
+        f"CAMU Code: {policyholder.trade_name}, "
         f"N° du récépissé: {policyholder.code}, "
         f"Date d’impression du document: {formatted_date}"
     )
