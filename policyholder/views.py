@@ -12,7 +12,7 @@ from rest_framework.decorators import permission_classes, api_view
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from insuree.dms_utils import create_openKm_folder_for_bulkupload
+from insuree.dms_utils import create_openKm_folder_for_bulkupload, send_mail_to_temp_insuree_with_pdf
 from insuree.gql_mutations import temp_generate_employee_camu_registration_number
 from insuree.models import Insuree, Gender, Family
 from location.models import Location
@@ -199,6 +199,7 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
                 "insureeEnrolmentType": map_enrolment_type_to_category(enrolment_type),
                 "insureelocations": response_data,
                 "BirthPlace": line[HEADER_BIRTH_LOCATION_CODE],
+                "insureeaddress": line[HEADER_ADDRESS]
             }
         )
         created = True
@@ -355,6 +356,14 @@ def import_phi(request, policy_holder_code):
                 logger.info("====  policyholder  ====  import_phi  ====  create_abis_insuree  ====  End")
             except Exception as e:
                 logger.error(f"insuree bulk upload error for abis or workflow : {e}")
+            try:
+                logger.info("---------------   if insuree have email   -------------------")
+                if insuree.email:
+                    insuree_enrolment_type = insuree.json_ext['insureeEnrolmentType'].lower()
+                    send_mail_to_temp_insuree_with_pdf(insuree, insuree_enrolment_type)
+                    logger.info("---------------  email is sent   -------------------")
+            except Exception as e:
+                logger.error(f"Fail to send auto mail : {e}")
         if family_created:
             family.head_insuree = insuree
             family.save()
