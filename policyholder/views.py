@@ -474,6 +474,7 @@ def export_phi(request, policy_holder_code):
         income = [extract_income(insuree_id, policy_holder_code) for insuree_id in df['id']]
         df.insert(loc=15, column='Salaire', value=income)
         
+        df['Cotisation total'] = ''
         df['Delete'] = ''
 
         df.rename(columns={'camu_number': 'CAMU Number', 'other_names': 'Prénom', 'last_name': 'Nom', 
@@ -538,6 +539,7 @@ def mapping_marital_status(marital, value=None):
         "Marié": "M",
     }
     if value and marital is None:
+        logger.info("mapping_marital_status passing value : ", list(mapping.keys())[list(mapping.values()).index(value)])
         return list(mapping.keys())[list(mapping.values()).index(value)]
     elif marital in mapping:
         return mapping[marital]
