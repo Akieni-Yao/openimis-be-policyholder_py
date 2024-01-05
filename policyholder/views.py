@@ -556,7 +556,7 @@ def export_phi(request, policy_holder_code):
         emp_no = [extract_emp_no(insuree_id, policy_holder_code) for insuree_id in df['id']]
         df.insert(loc=13, column='Matricule', value=emp_no)
 
-        employee_income = None
+        employee_income = dict()
         def extract_income(insuree_id, policy_holder_code):
             phn_json = PolicyHolderInsuree.objects.filter(insuree_id=insuree_id, policy_holder__code=policy_holder_code, policy_holder__date_valid_to__isnull=True, 
                                                             policy_holder__is_deleted=False, date_valid_to__isnull=True, 
@@ -564,25 +564,91 @@ def export_phi(request, policy_holder_code):
             if phn_json:
                 json_data = phn_json.json_ext
                 if json_data:
-                    employee_income = json_data.get('calculation_rule', None).get('income', None)
-                    return employee_income
+                    ei = json_data.get('calculation_rule', None).get('income', None)
+                    employee_income.update({insuree_id: ei})
+                    return ei
             return None
         
         income = [extract_income(insuree_id, policy_holder_code) for insuree_id in df['id']]
-        df.insert(loc=15, column='Salaire', value=income)
+        df.insert(loc=15, column='Salaire Brut', value=income)
         
-        # conti_plan = None
-        # ph_cpb = PolicyHolderContributionPlan.objects.filter(policy_holder__code=policy_holder_code, is_deleted=False).first()
-        # if ph_cpb and ph_cpb.contribution_plan_bundle:
-        #     cpb = ph_cpb.contribution_plan_bundle
-        #     cpbd = ContributionPlanBundleDetails.objects.filter(contribution_plan_bundle=cpb, is_deleted=False).first()
-        #     conti_plan = cpbd.contribution_plan if cpbd else None
-        # else:
-        #     logger.debug(f"Error line {total_lines} - No contribution plan bundle with ({policy_holder.trade_name})")
+        conti_plan = None
+        ph_cpb = PolicyHolderContributionPlan.objects.filter(policy_holder__code=policy_holder_code, is_deleted=False).first()
+        if ph_cpb and ph_cpb.contribution_plan_bundle:
+            cpb = ph_cpb.contribution_plan_bundle
+            cpbd = ContributionPlanBundleDetails.objects.filter(contribution_plan_bundle=cpb, is_deleted=False).first()
+            conti_plan = cpbd.contribution_plan if cpbd else None
+        else:
+            logger.debug(f"Error line {total_lines} - No contribution plan bundle with ({policy_holder.trade_name})")
         
+        employer_contri_per = dict()
+        def extract_employer_percentage(insuree_id):
+            if conti_plan:
+                json_data = conti_plan.json_ext if conti_plan.json_ext else None
+                calculation_rule = json_data.get('calculation_rule', None) if json_data else None
+                ercp = calculation_rule.get('employerContribution', None) if calculation_rule else None
+                employer_contri_per.update({insuree_id: ercp})
+                return f"{ercp}%" if ercp else None
+            return None
         
-        # income = [extract_income(insuree_id) for insuree_id in df['id']]
-        # df.insert(loc=15, column='Salaire', value=income)
+        employer_percentage = [extract_employer_percentage(insuree_id) for insuree_id in df['id']]
+        df.insert(loc=16, column='Part Patronale %', value=employer_percentage)
+        
+        employer_contri = dict()
+        def extract_employer_share(insuree_id):
+            if employer_contri_per[insuree_id] and employee_income[insuree_id]:
+                print("employer_contri_per[insuree_id] : ", employer_contri_per[insuree_id])
+                print("employee_income[insuree_id] : ", employee_income[insuree_id])
+                erc = round((float(employer_contri_per[insuree_id]) / 100) * float(employee_income[insuree_id]), 2)
+                print("erc : ", erc)
+                employer_contri.update({insuree_id: erc})
+                return erc
+            return None
+        
+        employer_share = [extract_employer_share(insuree_id) for insuree_id in df['id']]
+        df.insert(loc=17, column='Part Patronale', value=employer_share)
+        
+        employee_contri_per = dict()
+        def extract_employee_percentage(insuree_id):
+            if conti_plan:
+                json_data = conti_plan.json_ext if conti_plan.json_ext else None
+                calculation_rule = json_data.get('calculation_rule', None) if json_data else None
+                eecp = calculation_rule.get('employeeContribution', None) if calculation_rule else None
+                employee_contri_per.update({insuree_id: eecp})
+                return f"{eecp}%" if eecp else None
+            return None
+        
+        employee_percentage = [extract_employee_percentage(insuree_id) for insuree_id in df['id']]
+        df.insert(loc=18, column='Part Salariale %', value=employee_percentage)
+        
+        employee_contri = dict()
+        def extract_employee_share(insuree_id):
+            if employee_income[insuree_id] and employee_contri_per[insuree_id]:
+                print("employee_income[insuree_id] : ", employee_income[insuree_id])
+                print("employee_contri_per[insuree_id] : ", employee_contri_per[insuree_id])
+                eec = round((float(employee_contri_per[insuree_id]) / 100) * float(employee_income[insuree_id]), 2)
+                print("eec : ", eec)
+                employee_contri.update({insuree_id: eec})
+                return eec
+            return None
+        
+        employee_share = [extract_employee_share(insuree_id) for insuree_id in df['id']]
+        df.insert(loc=19, column='Part Salariale', value=employee_share)
+        
+        def extract_total_share(insuree_id):
+            try:
+                if employee_contri[insuree_id] and employer_contri[insuree_id]:
+                    print("employee_contri[insuree_id] : ", employee_contri[insuree_id])
+                    print("employer_contri[insuree_id] : ", employer_contri[insuree_id])
+                    total_contri = employee_contri[insuree_id] + employer_contri[insuree_id]
+                    print("total_contri : ", total_contri)
+                    return total_contri
+                return None
+            except Exception as e:
+                return None
+        
+        total_share = [extract_total_share(insuree_id) for insuree_id in df['id']]
+        df.insert(loc=20, column='Cotisation total', value=total_share)
         
         df['Delete'] = ''
 
