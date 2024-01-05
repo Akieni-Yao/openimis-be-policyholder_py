@@ -423,7 +423,7 @@ def export_phi(request, policy_holder_code):
                                 'family__location__parent__parent', 'family__location__parent__parent__parent')
 
         data = list(queryset.values('camu_number', 'other_names', 'last_name', 'chf_id', 'gender__code', 'phone', 
-                                    'family__location__code', 'family__head_insuree__chf_id', 'email', 'json_ext', 'id', 'dob'))
+                                    'family__location__code', 'family__head_insuree__chf_id', 'email', 'json_ext', 'id', 'dob', 'marital'))
         
         df = pd.DataFrame(data)
         
@@ -436,10 +436,11 @@ def export_phi(request, policy_holder_code):
         birth_place = [extract_birth_place(json_data) for json_data in df['json_ext']]
         df.insert(loc=5, column='Lieu de naissance', value=birth_place)
         
-        def extract_civility(json_data):
-            return json_data.get('civilQuality', None) if json_data else None
+        def extract_civility(marital):
+            return mapping_marital_status(None, marital)
+            # return json_data.get('civilQuality', None) if json_data else None
         
-        civility = [extract_civility(json_data) for json_data in df['json_ext']]
+        civility = [extract_civility(json_data) for json_data in df['marital']]
         df.insert(loc=7, column='Civilité', value=civility)
         
         def extract_address(json_data):
@@ -479,7 +480,7 @@ def export_phi(request, policy_holder_code):
                         'chf_id': 'Tempoprary CAMU Number', 'gender__code': 'Sexe', 'phone': 'Téléphone',
                         'family__location__code': 'Village', 'family__head_insuree__chf_id': 'ID Famille', 'email': 'Email'}, inplace=True)
 
-        df.drop(columns=['json_ext', 'id', 'dob'], inplace=True)
+        df.drop(columns=['json_ext', 'id', 'dob', 'marital'], inplace=True)
 
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         response['Content-Disposition'] = 'attachment; filename="data.xlsx"'
@@ -529,14 +530,17 @@ def map_enrolment_type_to_category(enrolment_type):
         return None
 
 
-def mapping_marital_status(marital):
+def mapping_marital_status(marital, value=None):
     mapping = {
         "Veuf\/veuve": "W",
         "Célibataire": "S",
         "Divorcé": "D",
         "Marié": "M",
     }
-    if marital in mapping:
+    if value and marital is None:
+        logger.info("mapping_marital_status passing value : ", list(mapping.keys())[list(mapping.values()).index(value)])
+        return list(mapping.keys())[list(mapping.values()).index(value)]
+    elif marital in mapping:
         return mapping[marital]
     else:
         ""
