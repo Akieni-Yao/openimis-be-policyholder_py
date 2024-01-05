@@ -474,7 +474,6 @@ def export_phi(request, policy_holder_code):
         income = [extract_income(insuree_id, policy_holder_code) for insuree_id in df['id']]
         df.insert(loc=15, column='Salaire', value=income)
         
-        df['Cotisation total'] = ''
         df['Delete'] = ''
 
         df.rename(columns={'camu_number': 'CAMU Number', 'other_names': 'Prénom', 'last_name': 'Nom', 
