@@ -35,18 +35,12 @@ def create_policyholder_openkmfolder(data):
 
 # email template at the time of policyholder create we have to send
 policyholder_body = """
-Cher {trade_name},
+Monsieur/Madame,,
 
-
-
-Nous vous remercions de votre Immatriculation. Veuillez trouver ci-joint le
-Certificat d’immatriculation. Pour toute question ou assistance
-supplémentaire, n'hésitez pas à nous contacter au numéro suivant Phone de
-la CAMU
-
-
-
-Cordialement.
+La demande d’immatriculation de votre entreprise a été prise en compte. Vous voudriez bien trouver en attaché votre attestation d’immatriculation au format PDF.
+Cordialement,
+Pour toute information, vous pouvez contacter votre téléconseiller CAMU au numéro 400
+Ce courriel a été envoyé automatiquement à partir d’une adresse de messagerie système. Prière de ne pas répondre.
 
 """
 
@@ -122,8 +116,8 @@ def generate_pdf_for_policyholder(policyholder, report_name):
 
 
 def send_mail_to_policyholder_with_pdf(policyholder, report_name):
-    subject = "Certificat d’Immatriculation"
-    email_body = policyholder_body.format(trade_name=policyholder.trade_name)
+    subject = "ATTESTATION D'IMMATRICULATION"
+    email_body = policyholder_body
     pdf = generate_pdf_for_policyholder(policyholder, report_name)
     email_message = EmailMessage(subject, email_body, settings.EMAIL_HOST_USER, [policyholder.email])
     email_message.attach('report.pdf', pdf, "application/pdf")
