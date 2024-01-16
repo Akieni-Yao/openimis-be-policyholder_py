@@ -3,6 +3,7 @@ import logging
 import random
 import math
 import io
+import calendar
 from datetime import datetime
 from django.utils import timezone
 
@@ -716,3 +717,75 @@ def mapping_marital_status(marital, value=None):
         return mapping[marital]
     else:
         ""
+
+def not_declared_policy_holder(request):
+    if request.method == 'GET':
+        declared = request.GET.get('declared', None)
+        contract_from_date = request.GET.get('from_date', None)
+        contract_to_date = request.GET.get('to_date', None)
+        camu_code = request.GET.get('camu_code', None)
+        trade_name = request.GET.get('trade_name', None)
+        department = request.GET.get('department', None)
+        
+        if declared and declared.lower() == 'true':
+            declared = True
+        else:
+            declared = False
+        
+        print("declared : ", declared)
+        
+        from contract.models import Contract
+        
+        today = datetime.today()
+        if contract_from_date:
+            contract_from_date = datetime.strptime(contract_from_date, "%Y-%m-%d").date()
+        else:
+            # if contract_from_date is None or contract_from_date == "":
+            contract_from_date = today.replace(day=1)
+            contract_from_date = contract_from_date.date()
+        print("contract_from_date : ", contract_from_date)
+        
+        if contract_to_date:
+            contract_to_date = datetime.strptime(contract_to_date, "%Y-%m-%d").date()
+        else:
+            # if contract_to_date is None or contract_to_date == "":
+            _, last_day = calendar.monthrange(today.year, today.month)
+            contract_to_date = today.replace(day=last_day)
+            contract_to_date = contract_to_date.date()
+        print("contract_to_date : ", contract_to_date)
+            
+        if contract_from_date > contract_to_date:
+            error = GraphQLError("Dates are not proper!", extensions={"code": 200})
+            raise error
+        
+        contract_list = list(set(Contract.objects.filter(
+                date_valid_from__date__gte=contract_from_date, 
+                date_valid_to__date__lte=contract_to_date, 
+                is_deleted=False).values_list('policy_holder__id', flat=True)))
+        print(contract_list)
+        ph_object = None
+        if declared:
+            ph_object = PolicyHolder.objects.filter(id__in=contract_list, is_deleted=False).all()
+        else:
+            ph_object = PolicyHolder.objects.filter(is_deleted=False).all().exclude(id__in=contract_list)
+        
+        if camu_code:
+            ph_object = ph_object.filter(code=camu_code)
+        
+        if trade_name:
+            ph_object = ph_object.filter(trade_name=trade_name)
+        
+        if department:
+            ph_object = ph_object.filter(locations__parent__parent__parent__uuid=department)
+        
+        columns = ['code', 'trade_name', 'contact_name', 'phone', 'email']
+        
+        data_frame = pd.DataFrame.from_records(ph_object.values(*columns))
+
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = 'attachment; filename=policyholder.xlsx'
+
+        data_frame.to_excel(response, index=False, engine='openpyxl')
+        return response
+        
+    return True
