@@ -718,6 +718,20 @@ def mapping_marital_status(marital, value=None):
     else:
         ""
 
+def get_city(location_id):
+    try:
+        location = Location.objects.get(id=location_id)
+        return location.parent.parent.name
+    except Location.DoesNotExist:
+        return " "
+
+def get_department(location_id):
+    try:
+        location = Location.objects.get(id=location_id)
+        return location.parent.parent.parent.name
+    except Location.DoesNotExist:
+        return ""
+
 def not_declared_policy_holder(request):
     if request.method == 'GET':
         declared = request.GET.get('declared', None)
@@ -778,10 +792,20 @@ def not_declared_policy_holder(request):
         if department:
             ph_object = ph_object.filter(locations__parent__parent__parent__uuid=department)
         
-        columns = ['code', 'trade_name', 'contact_name', 'phone', 'email']
+        columns = ['code', 'trade_name', 'contact_name', 'phone', 'email', 'locations_id']
         
         data_frame = pd.DataFrame.from_records(ph_object.values(*columns))
 
+        data_frame['Department'] = data_frame['locations_id'].apply(lambda location_id: get_department(location_id))
+        data_frame['City'] = data_frame['locations_id'].apply(lambda location_id: get_city(location_id))
+        
+        data_frame['contact_name'] = data_frame['contact_name'].apply(lambda x: x['contactName'] if x is not None else ' ')
+
+        data_frame.rename(columns={'code':'CAMU Number', 'trade_name':'Trade Name', 'contact_name':'Contact Name', 'phone':'Phone', 'email':'Email'}, inplace=True)
+        # data_frame.rename(columns={'code':'CAMU temporaire', 'trade_name':'Trade Name', 'contact_name':'Contact Name', 'phone':'Téléphone', 'email':'E-mail','Department':'Département','City':'Ville'}, inplace=True)
+
+        data_frame.drop(columns=['locations_id'], inplace=True)
+        # data_frame
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         response['Content-Disposition'] = 'attachment; filename=policyholder.xlsx'
 
