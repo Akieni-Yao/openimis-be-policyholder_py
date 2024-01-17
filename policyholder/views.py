@@ -781,7 +781,11 @@ def not_declared_policy_holder(request):
         columns = ['code', 'trade_name', 'contact_name', 'phone', 'email']
         
         data_frame = pd.DataFrame.from_records(ph_object.values(*columns))
+        data_frame['contact_name'] = data_frame['contact_name'].apply(
+            lambda x: x['contactName'] if x is not None else ' ')
 
+        data_frame.rename(columns={'code': 'CAMU Number', 'trade_name': 'Trade Name', 'contact_name': 'Contact Name',
+                                   'phone': 'Phone', 'email': 'Email'}, inplace=True)
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         response['Content-Disposition'] = 'attachment; filename=policyholder.xlsx'
 
