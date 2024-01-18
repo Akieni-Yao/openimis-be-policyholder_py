@@ -1,5 +1,6 @@
 import graphene
 import graphene_django_optimizer as gql_optimizer
+import calendar
 
 from django.db.models import Q
 from location.apps import LocationConfig
@@ -20,13 +21,17 @@ from policyholder.gql.gql_mutations.replace_mutation import ReplacePolicyHolderI
 from policyholder.apps import PolicyholderConfig
 from policyholder.services import PolicyHolder as PolicyHolderServices
 from policyholder.gql.gql_types import PolicyHolderUserGQLType, PolicyHolderGQLType, PolicyHolderInsureeGQLType, \
-    PolicyHolderContributionPlanGQLType, PolicyHolderByFamilyGQLType, PolicyHolderByInureeGQLType
+    PolicyHolderContributionPlanGQLType, PolicyHolderByFamilyGQLType, PolicyHolderByInureeGQLType, NotDeclaredPolicyHolderGQLType
 
 from django.core.exceptions import PermissionDenied
 from django.utils.translation import gettext as _
 
 from payment.signals import signal_before_payment_query
 from .signals import append_policy_holder_filter
+
+from contract.models import Contract
+from datetime import datetime, timedelta
+from graphql import GraphQLError
 
 
 class Query(graphene.ObjectType):
@@ -102,6 +107,46 @@ class Query(graphene.ObjectType):
         policy_holder_code=graphene.String(required=True),
         description="Checks that the specified policy holder code is unique."
     )
+    
+    not_declared_policy_holder = OrderedDjangoFilterConnectionField(
+        NotDeclaredPolicyHolderGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+        dateContractFrom__Gte=graphene.DateTime(),
+        dateContractTo__Lte=graphene.DateTime(),
+        declared=graphene.Boolean(),
+    )
+    
+    def resolve_not_declared_policy_holder(self, info, **kwargs):
+        declared = kwargs.get('declared', None)
+        dateContractFrom = kwargs.get('dateContractFrom__Gte', None)
+        dateContractTo = kwargs.get('dateContractTo__Lte', None)
+        
+        if dateContractFrom is None:
+            today = datetime.today()
+            dateContractFrom = today.replace(day=1)
+        print("dateContractFrom : ", dateContractFrom)
+        
+        if dateContractTo is None:
+            today = datetime.today()
+            _, last_day = calendar.monthrange(today.year, today.month)
+            dateContractTo = today.replace(day=last_day)
+        print("dateContractTo : ", dateContractTo)
+            
+        if dateContractFrom > dateContractTo:
+            error = GraphQLError("Dates are not proper!", extensions={"code": 200})
+            raise error
+        
+        contract_list = list(set(Contract.objects.filter(
+                date_valid_from__date__gte=dateContractFrom.date(), 
+                date_valid_to__date__lte=dateContractTo.date(), 
+                is_deleted=False).values_list('policy_holder__id', flat=True)))
+        print(contract_list)
+        ph_object = None
+        if declared:
+            ph_object = PolicyHolder.objects.filter(id__in=contract_list, is_deleted=False).all()
+        else:
+            ph_object = PolicyHolder.objects.filter(is_deleted=False).all().exclude(id__in=contract_list)
+        return gql_optimizer.query(ph_object, info)
 
     def resolve_validate_policy_holder_code(self, info, **kwargs):
         if not info.context.user.has_perms(PolicyholderConfig.gql_query_policyholder_perms):

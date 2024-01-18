@@ -2,22 +2,31 @@ import json
 import logging
 import random
 import math
-from datetime import datetime
+import io
+import calendar
+from datetime import datetime, timedelta
+
+from django.conf import settings
+from django.core.mail import EmailMessage
 from django.utils import timezone
 
 import pandas as pd
 from django.http import JsonResponse, FileResponse, HttpResponse
+from graphql import GraphQLError
 
 from rest_framework.decorators import permission_classes, api_view
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from contract.models import Contract
+from core.models import Role, InteractiveUser
 from insuree.dms_utils import create_openKm_folder_for_bulkupload, send_mail_to_temp_insuree_with_pdf
 from insuree.gql_mutations import temp_generate_employee_camu_registration_number
 from insuree.models import Insuree, Gender, Family
 from location.models import Location
 from policyholder.apps import PolicyholderConfig
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan
+from contribution_plan.models import ContributionPlanBundleDetails
 from workflow.workflow_stage import insuree_add_to_workflow
 from insuree.abis_api import create_abis_insuree
 
@@ -38,6 +47,11 @@ HEADER_INSUREE_ID = "insuree_id"
 HEADER_INCOME = "income"
 HEADER_EMAIL = "email"
 HEADER_EMPLOYER_NUMBER = "employer_number"
+HEADER_EMPLOYER_PERCENTAGE = "employer_percentage"
+HEADER_EMPLOYER_SHARE = "employerContribution"
+HEADER_EMPLOYEE_PERCENTAGE = "employee_percentage"
+HEADER_EMPLOYEE_SHARE = "employeeContribution"
+HEADER_TOTAL_SHARE = "totalContribution"
 HEADER_DELETE = "Delete"
 HEADERS = [
     HEADER_INSUREE_CAMU_NO,
@@ -55,6 +69,11 @@ HEADERS = [
     HEADER_INCOME,
     HEADER_EMAIL,
     HEADER_EMPLOYER_NUMBER,
+    HEADER_EMPLOYER_PERCENTAGE,
+    HEADER_EMPLOYER_SHARE,
+    HEADER_EMPLOYEE_PERCENTAGE,
+    HEADER_EMPLOYEE_SHARE,
+    HEADER_TOTAL_SHARE,
     HEADER_DELETE,
 ]
 
@@ -124,7 +143,7 @@ def get_or_create_family_from_line(line, village: Location, audit_user_id: int,e
                   .first())
     created = False
 
-    if not family:
+    if not family and not head_id:
         family = Family.objects.create(
             head_insuree_id=1,  # dummy
             location=village,
@@ -258,25 +277,29 @@ def import_phi(request, policy_holder_code):
 
     df = pd.read_excel(file)
     df.columns = [col.strip() for col in df.columns]
+    org_columns = df.columns
     # Renaming the headers
     rename_columns = {
-        # "Tempoprary CAMU Number": HEADER_INSUREE_CHFID,
         "CAMU Number": HEADER_INSUREE_CAMU_NO,
         "Prénom": HEADER_INSUREE_OTHER_NAMES,
         "Nom": HEADER_INSUREE_LAST_NAME,
-        # "ID": HEADER_INSUREE_ID,
         "Tempoprary CAMU Number": HEADER_INSUREE_ID,
         "Date de naissance": HEADER_INSUREE_DOB,
         "Lieu de naissance": HEADER_BIRTH_LOCATION_CODE,
-        "Civilité": HEADER_CIVILITY,
         "Sexe": HEADER_INSUREE_GENDER,
+        "Civilité": HEADER_CIVILITY,
         "Téléphone": HEADER_PHONE,
         "Adresse": HEADER_ADDRESS,
         "Village": HEADER_FAMILY_LOCATION_CODE,
         "ID Famille": HEADER_FAMILY_HEAD,
-        "Salaire": HEADER_INCOME,
         "Email": HEADER_EMAIL,
         "Matricule":HEADER_EMPLOYER_NUMBER,
+        "Salaire Brut": HEADER_INCOME,
+        "Part Patronale %": HEADER_EMPLOYER_PERCENTAGE,
+        "Part Patronale": HEADER_EMPLOYER_SHARE,
+        "Part Salariale %": HEADER_EMPLOYEE_PERCENTAGE,
+        "Part Salariale": HEADER_EMPLOYEE_SHARE,
+        "Cotisation total": HEADER_TOTAL_SHARE,
         "Delete": HEADER_DELETE,
     }
 
@@ -284,6 +307,11 @@ def import_phi(request, policy_holder_code):
 
     errors = []
     logger.debug("Importing %s lines", len(df))
+    
+    # For output excel with error and success message
+    output = io.BytesIO()
+    writer = pd.ExcelWriter(output, engine='xlsxwriter')
+    processed_data = pd.DataFrame()
 
     for index, line in df.iterrows():  # for each line in the Excel file
 
@@ -297,6 +325,11 @@ def import_phi(request, policy_holder_code):
             errors.append(f"Error line {total_lines} - validation issues ({validation_errors})")
             logger.debug(f"Error line {total_lines} - validation issues ({validation_errors})")
             total_validation_errors += 1
+            
+            # Adding error in output excel
+            row_data = line.tolist()
+            row_data.extend(["Failed", validation_errors])
+            processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
             continue
         
         if line[HEADER_DELETE] and line[HEADER_DELETE].lower() == "yes":
@@ -309,7 +342,13 @@ def import_phi(request, policy_holder_code):
             errors.append(f"Error line {total_lines} - unknown village ({line[HEADER_FAMILY_LOCATION_CODE]})")
             logger.debug(f"Error line {total_lines} - unknown village ({line[HEADER_FAMILY_LOCATION_CODE]})")
             total_locations_not_found += 1
+            
+            # Adding error in output excel
+            row_data = line.tolist()
+            row_data.extend(["Failed", f"unknown village - {line[HEADER_FAMILY_LOCATION_CODE]}"])
+            processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
             continue
+        
         try:
             ph_cpb = PolicyHolderContributionPlan.objects.filter(policy_holder=policy_holder, is_deleted=False).first()
             if not ph_cpb:
@@ -318,7 +357,13 @@ def import_phi(request, policy_holder_code):
                 logger.debug(
                     f"Error line {total_lines} - No contribution plan bundle with ({policy_holder.trade_name})")
                 total_contribution_plan_not_found += 1
+                
+                # Adding error in output excel
+                row_data = line.tolist()
+                row_data.extend(["Failed", f"No contribution plan bundle with - {policy_holder.trade_name}"])
+                processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
                 continue
+
             cpb = ph_cpb.contribution_plan_bundle
             if not cpb:
                 errors.append(
@@ -326,7 +371,13 @@ def import_phi(request, policy_holder_code):
                 logger.debug(
                     f"Error line {total_lines} - unknown contribution plan bundle ({ph_cpb.contribution_plan_bundle})")
                 total_locations_not_found += 1
+                
+                # Adding error in output excel
+                row_data = line.tolist()
+                row_data.extend(["Failed", f"unknown contribution plan bundle - {ph_cpb.contribution_plan_bundle}"])
+                processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
                 continue
+
             enrolment_type = cpb.name
         except Exception as e:
             logger.error(f"Error occurred while retrieving Contribution Plan Bundle: {e}")
@@ -335,6 +386,12 @@ def import_phi(request, policy_holder_code):
         logger.debug("family_created: %s", family_created)
         if family_created:
             total_families_created += 1
+        elif not family_created and family is None:
+            # Adding error in output excel
+            row_data = line.tolist()
+            row_data.extend(["Failed", "unknown Family Head ID."])
+            processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
+            continue
 
         insuree, insuree_created = get_or_create_insuree_from_line(line, family, family_created, user_id, None, core_user_id,enrolment_type)
         logger.debug("insuree_created: %s", insuree_created)
@@ -356,6 +413,32 @@ def import_phi(request, policy_holder_code):
                 logger.info("====  policyholder  ====  import_phi  ====  create_abis_insuree  ====  End")
             except Exception as e:
                 logger.error(f"insuree bulk upload error for abis or workflow : {e}")
+        elif not insuree_created:
+            reason = None
+            
+            insuree_dob = line[HEADER_INSUREE_DOB]
+            if not isinstance(insuree_dob, datetime):
+                datetime_obj = datetime.strptime(insuree_dob, "%d/%m/%Y")
+                line[HEADER_INSUREE_DOB] = timezone.make_aware(datetime_obj).date()
+                    
+            if insuree.other_names != line[HEADER_INSUREE_OTHER_NAMES]:
+                reason = "Insuree First Name does not match."
+            elif insuree.last_name != line[HEADER_INSUREE_LAST_NAME]:
+                reason = "Insuree Last Name does not match."
+            elif insuree.dob != line[HEADER_INSUREE_DOB]:
+                reason = "Insuree DOB does not match."
+            elif insuree.gender != GENDERS[line[HEADER_INSUREE_GENDER]]:
+                reason = "Insuree Gender does not match."
+            elif insuree.marital != mapping_marital_status(line[HEADER_CIVILITY]):
+                reason = "Insuree Marital does not match."
+                
+            if reason:
+                # Adding error in output excel
+                row_data = line.tolist()
+                row_data.extend(["Failed", reason])
+                processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
+                continue
+
         if family_created:
             family.head_insuree = insuree
             family.save()
@@ -388,6 +471,12 @@ def import_phi(request, policy_holder_code):
             )
             total_phi_created += 1
             phi.save(username=request.user.username)
+        
+        # Adding success entry in output Excel
+        row_data = line.tolist()
+        row_data.extend(["Success", ""])
+        processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
+
         try:
             logger.info("---------------   if insuree have email   -------------------")
             if insuree.email:
@@ -396,20 +485,32 @@ def import_phi(request, policy_holder_code):
                 logger.info("---------------  email is sent   -------------------")
         except Exception as e:
             logger.error(f"Fail to send auto mail : {e}")
-    result = {
-        "total_lines": total_lines,
-        "total_insurees_created": total_insurees_created,
-        "total_families_created": total_families_created,
-        "total_phi_created": total_phi_created,
-        "total_phi_updated": total_phi_updated,
-        "total_errors": total_locations_not_found + total_contribution_plan_not_found,
-        "total_locations_not_found": total_locations_not_found,
-        "total_contribution_plan_not_found": total_contribution_plan_not_found,
-        "total_validation_errors": total_validation_errors,
-        "errors": errors,
-    }
-    logger.info("Import of PolicyHolderInsurees done")
-    return JsonResponse(data=result)
+    
+    output_headers = list(org_columns) + ['Status', 'Reason']
+
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        processed_data.to_excel(writer, sheet_name='Processed Data', index=False, header=output_headers)
+        
+    output.seek(0)
+    response = HttpResponse(output.getvalue(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = 'attachment; filename=import_results.xlsx'
+    
+    # result = {
+    #     "total_lines": total_lines,
+    #     "total_insurees_created": total_insurees_created,
+    #     "total_families_created": total_families_created,
+    #     "total_phi_created": total_phi_created,
+    #     "total_phi_updated": total_phi_updated,
+    #     "total_errors": total_locations_not_found + total_contribution_plan_not_found,
+    #     "total_locations_not_found": total_locations_not_found,
+    #     "total_contribution_plan_not_found": total_contribution_plan_not_found,
+    #     "total_validation_errors": total_validation_errors,
+    #     "errors": errors,
+    # }
+    # logger.info("Import of PolicyHolderInsurees done")
+    # return JsonResponse(data=result)
+    return response
+
 
 
 def export_phi(request, policy_holder_code):
@@ -424,7 +525,7 @@ def export_phi(request, policy_holder_code):
 
         data = list(queryset.values('camu_number', 'other_names', 'last_name', 'chf_id', 'gender__code', 'phone', 
                                     'family__location__code', 'family__head_insuree__chf_id', 'email', 'json_ext', 'id', 'dob', 'marital'))
-        
+
         df = pd.DataFrame(data)
         
         insuree_dob = [dob.strftime("%d/%m/%Y") for dob in df['dob']]
@@ -461,6 +562,7 @@ def export_phi(request, policy_holder_code):
         emp_no = [extract_emp_no(insuree_id, policy_holder_code) for insuree_id in df['id']]
         df.insert(loc=13, column='Matricule', value=emp_no)
 
+        employee_income = dict()
         def extract_income(insuree_id, policy_holder_code):
             phn_json = PolicyHolderInsuree.objects.filter(insuree_id=insuree_id, policy_holder__code=policy_holder_code, policy_holder__date_valid_to__isnull=True, 
                                                             policy_holder__is_deleted=False, date_valid_to__isnull=True, 
@@ -468,11 +570,88 @@ def export_phi(request, policy_holder_code):
             if phn_json:
                 json_data = phn_json.json_ext
                 if json_data:
-                    return json_data.get('calculation_rule', None).get('income', None)
+                    ei = json_data.get('calculation_rule', None).get('income', None)
+                    employee_income.update({insuree_id: ei})
+                    return ei
             return None
         
         income = [extract_income(insuree_id, policy_holder_code) for insuree_id in df['id']]
-        df.insert(loc=15, column='Salaire', value=income)
+        df.insert(loc=15, column='Salaire Brut', value=income)
+        
+        conti_plan = None
+        ph_cpb = PolicyHolderContributionPlan.objects.filter(policy_holder__code=policy_holder_code, is_deleted=False).first()
+        if ph_cpb and ph_cpb.contribution_plan_bundle:
+            cpb = ph_cpb.contribution_plan_bundle
+            cpbd = ContributionPlanBundleDetails.objects.filter(contribution_plan_bundle=cpb, is_deleted=False).first()
+            conti_plan = cpbd.contribution_plan if cpbd else None
+        else:
+            logger.debug(f"Error line {total_lines} - No contribution plan bundle with ({policy_holder.trade_name})")
+        
+        employer_contri_per = dict()
+        def extract_employer_percentage(insuree_id):
+            if conti_plan:
+                json_data = conti_plan.json_ext if conti_plan.json_ext else None
+                calculation_rule = json_data.get('calculation_rule', None) if json_data else None
+                ercp = calculation_rule.get('employerContribution', None) if calculation_rule else None
+                employer_contri_per.update({insuree_id: ercp})
+                return f"{ercp}%" if ercp else None
+            return None
+        
+        employer_percentage = [extract_employer_percentage(insuree_id) for insuree_id in df['id']]
+        df.insert(loc=16, column='Part Patronale %', value=employer_percentage)
+        
+        employer_contri = dict()
+        def extract_employer_share(insuree_id):
+            try:
+                if employer_contri_per[insuree_id] and employee_income[insuree_id]:
+                    erc = round((float(employer_contri_per[insuree_id]) / 100) * float(employee_income[insuree_id]), 2)
+                    employer_contri.update({insuree_id: erc})
+                    return erc
+                return None
+            except Exception as e:
+                return None
+        
+        employer_share = [extract_employer_share(insuree_id) for insuree_id in df['id']]
+        df.insert(loc=17, column='Part Patronale', value=employer_share)
+        
+        employee_contri_per = dict()
+        def extract_employee_percentage(insuree_id):
+            if conti_plan:
+                json_data = conti_plan.json_ext if conti_plan.json_ext else None
+                calculation_rule = json_data.get('calculation_rule', None) if json_data else None
+                eecp = calculation_rule.get('employeeContribution', None) if calculation_rule else None
+                employee_contri_per.update({insuree_id: eecp})
+                return f"{eecp}%" if eecp else None
+            return None
+        
+        employee_percentage = [extract_employee_percentage(insuree_id) for insuree_id in df['id']]
+        df.insert(loc=18, column='Part Salariale %', value=employee_percentage)
+        
+        employee_contri = dict()
+        def extract_employee_share(insuree_id):
+            try:
+                if employee_income[insuree_id] and employee_contri_per[insuree_id]:
+                    eec = round((float(employee_contri_per[insuree_id]) / 100) * float(employee_income[insuree_id]), 2)
+                    employee_contri.update({insuree_id: eec})
+                    return eec
+                return None
+            except Exception as e:
+                return None
+        
+        employee_share = [extract_employee_share(insuree_id) for insuree_id in df['id']]
+        df.insert(loc=19, column='Part Salariale', value=employee_share)
+        
+        def extract_total_share(insuree_id):
+            try:
+                if employee_contri[insuree_id] and employer_contri[insuree_id]:
+                    total_contri = employee_contri[insuree_id] + employer_contri[insuree_id]
+                    return total_contri
+                return None
+            except Exception as e:
+                return None
+        
+        total_share = [extract_total_share(insuree_id) for insuree_id in df['id']]
+        df.insert(loc=20, column='Cotisation total', value=total_share)
         
         df['Delete'] = ''
 
@@ -544,3 +723,196 @@ def mapping_marital_status(marital, value=None):
         return mapping[marital]
     else:
         ""
+
+
+def get_city(location_id):
+    try:
+        location = Location.objects.get(id=location_id)
+        return location.parent.parent.name
+    except Location.DoesNotExist:
+        return " "
+
+
+def get_department(location_id):
+    try:
+        location = Location.objects.get(id=location_id)
+        return location.parent.parent.parent.name
+    except Location.DoesNotExist:
+        return ""
+
+
+def not_declared_policy_holder(request):
+    if request.method == 'GET':
+        declared = request.GET.get('declared', None)
+        contract_from_date = request.GET.get('from_date', None)
+        contract_to_date = request.GET.get('to_date', None)
+        camu_code = request.GET.get('camu_code', None)
+        trade_name = request.GET.get('trade_name', None)
+        department = request.GET.get('department', None)
+        
+        if declared and declared.lower() == 'true':
+            declared = True
+        else:
+            declared = False
+        
+        print("declared : ", declared)
+        
+        from contract.models import Contract
+        
+        today = datetime.today()
+        if contract_from_date:
+            contract_from_date = datetime.strptime(contract_from_date, "%Y-%m-%d").date()
+        else:
+            # if contract_from_date is None or contract_from_date == "":
+            contract_from_date = today.replace(day=1)
+            contract_from_date = contract_from_date.date()
+        print("contract_from_date : ", contract_from_date)
+        
+        if contract_to_date:
+            contract_to_date = datetime.strptime(contract_to_date, "%Y-%m-%d").date()
+        else:
+            # if contract_to_date is None or contract_to_date == "":
+            _, last_day = calendar.monthrange(today.year, today.month)
+            contract_to_date = today.replace(day=last_day)
+            contract_to_date = contract_to_date.date()
+        print("contract_to_date : ", contract_to_date)
+            
+        if contract_from_date > contract_to_date:
+            error = GraphQLError("Dates are not proper!", extensions={"code": 200})
+            raise error
+        
+        contract_list = list(set(Contract.objects.filter(
+                date_valid_from__date__gte=contract_from_date, 
+                date_valid_to__date__lte=contract_to_date, 
+                is_deleted=False).values_list('policy_holder__id', flat=True)))
+        print(contract_list)
+        ph_object = None
+        if declared:
+            ph_object = PolicyHolder.objects.filter(id__in=contract_list, is_deleted=False).all()
+        else:
+            ph_object = PolicyHolder.objects.filter(is_deleted=False).all().exclude(id__in=contract_list)
+        
+        if camu_code:
+            ph_object = ph_object.filter(code=camu_code)
+        
+        if trade_name:
+            ph_object = ph_object.filter(trade_name=trade_name)
+        
+        if department:
+            ph_object = ph_object.filter(locations__parent__parent__parent__uuid=department)
+
+        columns = ['code', 'trade_name', 'contact_name', 'phone', 'email', 'locations_id']
+
+        data_frame = pd.DataFrame.from_records(ph_object.values(*columns))
+
+        data_frame['Department'] = data_frame['locations_id'].apply(lambda location_id: get_department(location_id))
+        data_frame['City'] = data_frame['locations_id'].apply(lambda location_id: get_city(location_id))
+
+        data_frame['contact_name'] = data_frame['contact_name'].apply(
+            lambda x: x['contactName'] if x is not None else ' ')
+
+        data_frame.rename(columns={'code': 'CAMU Number', 'trade_name': 'Trade Name', 'contact_name': 'Contact Name',
+                                   'phone': 'Phone', 'email': 'Email'}, inplace=True)
+        # data_frame.rename(columns={'code':'CAMU temporaire', 'trade_name':'Nom ou Raison sociale', 'contact_name':'Nom du représentant', 'phone':'Téléphone', 'email':'E-mail','Department':'Département','City':'Ville'}, inplace=True)
+
+        data_frame.drop(columns=['locations_id'], inplace=True)
+        # data_frame
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = 'attachment; filename=policyholder.xlsx'
+
+        data_frame.to_excel(response, index=False, engine='openpyxl')
+        return response
+        
+    return True
+
+
+def get_emails_for_imis_administrators():
+    try:
+        # Fetch the role with the name 'IMIS Administrator'
+        imis_admin_role = Role.objects.get(name='IMIS Administrator')
+
+        # Fetch all InteractiveUser objects with the specified role
+        imis_admin_users = InteractiveUser.objects.filter(role_id=imis_admin_role.id)
+
+        # Extract the emails from the InteractiveUser objects, skipping records without email
+        emails = [user.email for user in imis_admin_users if user.email]
+        # getting unique emails
+        if len(emails)>0:
+            emails=list(set(emails))
+
+        return emails
+    except Role.DoesNotExist:
+        # Handle the case where the role does not exist
+        print("Role 'IMIS Administrator' does not exist.")
+        return []
+    except Exception as e:
+        # Handle other exceptions if needed
+        print(f"An error occurred: {str(e)}")
+        return []
+
+
+@api_view(['GET'])
+def not_declared_ph_rest(request):
+    today = datetime.today()
+    # if contract_from_date is None or contract_from_date == "":
+    contract_from_date = today.replace(day=1)
+    contract_from_date = contract_from_date.date()
+    print("contract_from_date : ", contract_from_date)
+    # if contract_to_date is None or contract_to_date == "":
+    _, last_day = calendar.monthrange(today.year, today.month)
+    contract_to_date = today.replace(day=last_day)
+    contract_to_date = contract_to_date.date()
+    print("contract_to_date : ", contract_to_date)
+
+    # Example code structure for querying data from models
+    try:
+        # Query Contract model data for the previous month
+        contract_list = list(set(Contract.objects.filter(
+            date_valid_from__date__gte=contract_from_date,
+            date_valid_to__date__lte=contract_to_date,
+            is_deleted=False).values_list('policy_holder__id', flat=True)))
+        print(contract_list)
+
+        # Query PolicyHolder model data based on declared flag
+        ph_object = PolicyHolder.objects.filter(is_deleted=False).all().exclude(id__in=contract_list)
+
+        # Example code for additional filtering if needed
+        # if camu_code:
+        #     ph_object = ph_object.filter(code=camu_code)
+        #
+        # if trade_name:
+        #     ph_object = ph_object.filter(trade_name=trade_name)
+        #
+        # if department:
+        #     ph_object = ph_object.filter(locations__parent__parent__parent__uuid=department)
+
+        # Example code to extract required columns
+        columns = ['code', 'trade_name', 'contact_name', 'phone', 'email']
+        data_frame = pd.DataFrame.from_records(ph_object.values(*columns))
+        data_frame['contact_name'] = data_frame['contact_name'].apply(
+            lambda x: x['contactName'] if x is not None else ' ')
+
+        data_frame.rename(columns={'code': 'CAMU Number', 'trade_name': 'Trade Name', 'contact_name': 'Contact Name',
+                                   'phone': 'Phone', 'email': 'Email'}, inplace=True)
+
+        # Create Excel response
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = 'attachment; filename=policyholder.xlsx'
+        data_frame.to_excel(response, index=False, engine='openpyxl')
+
+        # Send email with attachment
+        subject = 'Non Declare Data'
+        message = 'Please find the attached non declared policyholder data.'
+        from_email = settings.EMAIL_HOST_USER
+        # recipient_list = ['lakshya.soni@walkingtree.tech']
+        recipient_list = get_emails_for_imis_administrators()
+
+        email = EmailMessage(subject, message, from_email, recipient_list)
+        email.attach('non declare.xlsx', response.content, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        email.send()
+
+        return Response({"message": "Email sent successfully."})
+
+    except Exception as e:
+        print("An error occurred:", str(e))
+        return Response({"error": "An error occurred while processing the data."})
