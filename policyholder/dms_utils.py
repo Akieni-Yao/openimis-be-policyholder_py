@@ -35,10 +35,14 @@ def create_policyholder_openkmfolder(data):
 
 # email template at the time of policyholder create we have to send
 policyholder_body = """
-Monsieur/Madame,,
+Monsieur/Madame,
+
 
 La demande d’immatriculation de votre entreprise a été prise en compte. Vous voudriez bien trouver en attaché votre attestation d’immatriculation au format PDF.
+
 Cordialement,
+
+
 Pour toute information, vous pouvez contacter votre téléconseiller CAMU au numéro 400
 Ce courriel a été envoyé automatiquement à partir d’une adresse de messagerie système. Prière de ne pas répondre.
 

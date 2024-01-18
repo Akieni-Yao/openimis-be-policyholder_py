@@ -4,7 +4,10 @@ import random
 import math
 import io
 import calendar
-from datetime import datetime
+from datetime import datetime, timedelta
+
+from django.conf import settings
+from django.core.mail import EmailMessage
 from django.utils import timezone
 
 import pandas as pd
@@ -15,6 +18,8 @@ from rest_framework.decorators import permission_classes, api_view
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from contract.models import Contract
+from core.models import Role, InteractiveUser
 from insuree.dms_utils import create_openKm_folder_for_bulkupload, send_mail_to_temp_insuree_with_pdf
 from insuree.gql_mutations import temp_generate_employee_camu_registration_number
 from insuree.models import Insuree, Gender, Family
@@ -819,3 +824,95 @@ def not_declared_policy_holder(request):
         return response
         
     return True
+
+
+def get_emails_for_imis_administrators():
+    try:
+        # Fetch the role with the name 'IMIS Administrator'
+        imis_admin_role = Role.objects.get(name='IMIS Administrator')
+
+        # Fetch all InteractiveUser objects with the specified role
+        imis_admin_users = InteractiveUser.objects.filter(role_id=imis_admin_role.id)
+
+        # Extract the emails from the InteractiveUser objects, skipping records without email
+        emails = [user.email for user in imis_admin_users if user.email]
+        # getting unique emails
+        if len(emails)>0:
+            emails=list(set(emails))
+
+        return emails
+    except Role.DoesNotExist:
+        # Handle the case where the role does not exist
+        print("Role 'IMIS Administrator' does not exist.")
+        return []
+    except Exception as e:
+        # Handle other exceptions if needed
+        print(f"An error occurred: {str(e)}")
+        return []
+
+
+@api_view(['GET'])
+def not_declared_ph_rest(request):
+    today = datetime.today()
+    # if contract_from_date is None or contract_from_date == "":
+    contract_from_date = today.replace(day=1)
+    contract_from_date = contract_from_date.date()
+    print("contract_from_date : ", contract_from_date)
+    # if contract_to_date is None or contract_to_date == "":
+    _, last_day = calendar.monthrange(today.year, today.month)
+    contract_to_date = today.replace(day=last_day)
+    contract_to_date = contract_to_date.date()
+    print("contract_to_date : ", contract_to_date)
+
+    # Example code structure for querying data from models
+    try:
+        # Query Contract model data for the previous month
+        contract_list = list(set(Contract.objects.filter(
+            date_valid_from__date__gte=contract_from_date,
+            date_valid_to__date__lte=contract_to_date,
+            is_deleted=False).values_list('policy_holder__id', flat=True)))
+        print(contract_list)
+
+        # Query PolicyHolder model data based on declared flag
+        ph_object = PolicyHolder.objects.filter(is_deleted=False).all().exclude(id__in=contract_list)
+
+        # Example code for additional filtering if needed
+        # if camu_code:
+        #     ph_object = ph_object.filter(code=camu_code)
+        #
+        # if trade_name:
+        #     ph_object = ph_object.filter(trade_name=trade_name)
+        #
+        # if department:
+        #     ph_object = ph_object.filter(locations__parent__parent__parent__uuid=department)
+
+        # Example code to extract required columns
+        columns = ['code', 'trade_name', 'contact_name', 'phone', 'email']
+        data_frame = pd.DataFrame.from_records(ph_object.values(*columns))
+        data_frame['contact_name'] = data_frame['contact_name'].apply(
+            lambda x: x['contactName'] if x is not None else ' ')
+
+        data_frame.rename(columns={'code': 'CAMU Number', 'trade_name': 'Trade Name', 'contact_name': 'Contact Name',
+                                   'phone': 'Phone', 'email': 'Email'}, inplace=True)
+
+        # Create Excel response
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = 'attachment; filename=policyholder.xlsx'
+        data_frame.to_excel(response, index=False, engine='openpyxl')
+
+        # Send email with attachment
+        subject = 'Non Declare Data'
+        message = 'Please find the attached non declared policyholder data.'
+        from_email = settings.EMAIL_HOST_USER
+        # recipient_list = ['lakshya.soni@walkingtree.tech']
+        recipient_list = get_emails_for_imis_administrators()
+
+        email = EmailMessage(subject, message, from_email, recipient_list)
+        email.attach('non declare.xlsx', response.content, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        email.send()
+
+        return Response({"message": "Email sent successfully."})
+
+    except Exception as e:
+        print("An error occurred:", str(e))
+        return Response({"error": "An error occurred while processing the data."})

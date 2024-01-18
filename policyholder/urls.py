@@ -6,4 +6,5 @@ urlpatterns = [
     path("imports/<policy_holder_code>/policyholderinsurees", views.import_phi),
     path("export/<policy_holder_code>/policyholderinsurees", views.export_phi),
     path("export/notdeclaredpolicyholder", views.not_declared_policy_holder),
+    path('not-declared-ph/', views.not_declared_ph_rest),
 ]
