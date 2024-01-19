@@ -124,7 +124,7 @@ def send_mail_to_policyholder_with_pdf(policyholder, report_name):
     email_body = policyholder_body
     pdf = generate_pdf_for_policyholder(policyholder, report_name)
     email_message = EmailMessage(subject, email_body, settings.EMAIL_HOST_USER, [policyholder.email])
-    email_message.attach('report.pdf', pdf, "application/pdf")
+    email_message.attach('ATTESTATION D''IMMATRICULATION.pdf', pdf, "application/pdf")
     email_message.send()
 
 
