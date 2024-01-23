@@ -212,6 +212,7 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
             current_address=line[HEADER_ADDRESS],
             phone=line[HEADER_PHONE],
             created_by=core_user_id,
+            modified_by=core_user_id,
             marital=mapping_marital_status(line[HEADER_CIVILITY]),
             email=line[HEADER_EMAIL],
             json_ext={
