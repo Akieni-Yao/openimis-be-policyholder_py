@@ -1,3 +1,4 @@
+import graphene
 from core.gql.gql_mutations.base_mutation import BaseMutation, BaseHistoryModelUpdateMutationMixin
 from core.models import InteractiveUser
 from policyholder.apps import PolicyholderConfig
@@ -80,3 +81,35 @@ class UpdatePolicyHolderUserMutation(BaseHistoryModelUpdateMutationMixin, BaseMu
         PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_update_policyholderuser_perms)
 
 
+class UpdatePolicyHolderInsureeDesignation(graphene.Mutation):
+    class Arguments:
+        policy_holder_code = graphene.String(required=True)
+        insuree_id = graphene.String(required=True)
+        designation = graphene.String(required=True)
+        flag = graphene.Boolean(required=True)
+
+    success = graphene.Boolean()
+    message = graphene.String()
+
+    def mutate(self, info, policy_holder_code, insuree_id, designation, flag):
+        try:
+            username = info.context.user.username
+            policy_holder = PolicyHolder.objects.get(code=policy_holder_code)
+            record = PolicyHolderInsuree.objects.get(
+                policy_holder__id=policy_holder.id,
+                insuree__id=insuree_id,
+                is_deleted=False
+            )
+            json_ext_data = record.json_ext
+            if flag:
+                json_ext_data['designation'] = designation
+                record.json_ext = json_ext_data
+            else:
+                record.json_ext = json_ext_data
+            record.save(username=username)
+            success = True
+            message = f"Successfully updated designation in json_ext with value '{designation}'."
+        except PolicyHolderInsuree.DoesNotExist:
+            success = False
+            message = "Record not found."
+        return UpdatePolicyHolderInsureeDesignation(success=success, message=message)
