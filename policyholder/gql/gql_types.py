@@ -114,7 +114,7 @@ class PolicyHolderInsureeGQLType(DjangoObjectType):
             "user_created": ["exact"],
             "user_updated": ["exact"],
             "is_deleted": ["exact"],
-            "employer_number":["exact"],
+            "employer_number":["exact", "istartswith", "icontains", "iexact"],
         }
 
         connection_class = ExtendedConnection

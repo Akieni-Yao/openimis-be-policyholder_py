@@ -14,7 +14,8 @@ from policyholder.gql.gql_mutations.create_mutations import CreatePolicyHolderMu
 from policyholder.gql.gql_mutations.delete_mutations import DeletePolicyHolderMutation, \
     DeletePolicyHolderInsureeMutation, DeletePolicyHolderUserMutation, DeletePolicyHolderContributionPlanMutation
 from policyholder.gql.gql_mutations.update_mutations import UpdatePolicyHolderMutation, \
-    UpdatePolicyHolderInsureeMutation, UpdatePolicyHolderUserMutation, UpdatePolicyHolderContributionPlanMutation
+    UpdatePolicyHolderInsureeMutation, UpdatePolicyHolderUserMutation, UpdatePolicyHolderContributionPlanMutation, \
+    UpdatePolicyHolderInsureeDesignation
 from policyholder.gql.gql_mutations.replace_mutation import ReplacePolicyHolderInsureeMutation, \
     ReplacePolicyHolderContributionPlanMutation, ReplacePolicyHolderUserMutation
 
@@ -243,6 +244,7 @@ class Mutation(graphene.ObjectType):
     replace_policy_holder_insuree = ReplacePolicyHolderInsureeMutation.Field()
     replace_policy_holder_user = ReplacePolicyHolderUserMutation.Field()
     replace_policy_holder_contribution_plan_bundle = ReplacePolicyHolderContributionPlanMutation.Field()
+    update_designation = UpdatePolicyHolderInsureeDesignation.Field()
 
 
 def on_policy_holder_mutation(sender, **kwargs):

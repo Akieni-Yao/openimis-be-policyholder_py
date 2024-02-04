@@ -14,8 +14,8 @@ import pandas as pd
 from django.http import JsonResponse, FileResponse, HttpResponse
 from graphql import GraphQLError
 
-from rest_framework.decorators import permission_classes, api_view
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import permission_classes, api_view, authentication_classes
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 
 from contract.models import Contract
@@ -212,6 +212,7 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
             current_address=line[HEADER_ADDRESS],
             phone=line[HEADER_PHONE],
             created_by=core_user_id,
+            modified_by=core_user_id,
             marital=mapping_marital_status(line[HEADER_CIVILITY]),
             email=line[HEADER_EMAIL],
             json_ext={
@@ -850,7 +851,8 @@ def get_emails_for_imis_administrators():
         print(f"An error occurred: {str(e)}")
         return []
 
-
+@authentication_classes([])
+@permission_classes([AllowAny])
 @api_view(['GET'])
 def not_declared_ph_rest(request):
     today = datetime.today()
