@@ -64,7 +64,7 @@ class Query(graphene.ObjectType):
         return gql_optimizer.query(PolicyHolder.objects.filter(id__in=policy_holder_ids).all(), info)
     
     policy_holder_by_insuree = OrderedDjangoFilterConnectionField(
-        PolicyHolderByInureeGQLType,
+        PolicyHolderInsureeGQLType,
         insuree_uuid=graphene.String(required=True),
         # active_or_last_expired_only=graphene.Boolean(),
         # show_history=graphene.Boolean(),
@@ -75,10 +75,11 @@ class Query(graphene.ObjectType):
         # family_uuid=kwargs.get('family_uuid')
         insuree_uuid=kwargs.pop('insuree_uuid')
         print("insuree_uuid : ", insuree_uuid)
-        policy_holder_insuree = PolicyHolderInsuree.objects.filter(insuree__uuid=insuree_uuid).all()
-        policy_holder_ids = [phi.policy_holder.id for phi in policy_holder_insuree]
-        print("policy_holder_ids : ", policy_holder_ids)
-        return gql_optimizer.query(PolicyHolder.objects.filter(id__in=policy_holder_ids).all(), info)
+        policy_holder_insuree = PolicyHolderInsuree.objects.filter(insuree__uuid=insuree_uuid)
+        # policy_holder_ids = [phi.policy_holder.id for phi in policy_holder_insuree]
+        # print("policy_holder_ids : ", policy_holder_ids)
+        # return gql_optimizer.query(PolicyHolder.objects.filter(id__in=policy_holder_ids).all(), info)
+        return gql_optimizer.query(policy_holder_insuree.all(), info)
 
     policy_holder_insuree = OrderedDjangoFilterConnectionField(
         PolicyHolderInsureeGQLType,
