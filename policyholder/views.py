@@ -281,10 +281,10 @@ def import_phi(request, policy_holder_code):
     org_columns = df.columns
     # Renaming the headers
     rename_columns = {
-        "CAMU Number": HEADER_INSUREE_CAMU_NO,
+        "Numéro CAMU": HEADER_INSUREE_CAMU_NO,
         "Prénom": HEADER_INSUREE_OTHER_NAMES,
         "Nom": HEADER_INSUREE_LAST_NAME,
-        "Tempoprary CAMU Number": HEADER_INSUREE_ID,
+        "Numéro CAMU temporaire": HEADER_INSUREE_ID,
         "Date de naissance": HEADER_INSUREE_DOB,
         "Lieu de naissance": HEADER_BIRTH_LOCATION_CODE,
         "Sexe": HEADER_INSUREE_GENDER,
@@ -301,7 +301,7 @@ def import_phi(request, policy_holder_code):
         "Part Salariale %": HEADER_EMPLOYEE_PERCENTAGE,
         "Part Salariale": HEADER_EMPLOYEE_SHARE,
         "Cotisation total": HEADER_TOTAL_SHARE,
-        "Delete": HEADER_DELETE,
+        "Supprimé": HEADER_DELETE,
     }
 
     df.rename(columns=rename_columns, inplace=True)
@@ -524,7 +524,7 @@ def export_phi(request, policy_holder_code):
                 .select_related('gender', 'current_village', 'family', 'family__location', 'family__location__parent',
                                 'family__location__parent__parent', 'family__location__parent__parent__parent')
 
-        data = list(queryset.values('camu_number', 'other_names', 'last_name', 'chf_id', 'gender__code', 'phone', 
+        data = list(queryset.values('camu_number', 'last_name', 'other_names', 'chf_id', 'gender__code', 'phone',
                                     'family__location__code', 'family__head_insuree__chf_id', 'email', 'json_ext', 'id', 'dob', 'marital'))
 
         df = pd.DataFrame(data)
@@ -586,7 +586,7 @@ def export_phi(request, policy_holder_code):
             cpbd = ContributionPlanBundleDetails.objects.filter(contribution_plan_bundle=cpb, is_deleted=False).first()
             conti_plan = cpbd.contribution_plan if cpbd else None
         else:
-            logger.debug(f"Error line {total_lines} - No contribution plan bundle with ({policy_holder.trade_name})")
+            logger.debug(" No contribution plan bundle.")
         
         employer_contri_per = dict()
         def extract_employer_percentage(insuree_id):
@@ -654,10 +654,10 @@ def export_phi(request, policy_holder_code):
         total_share = [extract_total_share(insuree_id) for insuree_id in df['id']]
         df.insert(loc=20, column='Cotisation total', value=total_share)
         
-        df['Delete'] = ''
+        df['Supprimé'] = '' #
 
-        df.rename(columns={'camu_number': 'CAMU Number', 'other_names': 'Prénom', 'last_name': 'Nom', 
-                        'chf_id': 'Tempoprary CAMU Number', 'gender__code': 'Sexe', 'phone': 'Téléphone',
+        df.rename(columns={'camu_number': 'Numéro CAMU', 'last_name': 'Nom', 'other_names': 'Prénom',
+                        'chf_id': 'Numéro CAMU temporaire', 'gender__code': 'Sexe', 'phone': 'Téléphone',
                         'family__location__code': 'Village', 'family__head_insuree__chf_id': 'ID Famille', 'email': 'Email'}, inplace=True)
 
         df.drop(columns=['json_ext', 'id', 'dob', 'marital'], inplace=True)
