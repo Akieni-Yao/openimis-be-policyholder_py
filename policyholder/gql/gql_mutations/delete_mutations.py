@@ -77,10 +77,6 @@ class DeletePolicyHolderExcptionMutation(OpenIMISMutation):
 
     @classmethod
     def async_mutate(cls, user, **data):
-    # def _validate_mutation(cls, user, **data):
-        # super()._validate_mutation(user, **data)
-        # PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_delete_policyholder_perms)
-        # print("Permission Validation Done")
         errors = []
         for policy_holder_exception_id in data["id"]:
             print("policy_holder_exception_id:",policy_holder_exception_id)

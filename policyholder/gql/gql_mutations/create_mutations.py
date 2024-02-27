@@ -147,11 +147,6 @@ class CreatePolicyHolderExcptionMutation(BaseHistoryModelCreateMutationMixin, Ba
     class Input(PolicyHolderExcptionInputType):
         pass
 
-    # @classmethod
-    # def _validate_mutation(cls, user, **data):
-    #     super()._validate_mutation(user, **data)
-    #     PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_create_policyholderexcption_perms)
-
     @classmethod
     def _mutate(cls, user, **data):
         from core.utils import TimeUtils

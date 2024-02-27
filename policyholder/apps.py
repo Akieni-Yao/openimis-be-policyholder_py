@@ -41,9 +41,6 @@ DEFAULT_CFG = {
     "gql_mutation_update_policyholderuser_portal_perms": ["154403"],
     "gql_mutation_delete_policyholderuser_portal_perms": ["154404"],
     "gql_mutation_replace_policyholderuser_portal_perms": ["154406"],
-    "gql_mutation_create_policyholderexcption_perms": ["154102"],
-    "gql_mutation_update_policyholderexcption_perms": ["154103"],
-    "gql_mutation_delete_policyholderexcption_perms": ["154104"],
     "policyholder_legal_form": [
         {
             "code": "1",
@@ -132,9 +129,6 @@ class PolicyholderConfig(AppConfig):
     gql_mutation_update_policyholderuser_portal_perms = []
     gql_mutation_delete_policyholderuser_portal_perms = []
     gql_mutation_replace_policyholderuser_portal_perms = []
-    gql_mutation_create_policyholderexcption_perms = []
-    gql_mutation_update_policyholderexcption_perms = []
-    gql_mutation_delete_policyholderexcption_perms = []
 
     policyholder_legal_form = []
     policyholder_activity = []
@@ -215,12 +209,6 @@ class PolicyholderConfig(AppConfig):
             "gql_mutation_delete_policyholderuser_portal_perms"]
         PolicyholderConfig.gql_mutation_replace_policyholderuser_portal_perms = cfg[
             "gql_mutation_replace_policyholderuser_portal_perms"]
-        PolicyholderConfig.gql_mutation_create_policyholderexcption_perms = cfg[
-            'gql_mutation_create_policyholderexcption_perms']
-        PolicyholderConfig.gql_mutation_update_policyholderexcption_perms = cfg[
-            'gql_mutation_update_policyholderexcption_perms']
-        PolicyholderConfig.gql_mutation_delete_policyholderexcption_perms = cfg[
-            'gql_mutation_delete_policyholderexcption_perms']
 
     def _configure_coding(self, cfg):
         PolicyholderConfig.policyholder_legal_form = cfg["policyholder_legal_form"]
