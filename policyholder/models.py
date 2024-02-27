@@ -1,5 +1,6 @@
 import uuid
 
+import core
 from contribution_plan.models import ContributionPlanBundle
 from django.conf import settings
 from django.db import models
@@ -197,3 +198,21 @@ class PolicyHolderUserMutation(core_models.UUIDModel):
     class Meta:
         managed = True
         db_table = "policy_holder_user_PolicyHolderUserMutation"
+
+
+class PolicyHolderExcption(models.Model):
+    id = models.AutoField(db_column='InsureeExptionID', primary_key=True)
+    policy_holder = models.ForeignKey(PolicyHolder, on_delete=models.DO_NOTHING,
+                                db_column='PolicyHolder')
+    status = models.CharField(db_column='Status', max_length=255, null=True)
+    exception_reason = models.CharField(db_column='ExceptionReason', max_length=255, null=True)
+    rejection_reason = models.CharField(db_column='RejectionReason', max_length=255, null=True)
+    created_by = models.CharField(db_column='CreatedBy', max_length=56, null=True)
+    modified_by = models.CharField(db_column='ModifiedBy', max_length=56, null=True)
+    created_time = models.DateTimeField(db_column='CreatedTime', auto_now_add=True, null=True)
+    modified_time = models.DateTimeField(db_column='ModifiedTime', auto_now=True, null=True)
+
+
+    class Meta:
+        managed = True
+        db_table = 'tblPolicyHolderException'
