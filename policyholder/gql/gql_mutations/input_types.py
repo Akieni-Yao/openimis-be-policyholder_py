@@ -124,3 +124,15 @@ class PolicyHolderUserReplaceInputType(ReplaceInputType):
     policy_holder_id = graphene.UUID(required=False)
     date_valid_from = graphene.Date(required=True)
     date_valid_to = graphene.Date(required=False)
+
+
+class PolicyHolderExcptionInputType(OpenIMISMutation.Input):
+    id = graphene.ID(required=False)
+    policy_holder = graphene.UUID(required=True)
+    status = graphene.String(required=False)
+    exception_reason = graphene.String(required=False)
+    rejection_reason = graphene.String(required=False)
+    created_by = graphene.String(required=False)
+    modified_by = graphene.String(required=False)
+    created_time = graphene.DateTime(required=False)
+    modified_time = graphene.DateTime(required=False)

@@ -7,7 +7,7 @@ from insuree.schema import InsureeGQLType
 from location.gql_queries import LocationGQLType
 
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderUser, PolicyHolderContributionPlan, \
-    PolicyHolderMutation
+    PolicyHolderMutation, PolicyHolderExcption
 
 
 class PolicyHolderGQLType(DjangoObjectType):
@@ -174,6 +174,13 @@ class PolicyHolderUserGQLType(DjangoObjectType):
 class PolicyHolderMutationGQLType(DjangoObjectType):
     class Meta:
         model = PolicyHolderMutation
+
+class PolicyHolderExcptionMutationGQLType(DjangoObjectType):
+    class Meta:
+        model = PolicyHolderExcption
+        fields="__all__"
+        connection_class = ExtendedConnection
+    
 
 class NotDeclaredPolicyHolderGQLType(DjangoObjectType):
 

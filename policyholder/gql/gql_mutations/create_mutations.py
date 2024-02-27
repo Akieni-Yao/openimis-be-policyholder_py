@@ -3,9 +3,9 @@ import logging
 from core.gql.gql_mutations.base_mutation import BaseMutation, BaseHistoryModelCreateMutationMixin
 from policyholder.apps import PolicyholderConfig
 from policyholder.dms_utils import create_policyholder_openkmfolder, send_mail_to_policyholder_with_pdf
-from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, PolicyHolderUser, Insuree
+from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, PolicyHolderUser, Insuree ,PolicyHolderExcption
 from policyholder.gql.gql_mutations import PolicyHolderInputType, PolicyHolderInsureeInputType, \
-    PolicyHolderContributionPlanInputType, PolicyHolderUserInputType
+    PolicyHolderContributionPlanInputType, PolicyHolderUserInputType,PolicyHolderExcptionInputType
 from policyholder.validation import PolicyHolderValidation
 from policyholder.validation.permission_validation import PermissionValidation
 from django.core.exceptions import ValidationError
@@ -137,3 +137,44 @@ class CreatePolicyHolderUserMutation(BaseHistoryModelCreateMutationMixin, BaseMu
     def _validate_mutation(cls, user, **data):
         super()._validate_mutation(user, **data)
         PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_create_policyholderuser_perms)
+
+
+class CreatePolicyHolderExcptionMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
+    _mutation_class = "PolicyHolderExcptionMutation"
+    _mutation_module = "policyholder"
+    _model = PolicyHolderExcption
+
+    class Input(PolicyHolderExcptionInputType):
+        pass
+
+    # @classmethod
+    # def _validate_mutation(cls, user, **data):
+    #     super()._validate_mutation(user, **data)
+    #     PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_create_policyholderexcption_perms)
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        from core.utils import TimeUtils
+        data['created_time'] = TimeUtils.now()
+        data['modified_time'] = TimeUtils.now()
+        data['created_by'] = user.id
+        data['modified_by'] = user.id
+        
+        if "client_mutation_id" in data:
+            data.pop('client_mutation_id')
+
+        if "client_mutation_label" in data:
+            data.pop('client_mutation_label')
+
+        policy_holder_id = data.pop('policy_holder')
+        policy_holder = PolicyHolder.objects.get(id=policy_holder_id)
+        data['policy_holder'] = policy_holder
+
+        print(data)
+        policyholder_exception = PolicyHolderExcption.objects.create(**data)
+        policyholder_exception.save()
+
+        # InsureeExcption.object_mutated(user, id=id, insuree_exception=insuree_exception)
+        return None
+    
+    
