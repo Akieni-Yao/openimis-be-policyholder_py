@@ -126,13 +126,28 @@ class PolicyHolderUserReplaceInputType(ReplaceInputType):
     date_valid_to = graphene.Date(required=False)
 
 
-class PolicyHolderExcptionInputType(OpenIMISMutation.Input):
-    id = graphene.ID(required=False)
-    policy_holder = graphene.UUID(required=True)
-    status = graphene.String(required=False)
-    exception_reason = graphene.String(required=False)
-    rejection_reason = graphene.String(required=False)
-    created_by = graphene.String(required=False)
-    modified_by = graphene.String(required=False)
-    created_time = graphene.DateTime(required=False)
-    modified_time = graphene.DateTime(required=False)
+# class PolicyHolderExcptionInputType(OpenIMISMutation.Input):
+#     id = graphene.ID(required=False)
+#     policy_holder = graphene.UUID(required=True)
+#     status = graphene.String(required=False)
+#     exception_reason = graphene.String(required=False)
+#     rejection_reason = graphene.String(required=False)
+#     created_by = graphene.String(required=False)
+#     modified_by = graphene.String(required=False)
+#     created_time = graphene.DateTime(required=False)
+#     modified_time = graphene.DateTime(required=False)
+
+class PolicyHolderExcptionInputType(graphene.InputObjectType):
+    policy_holder = graphene.ID(required=True)
+    status = graphene.String(required=True)
+    exception_reason = graphene.String(required=True)
+    rejection_reason = graphene.String(required=True)
+
+class UpdatePolicyHolderExcptionInputType(graphene.InputObjectType):
+    id = graphene.ID(required=True)
+    status = graphene.String()
+    exception_reason = graphene.String()
+    rejection_reason = graphene.String()
+
+class DeletePolicyHolderExcptionInputType(graphene.InputObjectType):
+    id = graphene.ID(required=True)

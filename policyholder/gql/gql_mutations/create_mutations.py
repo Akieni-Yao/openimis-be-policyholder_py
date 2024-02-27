@@ -8,6 +8,7 @@ from policyholder.gql.gql_mutations import PolicyHolderInputType, PolicyHolderIn
     PolicyHolderContributionPlanInputType, PolicyHolderUserInputType,PolicyHolderExcptionInputType
 from policyholder.validation import PolicyHolderValidation
 from policyholder.validation.permission_validation import PermissionValidation
+from policyholder.gql.gql_types import PolicyHolderExcptionType
 from django.core.exceptions import ValidationError
 import datetime
 import graphene
@@ -138,38 +139,38 @@ class CreatePolicyHolderUserMutation(BaseHistoryModelCreateMutationMixin, BaseMu
         super()._validate_mutation(user, **data)
         PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_create_policyholderuser_perms)
 
+   
+class CreatePolicyHolderExcptionMutation(graphene.Mutation):
+    class Arguments:
+        input_data = PolicyHolderExcptionInputType(required=True)
 
-class CreatePolicyHolderExcptionMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
-    _mutation_class = "PolicyHolderExcptionMutation"
-    _mutation_module = "policyholder"
-    _model = PolicyHolderExcption
-
-    class Input(PolicyHolderExcptionInputType):
-        pass
+    success = graphene.Boolean()
+    policy_holder_exception = graphene.Field(PolicyHolderExcptionType)
 
     @classmethod
-    def _mutate(cls, user, **data):
-        from core.utils import TimeUtils
-        data['created_time'] = TimeUtils.now()
-        data['modified_time'] = TimeUtils.now()
-        data['created_by'] = user.id
-        data['modified_by'] = user.id
-        
-        if "client_mutation_id" in data:
-            data.pop('client_mutation_id')
+    def mutate(cls, root, info, input_data):
+        policy_holder_id = input_data.get('policy_holder')
+        status = input_data.get('status')
+        exception_reason = input_data.get('exception_reason')
+        rejection_reason = input_data.get('rejection_reason')
 
-        if "client_mutation_label" in data:
-            data.pop('client_mutation_label')
-
-        policy_holder_id = data.pop('policy_holder')
+        # Convert policy_holder ID to PolicyHolder instance
         policy_holder = PolicyHolder.objects.get(id=policy_holder_id)
-        data['policy_holder'] = policy_holder
 
-        print(data)
-        policyholder_exception = PolicyHolderExcption.objects.create(**data)
+        # Create PolicyHolderExcption instance
+        from core.utils import TimeUtils
+        policyholder_exception = PolicyHolderExcption(
+            policy_holder=policy_holder,
+            status=status,
+            exception_reason=exception_reason,
+            rejection_reason=rejection_reason,
+            created_by=str(info.context.user.id),
+            modified_by=str(info.context.user.id),
+            created_time=TimeUtils.now(),
+            modified_time=TimeUtils.now()
+        )
+
         policyholder_exception.save()
 
-        # InsureeExcption.object_mutated(user, id=id, insuree_exception=insuree_exception)
-        return None
-    
-    
+        return cls(success=True, policy_holder_exception=policyholder_exception)
+  

@@ -5,7 +5,7 @@ from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderC
 from policyholder.validation.permission_validation import PermissionValidation
 import graphene
 from core.schema import OpenIMISMutation
-
+from policyholder.gql.gql_mutations import DeletePolicyHolderExcptionInputType
 
 class DeletePolicyHolderMutation(BaseHistoryModelDeleteMutationMixin, BaseDeleteMutation):
     _mutation_class = "PolicyHolderMutation"
@@ -62,40 +62,27 @@ class DeletePolicyHolderUserMutation(BaseHistoryModelDeleteMutationMixin, BaseDe
         super()._validate_mutation(user, **data)
         PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_delete_policyholderuser_perms)
 
-class DeletePolicyHolderExcptionMutation(OpenIMISMutation):
-    _mutation_class = "PolicyHolderExcptionMutation"
-    _mutation_module = "policyholder"
-    _model = PolicyHolderExcption
 
-    # class Input(DeleteInputType):
-    #     pass
+class DeletePolicyHolderExcptionMutation(graphene.Mutation):
+    class Arguments:
+        input_data = DeletePolicyHolderExcptionInputType(required=True)
+
     success = graphene.Boolean()
     message = graphene.String()
 
-    class Input(OpenIMISMutation.Input):
-        id = graphene.List(graphene.String,required=True)
-
     @classmethod
-    def async_mutate(cls, user, **data):
-        errors = []
-        for policy_holder_exception_id in data["id"]:
-            print("policy_holder_exception_id:",policy_holder_exception_id)
-            policy_holder_exception = PolicyHolderExcption.objects \
-                .filter(id=policy_holder_exception_id) \
-                .first()
-            if policy_holder_exception is None:
-                errors.append({
-                    'title': policy_holder_exception_id,
-                    'list': [{'message': _("policyholder.mutation.failed_to_delete_policy_holder_exception") % {'id': policy_holder_exception_id}}]
-                })
-                continue
-            try:
-                policy_holder_exception.delete()
-            except Exception as exc:
-                errors.append({
-                    'title': policy_holder_exception_id,
-                    'list': [{'message': _("policyholder.mutation.failed_to_delete_policy_holder_exception"), 'detail': str(exc)}]
-                })
-        if len(errors) == 1:
-            errors = errors[0]['list']
-        return errors   
+    def mutate(cls, root, info, input_data):
+        policy_holder_exception_id = input_data.get('id')
+        try:
+            # Fetch the existing PolicyHolderExcption instance
+            policy_holder_exception = PolicyHolderExcption.objects.get(id=policy_holder_exception_id)
+            # Delete the instance
+            policy_holder_exception.delete()
+            return cls(success=True, message="Deleted successfully")
+
+        except PolicyHolderExcption.DoesNotExist:
+            return cls(success=False, message="PolicyHolderExcption not found.")
+
+        except Exception as e:
+            return cls(success=False, message=str(e))
+

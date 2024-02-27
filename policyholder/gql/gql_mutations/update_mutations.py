@@ -4,9 +4,10 @@ from core.models import InteractiveUser
 from policyholder.apps import PolicyholderConfig
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, PolicyHolderUser, PolicyHolderExcption
 from policyholder.gql.gql_mutations import PolicyHolderInsureeUpdateInputType, \
-    PolicyHolderContributionPlanUpdateInputType, PolicyHolderUserUpdateInputType, PolicyHolderUpdateInputType, PolicyHolderExcptionInputType
+    PolicyHolderContributionPlanUpdateInputType, PolicyHolderUserUpdateInputType, PolicyHolderUpdateInputType, PolicyHolderExcptionInputType, UpdatePolicyHolderExcptionInputType
 from policyholder.validation import PolicyHolderValidation
 from policyholder.validation.permission_validation import PermissionValidation
+from policyholder.gql.gql_types import PolicyHolderExcptionType
 
 
 class UpdatePolicyHolderMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
@@ -115,34 +116,37 @@ class UpdatePolicyHolderInsureeDesignation(graphene.Mutation):
         return UpdatePolicyHolderInsureeDesignation(success=success, message=message)
 
 
-class UpdatePolicyHolderExcptionMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
-    _mutation_class = "PolicyHolderExcptionMutation"
-    _mutation_module = "policyholder"
-    _model = PolicyHolderExcption
+class UpdatePolicyHolderExcptionMutation(graphene.Mutation):
+    class Arguments:
+        input_data = UpdatePolicyHolderExcptionInputType(required=True)
+
+    success = graphene.Boolean()
+    policy_holder_exception = graphene.Field(PolicyHolderExcptionType)
 
     @classmethod
-    def _mutate(cls, user, **data):
-        if "client_mutation_id" in data:
-            data.pop('client_mutation_id')
-        if "client_mutation_label" in data:
-            data.pop('client_mutation_label')
+    def mutate(cls, root, info, input_data):
+        policy_holder_exception_id = input_data.get('id')
+        status = input_data.get('status')
+        exception_reason = input_data.get('exception_reason')
+        rejection_reason = input_data.get('rejection_reason')
 
-        policy_holder_id = data.pop('policy_holder')
-        policy_holder = PolicyHolder.objects.get(id=policy_holder_id)
-        data['policy_holder'] = policy_holder
-        updated_object = cls._model.objects.filter(id=data['id']).first()
-        [setattr(updated_object, key, data[key]) for key in data]
-        cls.update_policy_holder_user(user=user, object_to_update=updated_object)
-    
-    @classmethod
-    def update_policy_holder_user(cls, user, object_to_update):
-        object_to_update.save()
-        return object_to_update
-        
-    class Input(PolicyHolderExcptionInputType):
-        pass
+        # Fetch the existing PolicyHolderExcption instance
+        policy_holder_exception = PolicyHolderExcption.objects.get(id=policy_holder_exception_id)
 
-    @classmethod
-    def _validate_mutation(cls, user, **data):
-        super()._validate_mutation(user, **data)
-        PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_update_policyholderexcption_perms)
+        # Update fields if provided
+        if status is not None:
+            policy_holder_exception.status = status
+        if exception_reason is not None:
+            policy_holder_exception.exception_reason = exception_reason
+        if rejection_reason is not None:
+            policy_holder_exception.rejection_reason = rejection_reason
+
+        # Update modified fields
+        from core.utils import TimeUtils
+        policy_holder_exception.modified_by = str(info.context.user.id)
+        policy_holder_exception.modified_time = TimeUtils.now()
+
+        policy_holder_exception.save()
+
+        return cls(success=True, policy_holder_exception=policy_holder_exception)
+

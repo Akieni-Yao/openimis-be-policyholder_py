@@ -210,3 +210,7 @@ class NotDeclaredPolicyHolderGQLType(DjangoObjectType):
     @classmethod
     def get_queryset(cls, queryset, info):
         return PolicyHolder.get_queryset(queryset, info)
+    
+class PolicyHolderExcptionType(DjangoObjectType):
+    class Meta:
+        model = PolicyHolderExcption
