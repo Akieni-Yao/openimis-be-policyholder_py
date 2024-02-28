@@ -64,9 +64,9 @@ class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutati
         series1 = "CAMU" # Define the fixed components of the number
         series2 = str(code)  # You mentioned "construction" as the sector of activity
         series3 = congo_time.strftime("%H")  # Registration time (hour)
-        series4 = congo_time.strftime("%m")  # Month of registration
-        series5 = congo_time.strftime("%d")  # Day of registration
-        series6 = congo_time.strftime("%Y")  # Year of registration
+        series4 = congo_time.strftime("%m").zfill(2)  # Month of registration with leading zero
+        series5 = congo_time.strftime("%d").zfill(2)  # Day of registration with leading zero
+        series6 = congo_time.strftime("%y")  # Year of registration
         with connection.cursor() as cursor:
             cursor.execute("SELECT nextval('public.camu_code_seq')")
             sequence_value = cursor.fetchone()[0]
