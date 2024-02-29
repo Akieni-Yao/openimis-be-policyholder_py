@@ -8,9 +8,10 @@ from core.schema import OrderedDjangoFilterConnectionField, signal_mutation_modu
 from core.utils import append_validity_filter, filter_is_deleted
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderUser, \
     PolicyHolderContributionPlan, PolicyHolderMutation, PolicyHolderInsureeMutation, \
-    PolicyHolderContributionPlanMutation, PolicyHolderUserMutation
+    PolicyHolderContributionPlanMutation, PolicyHolderUserMutation, PolicyHolderExcption
 from policyholder.gql.gql_mutations.create_mutations import CreatePolicyHolderMutation, \
-    CreatePolicyHolderInsureeMutation, CreatePolicyHolderUserMutation, CreatePolicyHolderContributionPlanMutation
+    CreatePolicyHolderInsureeMutation, CreatePolicyHolderUserMutation, CreatePolicyHolderContributionPlanMutation, \
+     CreatePolicyHolderExcption
 from policyholder.gql.gql_mutations.delete_mutations import DeletePolicyHolderMutation, \
     DeletePolicyHolderInsureeMutation, DeletePolicyHolderUserMutation, DeletePolicyHolderContributionPlanMutation
 from policyholder.gql.gql_mutations.update_mutations import UpdatePolicyHolderMutation, \
@@ -22,7 +23,8 @@ from policyholder.gql.gql_mutations.replace_mutation import ReplacePolicyHolderI
 from policyholder.apps import PolicyholderConfig
 from policyholder.services import PolicyHolder as PolicyHolderServices
 from policyholder.gql.gql_types import PolicyHolderUserGQLType, PolicyHolderGQLType, PolicyHolderInsureeGQLType, \
-    PolicyHolderContributionPlanGQLType, PolicyHolderByFamilyGQLType, PolicyHolderByInureeGQLType, NotDeclaredPolicyHolderGQLType
+    PolicyHolderContributionPlanGQLType, PolicyHolderByFamilyGQLType, PolicyHolderByInureeGQLType, \
+    NotDeclaredPolicyHolderGQLType, PolicyHolderExcptionType
 
 from django.core.exceptions import PermissionDenied
 from django.utils.translation import gettext as _
@@ -226,6 +228,10 @@ class Query(graphene.ObjectType):
         query = PolicyHolderContributionPlan.objects
         return gql_optimizer.query(query.filter(*filters).all(), info)
 
+    all_policyholder_exceptions = OrderedDjangoFilterConnectionField(PolicyHolderExcptionType)
+    def resolve_all_policyholder_exceptions(self, info, **kwargs):
+        return gql_optimizer.query(PolicyHolderExcption.objects.all(), info)
+
 
 class Mutation(graphene.ObjectType):
     create_policy_holder = CreatePolicyHolderMutation.Field()
@@ -247,6 +253,7 @@ class Mutation(graphene.ObjectType):
     replace_policy_holder_user = ReplacePolicyHolderUserMutation.Field()
     replace_policy_holder_contribution_plan_bundle = ReplacePolicyHolderContributionPlanMutation.Field()
     update_designation = UpdatePolicyHolderInsureeDesignation.Field()
+    create_policy_holder_exception = CreatePolicyHolderExcption.Field()
 
 
 def on_policy_holder_mutation(sender, **kwargs):

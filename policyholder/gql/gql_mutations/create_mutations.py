@@ -1,11 +1,17 @@
 import logging
 
+from graphene_django import DjangoObjectType
+
+from core import ExtendedConnection
 from core.gql.gql_mutations.base_mutation import BaseMutation, BaseHistoryModelCreateMutationMixin
 from policyholder.apps import PolicyholderConfig
-from policyholder.dms_utils import create_policyholder_openkmfolder, send_mail_to_policyholder_with_pdf
-from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, PolicyHolderUser, Insuree
+from policyholder.dms_utils import create_policyholder_openkmfolder, send_mail_to_policyholder_with_pdf, \
+    create_folder_for_policy_holder_exception
+from policyholder.gql import PolicyHolderExcptionType
+from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, PolicyHolderUser, \
+    Insuree, PolicyHolderExcption
 from policyholder.gql.gql_mutations import PolicyHolderInputType, PolicyHolderInsureeInputType, \
-    PolicyHolderContributionPlanInputType, PolicyHolderUserInputType
+    PolicyHolderContributionPlanInputType, PolicyHolderUserInputType, PolicyHolderExcptionInput
 from policyholder.validation import PolicyHolderValidation
 from policyholder.validation.permission_validation import PermissionValidation
 from django.core.exceptions import ValidationError
@@ -137,3 +143,42 @@ class CreatePolicyHolderUserMutation(BaseHistoryModelCreateMutationMixin, BaseMu
     def _validate_mutation(cls, user, **data):
         super()._validate_mutation(user, **data)
         PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_create_policyholderuser_perms)
+
+
+class CreatePolicyHolderExcption(graphene.Mutation):
+    policy_holder_excption = graphene.Field(PolicyHolderExcptionType)
+    errors = graphene.List(graphene.String)
+
+    class Arguments:
+        input_data = PolicyHolderExcptionInput(required=True)
+
+    def mutate(self, info, input_data):
+        try:
+            user = info.context.user
+            policy_holder = PolicyHolder.objects.filter(id=input_data['policy_holder_id']).first()
+
+            if not policy_holder:
+                return CreatePolicyHolderExcption(policy_holder_excption=None, errors=["Policy holder not found"])
+
+            current_time = datetime.datetime.now()
+            today_date = current_time.date().strftime('%d-%m-%Y')
+            ph_exc_code = f"{policy_holder.code}-({today_date})"
+            policy_holder_excption = PolicyHolderExcption(
+                code=ph_exc_code,
+                policy_holder=policy_holder,
+                status='PENDING',
+                created_by=user.id,
+                modified_by=user.id,
+                created_time=current_time,
+                modified_time=current_time,
+                **input_data
+            )
+            policy_holder_excption.save()
+            create_folder_for_policy_holder_exception(user, policy_holder, ph_exc_code)
+            logging.info(f"PolicyHolderExcption created successfully: {policy_holder_excption.id}")
+            return CreatePolicyHolderExcption(policy_holder_excption=policy_holder_excption, errors=[])
+
+        except Exception as e:
+            logging.error(f"An error occurred: {str(e)}")
+            error_message = f"An error occurred: {str(e)}"
+            return CreatePolicyHolderExcption(policy_holder_excption=None, errors=[error_message])
