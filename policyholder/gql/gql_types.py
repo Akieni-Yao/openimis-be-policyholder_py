@@ -204,6 +204,9 @@ class PolicyHolderExcptionType(DjangoObjectType):
     class Meta:
         model = PolicyHolderExcption
         filter_fields = {
-            "id": ["exact"], }
+            "id": ["exact"],
+            "status": ["exact", "istartswith", "icontains", "iexact"],
+            **prefix_filterset("policy_holder__", PolicyHolderGQLType._meta.filter_fields),
+        }
         interfaces = (graphene.relay.Node,)
         connection_class = ExtendedConnection
