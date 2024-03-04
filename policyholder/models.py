@@ -208,6 +208,7 @@ class PolicyHolderExcption(models.Model):
     status = models.CharField(db_column='Status', max_length=255, null=True)
     exception_reason = models.CharField(db_column='ExceptionReason', max_length=255, null=True)
     rejection_reason = models.CharField(db_column='RejectionReason', max_length=255, null=True)
+    is_used = models.BooleanField(db_column='IsUsed', default=False)
     created_by = models.CharField(db_column='CreatedBy', max_length=56, null=True)
     modified_by = models.CharField(db_column='ModifiedBy', max_length=56, null=True)
     created_time = models.DateTimeField(db_column='CreatedTime', auto_now_add=True, null=True)

@@ -21,7 +21,7 @@ from policyholder.gql.gql_mutations.replace_mutation import ReplacePolicyHolderI
     ReplacePolicyHolderContributionPlanMutation, ReplacePolicyHolderUserMutation
 
 from policyholder.apps import PolicyholderConfig
-from policyholder.services import PolicyHolder as PolicyHolderServices
+from policyholder.services import assign_ph_exception_policy, PolicyHolder as PolicyHolderServices
 from policyholder.gql.gql_types import PolicyHolderUserGQLType, PolicyHolderGQLType, PolicyHolderInsureeGQLType, \
     PolicyHolderContributionPlanGQLType, PolicyHolderByFamilyGQLType, PolicyHolderByInureeGQLType, \
     NotDeclaredPolicyHolderGQLType, PolicyHolderExcptionType
@@ -36,6 +36,10 @@ from contract.models import Contract
 from datetime import datetime, timedelta
 from graphql import GraphQLError
 
+
+class ApprovePolicyholderExceptionType(graphene.ObjectType):
+    success = graphene.Boolean()
+    message = graphene.String()
 
 class Query(graphene.ObjectType):
     policy_holder = OrderedDjangoFilterConnectionField(
@@ -152,6 +156,25 @@ class Query(graphene.ObjectType):
         else:
             ph_object = PolicyHolder.objects.filter(is_deleted=False).all().exclude(id__in=contract_list)
         return gql_optimizer.query(ph_object, info)
+    
+    approve_policyholder_exception = graphene.Field(
+        ApprovePolicyholderExceptionType,
+        id = graphene.Int(required=True),
+        is_approved = graphene.Boolean(required=True),
+        rejection_reason = graphene.String(required=False)
+    )
+    
+    def resolve_approve_policyholder_exception(self, info, id, is_approved, rejection_reason):
+        ph_exception = PolicyHolderExcption.objects.filter(id=id).first()
+        if ph_exception:
+            ph_exception.status = "APPROVED" if is_approved else "REJECTED"
+            if is_approved:
+                assign_ph_exception_policy(ph_exception)
+            else:
+                ph_exception.rejection_reason = rejection_reason
+            ph_exception.save()
+            return ApprovePolicyholderExceptionType(success=True, message="Exception Approved!")
+        return ApprovePolicyholderExceptionType(success=False, message="Exception Not Found!")
 
     def resolve_validate_policy_holder_code(self, info, **kwargs):
         if not info.context.user.has_perms(PolicyholderConfig.gql_query_policyholder_perms):
