@@ -206,6 +206,7 @@ class PolicyHolderExcptionType(DjangoObjectType):
         filter_fields = {
             "id": ["exact"],
             "status": ["exact", "istartswith", "icontains", "iexact"],
+            "exception_reason": ["exact", "istartswith", "icontains", "iexact"],
             **prefix_filterset("policy_holder__", PolicyHolderGQLType._meta.filter_fields),
         }
         interfaces = (graphene.relay.Node,)
