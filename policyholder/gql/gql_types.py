@@ -7,11 +7,10 @@ from insuree.schema import InsureeGQLType
 from location.gql_queries import LocationGQLType
 
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderUser, PolicyHolderContributionPlan, \
-    PolicyHolderMutation
+    PolicyHolderMutation, PolicyHolderExcption
 
 
 class PolicyHolderGQLType(DjangoObjectType):
-
     class Meta:
         model = PolicyHolder
         interfaces = (graphene.relay.Node,)
@@ -41,7 +40,6 @@ class PolicyHolderGQLType(DjangoObjectType):
 
 
 class PolicyHolderByFamilyGQLType(DjangoObjectType):
-
     class Meta:
         model = PolicyHolder
         interfaces = (graphene.relay.Node,)
@@ -67,10 +65,9 @@ class PolicyHolderByFamilyGQLType(DjangoObjectType):
     @classmethod
     def get_queryset(cls, queryset, info):
         return PolicyHolder.get_queryset(queryset, info)
-    
-    
-class PolicyHolderByInureeGQLType(DjangoObjectType):
 
+
+class PolicyHolderByInureeGQLType(DjangoObjectType):
     class Meta:
         model = PolicyHolder
         interfaces = (graphene.relay.Node,)
@@ -99,7 +96,6 @@ class PolicyHolderByInureeGQLType(DjangoObjectType):
 
 
 class PolicyHolderInsureeGQLType(DjangoObjectType):
-
     class Meta:
         model = PolicyHolderInsuree
         interfaces = (graphene.relay.Node,)
@@ -114,7 +110,7 @@ class PolicyHolderInsureeGQLType(DjangoObjectType):
             "user_created": ["exact"],
             "user_updated": ["exact"],
             "is_deleted": ["exact"],
-            "employer_number":["exact", "istartswith", "icontains", "iexact"],
+            "employer_number": ["exact", "istartswith", "icontains", "iexact"],
         }
 
         connection_class = ExtendedConnection
@@ -125,7 +121,6 @@ class PolicyHolderInsureeGQLType(DjangoObjectType):
 
 
 class PolicyHolderContributionPlanGQLType(DjangoObjectType):
-
     class Meta:
         model = PolicyHolderContributionPlan
         interfaces = (graphene.relay.Node,)
@@ -149,7 +144,6 @@ class PolicyHolderContributionPlanGQLType(DjangoObjectType):
 
 
 class PolicyHolderUserGQLType(DjangoObjectType):
-
     class Meta:
         model = PolicyHolderUser
         interfaces = (graphene.relay.Node,)
@@ -171,12 +165,13 @@ class PolicyHolderUserGQLType(DjangoObjectType):
     def get_queryset(cls, queryset, info):
         return PolicyHolderUser.get_queryset(queryset, info)
 
+
 class PolicyHolderMutationGQLType(DjangoObjectType):
     class Meta:
         model = PolicyHolderMutation
 
-class NotDeclaredPolicyHolderGQLType(DjangoObjectType):
 
+class NotDeclaredPolicyHolderGQLType(DjangoObjectType):
     class Meta:
         model = PolicyHolder
         interfaces = (graphene.relay.Node,)
@@ -203,3 +198,16 @@ class NotDeclaredPolicyHolderGQLType(DjangoObjectType):
     @classmethod
     def get_queryset(cls, queryset, info):
         return PolicyHolder.get_queryset(queryset, info)
+
+
+class PolicyHolderExcptionType(DjangoObjectType):
+    class Meta:
+        model = PolicyHolderExcption
+        filter_fields = {
+            "id": ["exact"],
+            "status": ["exact", "istartswith", "icontains", "iexact"],
+            "exception_reason": ["exact", "istartswith", "icontains", "iexact"],
+            **prefix_filterset("policy_holder__", PolicyHolderGQLType._meta.filter_fields),
+        }
+        interfaces = (graphene.relay.Node,)
+        connection_class = ExtendedConnection
