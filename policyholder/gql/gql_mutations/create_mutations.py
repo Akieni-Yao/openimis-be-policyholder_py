@@ -20,6 +20,7 @@ import graphene
 import pytz
 import base64
 from django.db import connection
+from django.db.models import Q, F
 from django.apps import apps
 
 logger = logging.getLogger(__name__)
@@ -162,14 +163,38 @@ class CreatePolicyHolderExcption(graphene.Mutation):
             policy_holder = PolicyHolder.objects.filter(id=input_data['policy_holder_id']).first()
             if not policy_holder:
                 return CreatePolicyHolderExcption(policy_holder_excption=None, errors=["Policy holder not found"])
-            phcp = PolicyHolderContributionPlan.objects.filter(policy_holder=policy_holder, is_deleted=False).first()
+            
+            phcp = PolicyHolderContributionPlan.objects.filter(policy_holder=policy_holder, is_deleted=False).order_by('-date_created')
             if phcp:
-                periodicity = phcp.contribution_plan_bundle.periodicity
+                periodicity = phcp[0].contribution_plan_bundle.periodicity
                 if periodicity != 1:
                     return CreatePolicyHolderExcption(
                         policy_holder_excption=None,
-                        message="PolicyHolder's contribution plan periodicity should be 1"
+                        message="PolicyHolder's contribution plan periodicity should be 1."
                     )
+            else:
+                return CreatePolicyHolderExcption(
+                        policy_holder_excption=None,
+                        message="PolicyHolder's contribution plan not found."
+                    )
+
+            month = None
+            contract_id = None
+            from payment.models import Payment
+            ph_payment = Payment.objects.filter(
+                Q(received_amount__lt=F('expected_amount')) | Q(received_amount__isnull=True),
+                contract__policy_holder__id=policy_holder.id, 
+                contract__state=5, is_locked=False).order_by('-id')
+            logging.info(f"CreatePolicyHolderExcption :  ph_payment : {ph_payment}")
+            if ph_payment:
+                contract_id = ph_payment[0].contract.id
+                month = ph_payment[0].contract.date_valid_from.month
+                month_dict = {1:'January',2:'February',3:'March',4:'April',5:'May',6:'June',7:'July',8:'August',9:'September',10:'October',11:'November',12:'December'}
+                month = month_dict.get(month)
+                logging.info(f"CreatePolicyHolderExcption :  ph_payment : contract_id : {contract_id}")
+                logging.info(f"CreatePolicyHolderExcption :  ph_payment : month : {month}")
+            else:
+                return CreatePolicyHolderExcption(policy_holder_excption=None, message="Payment already done for all contracts.")
 
             current_time = datetime.datetime.now()
             today_date = current_time.date().strftime('%d-%m-%Y')
@@ -182,6 +207,8 @@ class CreatePolicyHolderExcption(graphene.Mutation):
                 modified_by=user.id,
                 created_time=current_time,
                 modified_time=current_time,
+                month=month,
+                contract_id=contract_id,
                 **input_data
             )
             policy_holder_excption.save()
