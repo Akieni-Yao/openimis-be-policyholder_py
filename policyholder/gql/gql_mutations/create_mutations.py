@@ -21,7 +21,9 @@ import pytz
 import base64
 from django.db import connection
 from django.apps import apps
+
 logger = logging.getLogger(__name__)
+
 
 class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
     _mutation_class = "PolicyHolderMutation"
@@ -60,14 +62,15 @@ class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutati
         #     logger.exception("failed to send message", str(exc))
         model_class = apps.get_model(cls._mutation_module, cls._mutation_class)
         if model_class and hasattr(model_class, "object_mutated") and client_mutation_id is not None:
-            model_class.object_mutated(user, client_mutation_id=client_mutation_id, **{cls._mutation_module:created_object})
+            model_class.object_mutated(user, client_mutation_id=client_mutation_id,
+                                       **{cls._mutation_module: created_object})
 
     @classmethod
     def generate_camu_registration_number(cls, code):
         congo_timezone = pytz.timezone('Africa/Kinshasa')
         # Get the current time in Congo Time
         congo_time = datetime.datetime.now(congo_timezone)
-        series1 = "CAMU" # Define the fixed components of the number
+        series1 = "CAMU"  # Define the fixed components of the number
         series2 = str(code)  # You mentioned "construction" as the sector of activity
         series3 = congo_time.strftime("%H")  # Registration time (hour)
         series4 = congo_time.strftime("%m").zfill(2)  # Month of registration with leading zero
@@ -94,12 +97,12 @@ class CreatePolicyHolderInsureeMutation(BaseHistoryModelCreateMutationMixin, Bas
     def _validate_mutation(cls, user, **data):
         insuree_id = data.get('insuree_id')
         policyholder_id = data.get('policy_holder_id')
-        is_insuree = PolicyHolderInsuree.objects.filter(policy_holder__id=policyholder_id, insuree__id=insuree_id, is_deleted=False).first()
+        is_insuree = PolicyHolderInsuree.objects.filter(policy_holder__id=policyholder_id, insuree__id=insuree_id,
+                                                        is_deleted=False).first()
         if is_insuree:
             raise ValidationError(message="Already Exists")
         super()._validate_mutation(user, **data)
         PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_create_policyholderinsuree_perms)
-        
 
 
 class CreatePolicyHolderContributionPlanMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
@@ -113,7 +116,8 @@ class CreatePolicyHolderContributionPlanMutation(BaseHistoryModelCreateMutationM
     @classmethod
     def _validate_mutation(cls, user, **data):
         super()._validate_mutation(user, **data)
-        PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_create_policyholdercontributionplan_perms)
+        PermissionValidation.validate_perms(user,
+                                            PolicyholderConfig.gql_mutation_create_policyholdercontributionplan_perms)
 
 
 class CreatePolicyHolderUserMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
@@ -147,7 +151,7 @@ class CreatePolicyHolderUserMutation(BaseHistoryModelCreateMutationMixin, BaseMu
 
 class CreatePolicyHolderExcption(graphene.Mutation):
     policy_holder_excption = graphene.Field(PolicyHolderExcptionType)
-    errors = graphene.List(graphene.String)
+    message = graphene.String()
 
     class Arguments:
         input_data = PolicyHolderExcptionInput(required=True)
@@ -164,7 +168,7 @@ class CreatePolicyHolderExcption(graphene.Mutation):
                 if periodicity != 1:
                     return CreatePolicyHolderExcption(
                         policy_holder_excption=None,
-                        errors=["PolicyHolder's contribution plan periodicity should be 1"]
+                        message="PolicyHolder's contribution plan periodicity should be 1"
                     )
 
             current_time = datetime.datetime.now()
@@ -183,9 +187,9 @@ class CreatePolicyHolderExcption(graphene.Mutation):
             policy_holder_excption.save()
             create_folder_for_policy_holder_exception(user, policy_holder, ph_exc_code)
             logging.info(f"PolicyHolderExcption created successfully: {policy_holder_excption.id}")
-            return CreatePolicyHolderExcption(policy_holder_excption=policy_holder_excption, errors=[])
+            return CreatePolicyHolderExcption(policy_holder_excption=policy_holder_excption, message=None)
 
         except Exception as e:
             logging.error(f"An error occurred: {str(e)}")
             error_message = f"An error occurred: {str(e)}"
-            return CreatePolicyHolderExcption(policy_holder_excption=None, errors=[error_message])
+            return CreatePolicyHolderExcption(policy_holder_excption=None, message=error_message)
