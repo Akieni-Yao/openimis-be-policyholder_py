@@ -156,9 +156,16 @@ class CreatePolicyHolderExcption(graphene.Mutation):
         try:
             user = info.context.user
             policy_holder = PolicyHolder.objects.filter(id=input_data['policy_holder_id']).first()
-
             if not policy_holder:
                 return CreatePolicyHolderExcption(policy_holder_excption=None, errors=["Policy holder not found"])
+            phcp = PolicyHolderContributionPlan.objects.filter(policy_holder=policy_holder, is_deleted=False).first()
+            if phcp:
+                periodicity = phcp.contribution_plan_bundle.periodicity
+                if periodicity != 1:
+                    return CreatePolicyHolderExcption(
+                        policy_holder_excption=None,
+                        errors=["PolicyHolder's contribution plan periodicity should be 1"]
+                    )
 
             current_time = datetime.datetime.now()
             today_date = current_time.date().strftime('%d-%m-%Y')
