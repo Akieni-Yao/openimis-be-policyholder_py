@@ -1,11 +1,17 @@
 import logging
 
+from graphene_django import DjangoObjectType
+
+from core import ExtendedConnection
 from core.gql.gql_mutations.base_mutation import BaseMutation, BaseHistoryModelCreateMutationMixin
 from policyholder.apps import PolicyholderConfig
-from policyholder.dms_utils import create_policyholder_openkmfolder, send_mail_to_policyholder_with_pdf
-from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, PolicyHolderUser, Insuree
+from policyholder.dms_utils import create_policyholder_openkmfolder, send_mail_to_policyholder_with_pdf, \
+    create_folder_for_policy_holder_exception
+from policyholder.gql import PolicyHolderExcptionType
+from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, PolicyHolderUser, \
+    Insuree, PolicyHolderExcption
 from policyholder.gql.gql_mutations import PolicyHolderInputType, PolicyHolderInsureeInputType, \
-    PolicyHolderContributionPlanInputType, PolicyHolderUserInputType
+    PolicyHolderContributionPlanInputType, PolicyHolderUserInputType, PolicyHolderExcptionInput
 from policyholder.validation import PolicyHolderValidation
 from policyholder.validation.permission_validation import PermissionValidation
 from django.core.exceptions import ValidationError
@@ -14,8 +20,11 @@ import graphene
 import pytz
 import base64
 from django.db import connection
+from django.db.models import Q, F
 from django.apps import apps
+
 logger = logging.getLogger(__name__)
+
 
 class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
     _mutation_class = "PolicyHolderMutation"
@@ -54,19 +63,20 @@ class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutati
         #     logger.exception("failed to send message", str(exc))
         model_class = apps.get_model(cls._mutation_module, cls._mutation_class)
         if model_class and hasattr(model_class, "object_mutated") and client_mutation_id is not None:
-            model_class.object_mutated(user, client_mutation_id=client_mutation_id, **{cls._mutation_module:created_object})
+            model_class.object_mutated(user, client_mutation_id=client_mutation_id,
+                                       **{cls._mutation_module: created_object})
 
     @classmethod
     def generate_camu_registration_number(cls, code):
         congo_timezone = pytz.timezone('Africa/Kinshasa')
         # Get the current time in Congo Time
         congo_time = datetime.datetime.now(congo_timezone)
-        series1 = "CAMU" # Define the fixed components of the number
+        series1 = "CAMU"  # Define the fixed components of the number
         series2 = str(code)  # You mentioned "construction" as the sector of activity
         series3 = congo_time.strftime("%H")  # Registration time (hour)
-        series4 = congo_time.strftime("%m")  # Month of registration
-        series5 = congo_time.strftime("%d")  # Day of registration
-        series6 = congo_time.strftime("%Y")  # Year of registration
+        series4 = congo_time.strftime("%m").zfill(2)  # Month of registration with leading zero
+        series5 = congo_time.strftime("%d").zfill(2)  # Day of registration with leading zero
+        series6 = congo_time.strftime("%y")  # Year of registration
         with connection.cursor() as cursor:
             cursor.execute("SELECT nextval('public.camu_code_seq')")
             sequence_value = cursor.fetchone()[0]
@@ -88,12 +98,12 @@ class CreatePolicyHolderInsureeMutation(BaseHistoryModelCreateMutationMixin, Bas
     def _validate_mutation(cls, user, **data):
         insuree_id = data.get('insuree_id')
         policyholder_id = data.get('policy_holder_id')
-        is_insuree = PolicyHolderInsuree.objects.filter(policy_holder__id=policyholder_id, insuree__id=insuree_id, is_deleted=False).first()
+        is_insuree = PolicyHolderInsuree.objects.filter(policy_holder__id=policyholder_id, insuree__id=insuree_id,
+                                                        is_deleted=False).first()
         if is_insuree:
             raise ValidationError(message="Already Exists")
         super()._validate_mutation(user, **data)
         PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_create_policyholderinsuree_perms)
-        
 
 
 class CreatePolicyHolderContributionPlanMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
@@ -107,7 +117,8 @@ class CreatePolicyHolderContributionPlanMutation(BaseHistoryModelCreateMutationM
     @classmethod
     def _validate_mutation(cls, user, **data):
         super()._validate_mutation(user, **data)
-        PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_create_policyholdercontributionplan_perms)
+        PermissionValidation.validate_perms(user,
+                                            PolicyholderConfig.gql_mutation_create_policyholdercontributionplan_perms)
 
 
 class CreatePolicyHolderUserMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
@@ -137,3 +148,75 @@ class CreatePolicyHolderUserMutation(BaseHistoryModelCreateMutationMixin, BaseMu
     def _validate_mutation(cls, user, **data):
         super()._validate_mutation(user, **data)
         PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_create_policyholderuser_perms)
+
+
+class CreatePolicyHolderExcption(graphene.Mutation):
+    policy_holder_excption = graphene.Field(PolicyHolderExcptionType)
+    message = graphene.String()
+
+    class Arguments:
+        input_data = PolicyHolderExcptionInput(required=True)
+
+    def mutate(self, info, input_data):
+        try:
+            user = info.context.user
+            policy_holder = PolicyHolder.objects.filter(id=input_data['policy_holder_id']).first()
+            if not policy_holder:
+                return CreatePolicyHolderExcption(policy_holder_excption=None, errors=["Policy holder not found"])
+            
+            phcp = PolicyHolderContributionPlan.objects.filter(policy_holder=policy_holder, is_deleted=False).order_by('-date_created')
+            if phcp:
+                periodicity = phcp[0].contribution_plan_bundle.periodicity
+                if periodicity != 1:
+                    return CreatePolicyHolderExcption(
+                        policy_holder_excption=None,
+                        message="PolicyHolder's contribution plan periodicity should be 1."
+                    )
+            else:
+                return CreatePolicyHolderExcption(
+                        policy_holder_excption=None,
+                        message="PolicyHolder's contribution plan not found."
+                    )
+
+            month = None
+            contract_id = None
+            from payment.models import Payment
+            ph_payment = Payment.objects.filter(
+                Q(received_amount__lt=F('expected_amount')) | Q(received_amount__isnull=True),
+                contract__policy_holder__id=policy_holder.id, 
+                contract__state=5, is_locked=False).order_by('-id')
+            logging.info(f"CreatePolicyHolderExcption :  ph_payment : {ph_payment}")
+            if ph_payment:
+                contract_id = ph_payment[0].contract.id
+                month = ph_payment[0].contract.date_valid_from.month
+                month_dict = {1:'January',2:'February',3:'March',4:'April',5:'May',6:'June',7:'July',8:'August',9:'September',10:'October',11:'November',12:'December'}
+                month = month_dict.get(month)
+                logging.info(f"CreatePolicyHolderExcption :  ph_payment : contract_id : {contract_id}")
+                logging.info(f"CreatePolicyHolderExcption :  ph_payment : month : {month}")
+            else:
+                return CreatePolicyHolderExcption(policy_holder_excption=None, message="Payment already done for all contracts.")
+
+            current_time = datetime.datetime.now()
+            today_date = current_time.date().strftime('%d-%m-%Y')
+            ph_exc_code = f"{policy_holder.code}-({today_date})"
+            policy_holder_excption = PolicyHolderExcption(
+                code=ph_exc_code,
+                policy_holder=policy_holder,
+                status='PENDING',
+                created_by=user.id,
+                modified_by=user.id,
+                created_time=current_time,
+                modified_time=current_time,
+                month=month,
+                contract_id=contract_id,
+                **input_data
+            )
+            policy_holder_excption.save()
+            create_folder_for_policy_holder_exception(user, policy_holder, ph_exc_code)
+            logging.info(f"PolicyHolderExcption created successfully: {policy_holder_excption.id}")
+            return CreatePolicyHolderExcption(policy_holder_excption=policy_holder_excption, message=None)
+
+        except Exception as e:
+            logging.error(f"An error occurred: {str(e)}")
+            error_message = f"An error occurred: {str(e)}"
+            return CreatePolicyHolderExcption(policy_holder_excption=None, message=error_message)

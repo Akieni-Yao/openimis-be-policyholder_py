@@ -1,4 +1,5 @@
 import json
+import logging
 
 import requests
 from django.conf import settings
@@ -10,7 +11,7 @@ from insuree.dms_utils import CNSS_CREATE_FOLDER_API_URL, get_headers_with_token
 from insuree.reports.code_converstion_for_report import convert_activity_data
 from report.apps import ReportConfig
 from report.services import get_report_definition, generate_report
-
+logger = logging.getLogger(__name__)
 
 def create_policyholder_openkmfolder(data):
     camu_code = data['code']
@@ -145,3 +146,32 @@ def get_french_value(number):
     }
 
     return legal_form_options.get(number, "")
+
+
+def create_folder_for_policy_holder_exception(user, policy_holder, ph_exc_code):
+    opt_station = None
+    try:
+        if user and hasattr(user, 'station') and hasattr(
+                user.station, 'name'):
+            opt_station = user.station.name
+    except Exception as exc:
+        logger.exception("Failed to get station data. Error: %s", exc)
+    body_data = {
+        "fileNumber": ph_exc_code,
+        "metaData": {
+            "folder_type": "POLICY_HOLDER_EXCEPTION"
+        },
+        "center": opt_station,
+        "parent": policy_holder.code
+    }
+    try:
+        headers = get_headers_with_token()
+        response = requests.post(CNSS_CREATE_FOLDER_API_URL, json=body_data, headers=headers, verify=False)
+        response.raise_for_status()  # Raise an exception for non-2xx responses
+        # Process the response JSON or data
+        response_data = response.json()
+        print(response_data)
+        return JsonResponse(response_data)
+    except requests.exceptions.RequestException as e:
+        # Handle connection errors or other exceptions
+        return JsonResponse({"error": str(e)}, status=500)
