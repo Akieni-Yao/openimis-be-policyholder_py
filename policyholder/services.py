@@ -452,3 +452,7 @@ def _output_result_success(dict_representation):
         "detail": "",
         "data": json.loads(json.dumps(dict_representation, cls=DjangoJSONEncoder)),
     }
+
+
+def assign_ph_exception_policy(ph_exception):
+    return True

@@ -124,3 +124,8 @@ class PolicyHolderUserReplaceInputType(ReplaceInputType):
     policy_holder_id = graphene.UUID(required=False)
     date_valid_from = graphene.Date(required=True)
     date_valid_to = graphene.Date(required=False)
+
+
+class PolicyHolderExcptionInput(graphene.InputObjectType):
+    policy_holder_id = graphene.UUID(required=True)
+    exception_reason = graphene.String()
