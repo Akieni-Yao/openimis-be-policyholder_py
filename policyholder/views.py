@@ -32,6 +32,7 @@ from insuree.abis_api import create_abis_insuree
 
 logger = logging.getLogger(__name__)
 
+MINIMUM_AGE_LIMIT = 16
 HEADER_INSUREE_CAMU_NO = 'camu_number'
 HEADER_FAMILY_HEAD = "family_head"
 HEADER_FAMILY_LOCATION_CODE = "family_location_code"
@@ -319,7 +320,20 @@ def import_phi(request, policy_holder_code):
         total_lines += 1
         clean_line(line)
         logger.debug("Importing line %s: %s", total_lines, line)
-        
+
+        # Add the validation for age here
+        dob = line[HEADER_INSUREE_DOB]
+        age = (datetime.now().date() - dob.date()) // timedelta(days=365.25)  # Calculate age in years
+        if age < MINIMUM_AGE_LIMIT:
+            errors.append(f"Error line {total_lines} - Head insuree must be at least {MINIMUM_AGE_LIMIT} years old.")
+            logger.debug(f"Error line {total_lines} - Head insuree be at least {MINIMUM_AGE_LIMIT} years old.")
+            total_validation_errors += 1
+
+            # Adding error in output excel
+            row_data = line.tolist()
+            row_data.extend(["Failed", f"Insuree must be at least {MINIMUM_AGE_LIMIT} years old."])
+            processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
+            continue
         
         validation_errors = validate_line(line)
         if validation_errors:
@@ -332,7 +346,7 @@ def import_phi(request, policy_holder_code):
             row_data.extend(["Failed", validation_errors])
             processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
             continue
-        
+
         if line[HEADER_DELETE] and line[HEADER_DELETE].lower() == "yes":
             is_deleted = soft_delete_insuree(line, policy_holder_code, user_id)
             if is_deleted:
