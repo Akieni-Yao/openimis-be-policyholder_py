@@ -227,6 +227,18 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
 
     return insuree, created
 
+def validating_insuree_on_name_dob(line):    
+    insuree_dob = line[HEADER_INSUREE_DOB]
+    if not isinstance(insuree_dob, datetime):
+        datetime_obj = datetime.strptime(insuree_dob, "%d/%m/%Y")
+        line[HEADER_INSUREE_DOB] = timezone.make_aware(datetime_obj).date() 
+            
+    insuree = Insuree.objects.filter(
+        other_names=line[HEADER_INSUREE_OTHER_NAMES], last_name=line[HEADER_INSUREE_LAST_NAME],
+        dob=line[HEADER_INSUREE_DOB], validity_to__isnull=True, legacy_id__isnull=True).first()
+
+    return insuree
+
 
 def get_policy_holder_from_code(ph_code: str):
     return PolicyHolder.objects.filter(code=ph_code, is_deleted=False).first()
@@ -397,6 +409,12 @@ def import_phi(request, policy_holder_code):
         except Exception as e:
             logger.error(f"Error occurred while retrieving Contribution Plan Bundle: {e}")
             enrolment_type = None
+        
+        insuree = validating_insuree_on_name_dob(line)
+        if insuree:
+            pass
+            continue
+        
         family, family_created = get_or_create_family_from_line(line, village, user_id,enrolment_type)
         logger.debug("family_created: %s", family_created)
         if family_created:
