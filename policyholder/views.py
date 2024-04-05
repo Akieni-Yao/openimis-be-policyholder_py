@@ -346,7 +346,23 @@ def import_phi(request, policy_holder_code):
             row_data.extend(["Failed", f"Insuree must be at least {MINIMUM_AGE_LIMIT} years old."])
             processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
             continue
-        
+        force_value = str(line.get('Force', '')).strip().lower()
+        if force_value not in ['yes', 'Yes', 'YES']:
+            # Check if insuree with the same name and DOB already exists
+            insuree = validating_insuree_on_name_dob(line)
+            if insuree:
+                # Generate an error message instructing to add insuree forcibly
+                errors.append(
+                    f"Error line {total_lines} - Insuree with same name and dob already exists. If you want to add, please add forcibly by adding a new column named 'Force' with the value 'YES'.")
+                logger.debug(
+                    f"Error line {total_lines} - Insuree with same name and dob already exists. If you want to add, please add forcibly by adding a new column named 'Force' with the value 'YES'.")
+
+                # Adding error in output excel
+                row_data = line.tolist()
+                row_data.extend(["Failed",
+                                 "Insuree with same name and dob already exists. If you want to add, please add forcibly by adding a new column named 'Force' with the value 'YES'."])
+                processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
+                continue
         validation_errors = validate_line(line)
         if validation_errors:
             errors.append(f"Error line {total_lines} - validation issues ({validation_errors})")
@@ -410,10 +426,10 @@ def import_phi(request, policy_holder_code):
             logger.error(f"Error occurred while retrieving Contribution Plan Bundle: {e}")
             enrolment_type = None
         
-        insuree = validating_insuree_on_name_dob(line)
-        if insuree:
-            pass
-            continue
+        # insuree = validating_insuree_on_name_dob(line)
+        # if insuree:
+        #     pass
+        #     continue
         
         family, family_created = get_or_create_family_from_line(line, village, user_id,enrolment_type)
         logger.debug("family_created: %s", family_created)
