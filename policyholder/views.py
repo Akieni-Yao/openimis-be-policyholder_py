@@ -333,14 +333,38 @@ def import_phi(request, policy_holder_code):
         clean_line(line)
         logger.debug("Importing line %s: %s", total_lines, line)
 
-        # Add the validation for age here
-        dob = line[HEADER_INSUREE_DOB]
+        # List of possible date formats to try
+        date_formats = ['%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y']  # Add more formats as needed
+
+        dob_value = line[HEADER_INSUREE_DOB]
+
+        if isinstance(dob_value, datetime):
+            dob = dob_value
+        else:
+            dob = None
+            for date_format in date_formats:
+                try:
+                    dob = datetime.strptime(dob_value, date_format)
+                    break  # If parsing succeeds, break out of the loop
+                except ValueError:
+                    continue  # If parsing fails, try the next format
+
+            if dob is None:
+                # If none of the formats match, handle the error
+                errors.append(f"Error line {total_lines} - Invalid date format for date of birth: {dob_value}")
+                logger.debug(f"Error line {total_lines} - Invalid date format for date of birth: {dob_value}")
+                total_validation_errors += 1
+                # Adding error in output excel
+                row_data = line.tolist()
+                row_data.extend(["Failed", f"Invalid date format for date of birth: {dob_value}"])
+                processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
+                continue
+
         age = (datetime.now().date() - dob.date()) // timedelta(days=365.25)  # Calculate age in years
         if age < MINIMUM_AGE_LIMIT:
             errors.append(f"Error line {total_lines} - Head insuree must be at least {MINIMUM_AGE_LIMIT} years old.")
             logger.debug(f"Error line {total_lines} - Head insuree be at least {MINIMUM_AGE_LIMIT} years old.")
             total_validation_errors += 1
-
             # Adding error in output excel
             row_data = line.tolist()
             row_data.extend(["Failed", f"Insuree must be at least {MINIMUM_AGE_LIMIT} years old."])
