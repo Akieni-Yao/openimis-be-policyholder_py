@@ -23,6 +23,8 @@ from django.db import connection
 from django.db.models import Q, F
 from django.apps import apps
 
+from policyholder.views import manuall_check_for_category_change_request
+
 logger = logging.getLogger(__name__)
 
 
@@ -98,10 +100,13 @@ class CreatePolicyHolderInsureeMutation(BaseHistoryModelCreateMutationMixin, Bas
     def _validate_mutation(cls, user, **data):
         insuree_id = data.get('insuree_id')
         policyholder_id = data.get('policy_holder_id')
+        is_cc_request = manuall_check_for_category_change_request(user, insuree_id, policyholder_id)
         is_insuree = PolicyHolderInsuree.objects.filter(policy_holder__id=policyholder_id, insuree__id=insuree_id,
                                                         is_deleted=False).first()
         if is_insuree:
             raise ValidationError(message="Already Exists")
+        if is_cc_request:
+            raise ValidationError(message="Change Request Created.")
         super()._validate_mutation(user, **data)
         PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_create_policyholderinsuree_perms)
 

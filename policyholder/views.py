@@ -1040,20 +1040,52 @@ def check_for_category_change_request(user, line, policy_holder, enrolment_type)
             code = request_number_cc()
             old_category = insuree.json_ext.get('insureeEnrolmentType', '')
             if code:
-                if not insuree.family:
+                if insuree.family:
+                    if insuree.head:
+                        if new_category != old_category:
+                            create_dependent_category_change(user, code, insuree, new_category, policy_holder,
+                                                             'DEPENDENT_REQ',
+                                                             'PENDING')
+                            return True
+                        else:
+                            return False
+                    else:
+                        create_dependent_category_change(user, code, insuree, new_category, policy_holder,
+                                                         'DEPENDENT_REQ',
+                                                         'PENDING')
+                        return True
+                else:
                     create_dependent_category_change(user, code, insuree, new_category, policy_holder, 'INDIVIDUAL_REQ',
                                                      'PENDING')
                     return True
-                elif not insuree.head:
-                    create_dependent_category_change(user, code, insuree, new_category, policy_holder, 'DEPENDENT_REQ',
-                                                     'PENDING')
-                    return True
-                else:
-                    if new_category == old_category:
-                        return True
-                    else:
-                        return False
         return False
     except Exception as e:
         print("Error in check_for_category_change_request:", e)
         return False
+
+
+def manuall_check_for_category_change_request(user, insuree_id, policyholder_id):
+    try:
+        policy_holder = PolicyHolder.objects.filter(id=policyholder_id, is_deleted=False).first()
+        if not policy_holder:
+            raise ValueError("Policy holder not found or deleted.")
+        ph_cpb = PolicyHolderContributionPlan.objects.filter(policy_holder=policy_holder, is_deleted=False).first()
+        if not ph_cpb:
+            raise ValueError("Contribution plan for the policy holder not found or deleted.")
+        cpb = ph_cpb.contribution_plan_bundle
+        if not cpb:
+            raise ValueError("Contribution plan bundle not found.")
+        enrolment_type = cpb.name
+        insuree = Insuree.objects.filter(id=insuree_id).first()
+        if not insuree:
+            raise ValueError("Insuree not found.")
+        line = {
+            'insuree_id': insuree.chf_id,
+            'camu_number': insuree.camu_number
+        }
+        response = check_for_category_change_request(user, line, policy_holder, enrolment_type)
+        return response
+    except Exception as e:
+        return False
+
+
