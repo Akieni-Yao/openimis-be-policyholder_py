@@ -8,7 +8,7 @@ from core.schema import OrderedDjangoFilterConnectionField, signal_mutation_modu
 from core.utils import append_validity_filter, filter_is_deleted
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderUser, \
     PolicyHolderContributionPlan, PolicyHolderMutation, PolicyHolderInsureeMutation, \
-    PolicyHolderContributionPlanMutation, PolicyHolderUserMutation, PolicyHolderExcption
+    PolicyHolderContributionPlanMutation, PolicyHolderUserMutation, PolicyHolderExcption, CategoryChange
 from policyholder.gql.gql_mutations.create_mutations import CreatePolicyHolderMutation, \
     CreatePolicyHolderInsureeMutation, CreatePolicyHolderUserMutation, CreatePolicyHolderContributionPlanMutation, \
      CreatePolicyHolderExcption
@@ -24,7 +24,7 @@ from policyholder.apps import PolicyholderConfig
 from policyholder.services import assign_ph_exception_policy, PolicyHolder as PolicyHolderServices
 from policyholder.gql.gql_types import PolicyHolderUserGQLType, PolicyHolderGQLType, PolicyHolderInsureeGQLType, \
     PolicyHolderContributionPlanGQLType, PolicyHolderByFamilyGQLType, PolicyHolderByInureeGQLType, \
-    NotDeclaredPolicyHolderGQLType, PolicyHolderExcptionType
+    NotDeclaredPolicyHolderGQLType, PolicyHolderExcptionType, CategoryChangeGQLType
 
 from django.core.exceptions import PermissionDenied
 from django.utils.translation import gettext as _
@@ -175,6 +175,14 @@ class Query(graphene.ObjectType):
             ph_exception.save()
             return ApprovePolicyholderExceptionType(success=True, message="Exception Approved!")
         return ApprovePolicyholderExceptionType(success=False, message="Exception Not Found!")
+    
+    category_change_requests = OrderedDjangoFilterConnectionField(
+        CategoryChangeGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+    )
+    
+    def resolve_category_change_requests(self, info, **kwargs):
+        return gql_optimizer.query(CategoryChange.objects.all(), info)
 
     def resolve_validate_policy_holder_code(self, info, **kwargs):
         if not info.context.user.has_perms(PolicyholderConfig.gql_query_policyholder_perms):
