@@ -25,7 +25,8 @@ from insuree.gql_mutations import temp_generate_employee_camu_registration_numbe
 from insuree.models import Insuree, Gender, Family
 from location.models import Location
 from policyholder.apps import PolicyholderConfig
-from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan
+from policyholder.dms_utils import create_folder_for_cat_chnage_req
+from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, CategoryChange
 from contribution_plan.models import ContributionPlanBundleDetails
 from workflow.workflow_stage import insuree_add_to_workflow
 from insuree.abis_api import create_abis_insuree
@@ -337,56 +338,56 @@ def import_phi(request, policy_holder_code):
         date_formats = ['%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y']  # Add more formats as needed
 
         dob_value = line[HEADER_INSUREE_DOB]
+        if not line.get(HEADER_INSUREE_ID) and line.get(HEADER_FAMILY_HEAD):
+            if isinstance(dob_value, datetime):
+                dob = dob_value
+            else:
+                dob = None
+                for date_format in date_formats:
+                    try:
+                        dob = datetime.strptime(dob_value, date_format)
+                        break  # If parsing succeeds, break out of the loop
+                    except ValueError:
+                        continue  # If parsing fails, try the next format
 
-        if isinstance(dob_value, datetime):
-            dob = dob_value
-        else:
-            dob = None
-            for date_format in date_formats:
-                try:
-                    dob = datetime.strptime(dob_value, date_format)
-                    break  # If parsing succeeds, break out of the loop
-                except ValueError:
-                    continue  # If parsing fails, try the next format
+                if dob is None:
+                    # If none of the formats match, handle the error
+                    errors.append(f"Error line {total_lines} - Invalid date format for date of birth: {dob_value}")
+                    logger.debug(f"Error line {total_lines} - Invalid date format for date of birth: {dob_value}")
+                    total_validation_errors += 1
+                    # Adding error in output excel
+                    row_data = line.tolist()
+                    row_data.extend(["Failed", f"Invalid date format for date of birth: {dob_value}"])
+                    processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
+                    continue
 
-            if dob is None:
-                # If none of the formats match, handle the error
-                errors.append(f"Error line {total_lines} - Invalid date format for date of birth: {dob_value}")
-                logger.debug(f"Error line {total_lines} - Invalid date format for date of birth: {dob_value}")
+            age = (datetime.now().date() - dob.date()) // timedelta(days=365.25)  # Calculate age in years
+            if age < MINIMUM_AGE_LIMIT:
+                errors.append(f"Error line {total_lines} - Head insuree must be at least {MINIMUM_AGE_LIMIT} years old.")
+                logger.debug(f"Error line {total_lines} - Head insuree be at least {MINIMUM_AGE_LIMIT} years old.")
                 total_validation_errors += 1
                 # Adding error in output excel
                 row_data = line.tolist()
-                row_data.extend(["Failed", f"Invalid date format for date of birth: {dob_value}"])
+                row_data.extend(["Failed", f"Insuree must be at least {MINIMUM_AGE_LIMIT} years old."])
                 processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
                 continue
+            force_value = str(line.get('Force', '')).strip().lower()
+            if force_value not in ['yes', 'Yes', 'YES']:
+                # Check if insuree with the same name and DOB already exists
+                insuree = validating_insuree_on_name_dob(line)
+                if insuree:
+                    # Generate an error message instructing to add insuree forcibly
+                    errors.append(
+                        f"Error line {total_lines} - Insuree with same name and dob already exists. If you want to add, please add forcibly by adding a new column named 'Force' with the value 'YES'.")
+                    logger.debug(
+                        f"Error line {total_lines} - Insuree with same name and dob already exists. If you want to add, please add forcibly by adding a new column named 'Force' with the value 'YES'.")
 
-        age = (datetime.now().date() - dob.date()) // timedelta(days=365.25)  # Calculate age in years
-        if age < MINIMUM_AGE_LIMIT:
-            errors.append(f"Error line {total_lines} - Head insuree must be at least {MINIMUM_AGE_LIMIT} years old.")
-            logger.debug(f"Error line {total_lines} - Head insuree be at least {MINIMUM_AGE_LIMIT} years old.")
-            total_validation_errors += 1
-            # Adding error in output excel
-            row_data = line.tolist()
-            row_data.extend(["Failed", f"Insuree must be at least {MINIMUM_AGE_LIMIT} years old."])
-            processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
-            continue
-        force_value = str(line.get('Force', '')).strip().lower()
-        if force_value not in ['yes', 'Yes', 'YES']:
-            # Check if insuree with the same name and DOB already exists
-            insuree = validating_insuree_on_name_dob(line)
-            if insuree:
-                # Generate an error message instructing to add insuree forcibly
-                errors.append(
-                    f"Error line {total_lines} - Insuree with same name and dob already exists. If you want to add, please add forcibly by adding a new column named 'Force' with the value 'YES'.")
-                logger.debug(
-                    f"Error line {total_lines} - Insuree with same name and dob already exists. If you want to add, please add forcibly by adding a new column named 'Force' with the value 'YES'.")
-
-                # Adding error in output excel
-                row_data = line.tolist()
-                row_data.extend(["Failed",
-                                 "Insuree with same name and dob already exists. If you want to add, please add forcibly by adding a new column named 'Force' with the value 'YES'."])
-                processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
-                continue
+                    # Adding error in output excel
+                    row_data = line.tolist()
+                    row_data.extend(["Failed",
+                                     "Insuree with same name and dob already exists. If you want to add, please add forcibly by adding a new column named 'Force' with the value 'YES'."])
+                    processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
+                    continue
         validation_errors = validate_line(line)
         if validation_errors:
             errors.append(f"Error line {total_lines} - validation issues ({validation_errors})")
@@ -454,7 +455,11 @@ def import_phi(request, policy_holder_code):
         # if insuree:
         #     pass
         #     continue
-        
+
+        is_cc_request = check_for_category_change_request(request.user, line, policy_holder, enrolment_type)
+        if is_cc_request:
+            continue
+
         family, family_created = get_or_create_family_from_line(line, village, user_id,enrolment_type)
         logger.debug("family_created: %s", family_created)
         if family_created:
@@ -990,3 +995,65 @@ def not_declared_ph_rest(request):
     except Exception as e:
         print("An error occurred:", str(e))
         return Response({"error": "An error occurred while processing the data."})
+
+
+def request_number_cc():
+    try:
+        current_date = datetime.now()
+        number = current_date.strftime('%m%d%H%M%S')
+        return "CC{}".format(number)
+    except Exception as e:
+        print("Error in generating request number:", e)
+        return None
+
+
+def create_dependent_category_change(user, code, insuree, new_category, policy_holder, request_type, status):
+    cc = CategoryChange.objects.create(
+        code=code,
+        insuree=insuree,
+        new_category=new_category,
+        policy_holder=policy_holder,
+        request_type=request_type,
+        status=status,
+        created_by=user,
+        modified_by=user
+    )
+    req_no = cc.code
+    create_folder_for_cat_chnage_req(insuree, req_no)
+    logger.info(f"CategoryChange request created for Insuree {insuree} for {request_type.lower()} request")
+
+
+def check_for_category_change_request(user, line, policy_holder, enrolment_type):
+    try:
+        insuree_id = line.get(HEADER_INSUREE_ID)
+        camu_num = line.get(HEADER_INSUREE_CAMU_NO)
+        insuree = None
+
+        if insuree_id:
+            insuree = Insuree.objects.filter(validity_to__isnull=True, chf_id=insuree_id).first()
+
+        if not insuree and camu_num:
+            insuree = Insuree.objects.filter(validity_to__isnull=True, camu_number=camu_num).first()
+
+        if insuree:
+            new_category = map_enrolment_type_to_category(enrolment_type)
+            code = request_number_cc()
+            old_category = insuree.json_ext.get('insureeEnrolmentType', '')
+            if code:
+                if not insuree.family:
+                    create_dependent_category_change(user, code, insuree, new_category, policy_holder, 'INDIVIDUAL_REQ',
+                                                     'PENDING')
+                    return True
+                elif not insuree.head:
+                    create_dependent_category_change(user, code, insuree, new_category, policy_holder, 'DEPENDENT_REQ',
+                                                     'PENDING')
+                    return True
+                else:
+                    if new_category == old_category:
+                        return True
+                    else:
+                        return False
+        return False
+    except Exception as e:
+        print("Error in check_for_category_change_request:", e)
+        return False
