@@ -220,3 +220,21 @@ class PolicyHolderExcption(models.Model):
     class Meta:
         managed = True
         db_table = 'tblPolicyHolderException'
+
+
+class CategoryChange(models.Model):
+    id = models.AutoField(db_column='ID', primary_key=True)
+    code = models.CharField(db_column='Code', max_length=256)
+    insuree = models.ForeignKey(Insuree, on_delete=models.DO_NOTHING, db_column='Insuree')
+    new_category = models.CharField(db_column='NewCategory', max_length=256)
+    policy_holder = models.ForeignKey(PolicyHolder, on_delete=models.DO_NOTHING, db_column='PolicyHolder')
+    request_type = models.CharField(db_column='RequestType', max_length=256)
+    status = models.CharField(db_column='Status', max_length=256)
+    created_by = models.ForeignKey(core_models.User, on_delete=models.DO_NOTHING, db_column='CreatedBy', related_name ='created_by_user', null=True)
+    modified_by = models.ForeignKey(core_models.User, on_delete=models.DO_NOTHING, db_column='modified_by', related_name='modified_by_user', null=True)
+    created_time = models.DateTimeField(db_column='CreatedTime', auto_now_add=True)
+    modified_time = models.DateTimeField(db_column='ModifiedTime', auto_now=True)
+    
+    class Meta:
+        managed = True
+        db_table = 'tblCategoryChange'
