@@ -3,6 +3,8 @@ import graphene_django_optimizer as gql_optimizer
 import calendar
 
 from django.db.models import Q
+
+from insuree.schema import CommonQueryType
 from location.apps import LocationConfig
 from core.schema import OrderedDjangoFilterConnectionField, signal_mutation_module_validate
 from core.utils import append_validity_filter, filter_is_deleted
@@ -260,8 +262,29 @@ class Query(graphene.ObjectType):
         return gql_optimizer.query(query.filter(*filters).all(), info)
 
     all_policyholder_exceptions = OrderedDjangoFilterConnectionField(PolicyHolderExcptionType)
+
     def resolve_all_policyholder_exceptions(self, info, **kwargs):
         return gql_optimizer.query(PolicyHolderExcption.objects.all(), info)
+
+    category_change_doc_upload = graphene.Field(
+        CommonQueryType,
+        code=graphene.String(required=True),
+        document_provided=graphene.Boolean(required=True)
+    )
+
+    def resolve_category_change_doc_upload(self, info, **kwargs):
+        code = kwargs.get("request_number")
+        document_provided = kwargs.get("document_provided")
+        cc_object = CategoryChange.objects.filter(code=code).first()
+        if cc_object:
+            if document_provided:
+                cc_object.status = 'PROCESSING'
+                cc_object.save()
+                return CommonQueryType(success=True, message="Request Updated successfully!")
+            else:
+                return CommonQueryType(success=False, message="Documents Not Provided!")
+        else:
+            return CommonQueryType(success=False, message="Request Not Found!")
 
 
 class Mutation(graphene.ObjectType):
