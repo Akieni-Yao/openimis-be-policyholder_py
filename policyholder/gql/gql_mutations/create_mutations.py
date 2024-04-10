@@ -232,6 +232,7 @@ class CategoryChangeInput(graphene.InputObjectType):
     id = graphene.Int(required=False)
     code = graphene.String(required=False)
     status = graphene.String(required=True)
+    request_type = graphene.String(required=False)
     rejected_reason = graphene.String(required=False)
 
 
