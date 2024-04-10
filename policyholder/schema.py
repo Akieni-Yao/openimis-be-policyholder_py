@@ -273,7 +273,7 @@ class Query(graphene.ObjectType):
     )
 
     def resolve_category_change_doc_upload(self, info, **kwargs):
-        code = kwargs.get("request_number")
+        code = kwargs.get("code")
         document_provided = kwargs.get("document_provided")
         cc_object = CategoryChange.objects.filter(code=code).first()
         if cc_object:
