@@ -1057,7 +1057,7 @@ def check_for_category_change_request(user, line, policy_holder, enrolment_type)
                                                          CC_PENDING)
                         return True
                 else:
-                    create_dependent_category_change(user, code, insuree, new_category, policy_holder, 'INDIVIDUAL_REQ',
+                    create_dependent_category_change(user, code, insuree, old_category, new_category, policy_holder, 'INDIVIDUAL_REQ',
                                                      CC_PENDING)
                     return True
         return False
