@@ -1008,10 +1008,11 @@ def request_number_cc():
         return None
 
 
-def create_dependent_category_change(user, code, insuree, new_category, policy_holder, request_type, status):
+def create_dependent_category_change(user, code, insuree, old_category, new_category, policy_holder, request_type, status):
     cc = CategoryChange.objects.create(
         code=code,
         insuree=insuree,
+        old_category=old_category,
         new_category=new_category,
         policy_holder=policy_holder,
         request_type=request_type,
@@ -1044,14 +1045,14 @@ def check_for_category_change_request(user, line, policy_holder, enrolment_type)
                 if insuree.family:
                     if insuree.head:
                         if new_category != old_category:
-                            create_dependent_category_change(user, code, insuree, new_category, policy_holder,
+                            create_dependent_category_change(user, code, insuree, old_category, new_category, policy_holder,
                                                              'DEPENDENT_REQ',
                                                              CC_PENDING)
                             return True
                         else:
                             return False
                     else:
-                        create_dependent_category_change(user, code, insuree, new_category, policy_holder,
+                        create_dependent_category_change(user, code, insuree, old_category, new_category, policy_holder,
                                                          'DEPENDENT_REQ',
                                                          CC_PENDING)
                         return True
