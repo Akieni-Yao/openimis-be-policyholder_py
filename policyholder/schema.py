@@ -13,7 +13,7 @@ from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderU
     PolicyHolderContributionPlanMutation, PolicyHolderUserMutation, PolicyHolderExcption, CategoryChange
 from policyholder.gql.gql_mutations.create_mutations import CreatePolicyHolderMutation, \
     CreatePolicyHolderInsureeMutation, CreatePolicyHolderUserMutation, CreatePolicyHolderContributionPlanMutation, \
-     CreatePolicyHolderExcption
+    CreatePolicyHolderExcption, CategoryChangeStatusChange
 from policyholder.gql.gql_mutations.delete_mutations import DeletePolicyHolderMutation, \
     DeletePolicyHolderInsureeMutation, DeletePolicyHolderUserMutation, DeletePolicyHolderContributionPlanMutation
 from policyholder.gql.gql_mutations.update_mutations import UpdatePolicyHolderMutation, \
@@ -32,6 +32,7 @@ from django.core.exceptions import PermissionDenied
 from django.utils.translation import gettext as _
 
 from payment.signals import signal_before_payment_query
+from .constants import CC_PROCESSING
 from .signals import append_policy_holder_filter
 
 from contract.models import Contract
@@ -278,7 +279,7 @@ class Query(graphene.ObjectType):
         cc_object = CategoryChange.objects.filter(code=code).first()
         if cc_object:
             if document_provided:
-                cc_object.status = 'PROCESSING'
+                cc_object.status = CC_PROCESSING
                 cc_object.save()
                 return CommonQueryType(success=True, message="Request Updated successfully!")
             else:
@@ -308,6 +309,7 @@ class Mutation(graphene.ObjectType):
     replace_policy_holder_contribution_plan_bundle = ReplacePolicyHolderContributionPlanMutation.Field()
     update_designation = UpdatePolicyHolderInsureeDesignation.Field()
     create_policy_holder_exception = CreatePolicyHolderExcption.Field()
+    category_change_status_change = CategoryChangeStatusChange.Field()
 
 
 def on_policy_holder_mutation(sender, **kwargs):

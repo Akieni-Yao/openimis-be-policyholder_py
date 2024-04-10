@@ -5,11 +5,12 @@ from graphene_django import DjangoObjectType
 from core import ExtendedConnection
 from core.gql.gql_mutations.base_mutation import BaseMutation, BaseHistoryModelCreateMutationMixin
 from policyholder.apps import PolicyholderConfig
+from policyholder.constants import CC_APPROVED, CC_REJECTED
 from policyholder.dms_utils import create_policyholder_openkmfolder, send_mail_to_policyholder_with_pdf, \
     create_folder_for_policy_holder_exception
 from policyholder.gql import PolicyHolderExcptionType
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, PolicyHolderUser, \
-    Insuree, PolicyHolderExcption
+    Insuree, PolicyHolderExcption, CategoryChange
 from policyholder.gql.gql_mutations import PolicyHolderInputType, PolicyHolderInsureeInputType, \
     PolicyHolderContributionPlanInputType, PolicyHolderUserInputType, PolicyHolderExcptionInput
 from policyholder.validation import PolicyHolderValidation
@@ -225,3 +226,50 @@ class CreatePolicyHolderExcption(graphene.Mutation):
             logging.error(f"An error occurred: {str(e)}")
             error_message = f"An error occurred: {str(e)}"
             return CreatePolicyHolderExcption(policy_holder_excption=None, message=error_message)
+
+
+class CategoryChangeInput(graphene.InputObjectType):
+    id = graphene.Int(required=False)
+    code = graphene.String(required=False)
+    status = graphene.String(required=True)
+    rejected_reason = graphene.String(required=False)
+
+
+class CategoryChangeStatusChange(graphene.Mutation):
+    class Arguments:
+        input = graphene.Argument(CategoryChangeInput)
+
+    success = graphene.Boolean()
+    message = graphene.String()
+
+    @classmethod
+    def mutate(cls, root, info, input):
+        cc_id = input.get("id")
+        code = input.get("code")
+        status = input.get("status")
+        cc = None
+        if code:
+            cc = CategoryChange.objects.filter(code=code).first()
+        elif cc_id:
+            cc = CategoryChange.objects.filter(id=cc_id).first()
+        if cc:
+            cc.status = status
+            if cc.status == CC_APPROVED:
+                insuree = cc.insuree
+                new_category = cc.new_category
+                insuree.save_history()
+                old_category = insuree.json_ext.get('insureeEnrolmentType', '')
+                if old_category:
+                    insuree.json_ext['insureeEnrolmentType'] = new_category
+                insuree.save()
+                # TODO WE HERE WE HAVE TO RIGHT REJECTION LOGIC
+            cc.save()
+            return CategoryChangeStatusChange(
+                success=True,
+                message="Request status successfully updated!"
+            )
+        return CategoryChangeStatusChange(
+            success=False,
+            message="Request not found!"
+        )
+

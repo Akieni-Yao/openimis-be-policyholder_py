@@ -25,6 +25,7 @@ from insuree.gql_mutations import temp_generate_employee_camu_registration_numbe
 from insuree.models import Insuree, Gender, Family
 from location.models import Location
 from policyholder.apps import PolicyholderConfig
+from policyholder.constants import CC_PENDING
 from policyholder.dms_utils import create_folder_for_cat_chnage_req
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, CategoryChange
 from contribution_plan.models import ContributionPlanBundleDetails
@@ -1045,18 +1046,18 @@ def check_for_category_change_request(user, line, policy_holder, enrolment_type)
                         if new_category != old_category:
                             create_dependent_category_change(user, code, insuree, new_category, policy_holder,
                                                              'DEPENDENT_REQ',
-                                                             'PENDING')
+                                                             CC_PENDING)
                             return True
                         else:
                             return False
                     else:
                         create_dependent_category_change(user, code, insuree, new_category, policy_holder,
                                                          'DEPENDENT_REQ',
-                                                         'PENDING')
+                                                         CC_PENDING)
                         return True
                 else:
                     create_dependent_category_change(user, code, insuree, new_category, policy_holder, 'INDIVIDUAL_REQ',
-                                                     'PENDING')
+                                                     CC_PENDING)
                     return True
         return False
     except Exception as e:
