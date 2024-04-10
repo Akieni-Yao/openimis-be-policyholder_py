@@ -248,6 +248,7 @@ class CategoryChangeStatusChange(graphene.Mutation):
         cc_id = input.get("id")
         code = input.get("code")
         status = input.get("status")
+        rejected_reason = input.get("rejected_reason")
         cc = None
         if code:
             cc = CategoryChange.objects.filter(code=code).first()
@@ -263,7 +264,9 @@ class CategoryChangeStatusChange(graphene.Mutation):
                 if old_category:
                     insuree.json_ext['insureeEnrolmentType'] = new_category
                 insuree.save()
-                # TODO WE HERE WE HAVE TO RIGHT REJECTION LOGIC
+            else:
+                if rejected_reason:
+                    cc.rejected_reason = rejected_reason
             cc.save()
             return CategoryChangeStatusChange(
                 success=True,
