@@ -8,10 +8,13 @@ from django.http import JsonResponse, Http404
 
 from core.utils import generate_qr
 from insuree.dms_utils import CNSS_CREATE_FOLDER_API_URL, get_headers_with_token
+from insuree.models import Insuree
 from insuree.reports.code_converstion_for_report import convert_activity_data
 from report.apps import ReportConfig
 from report.services import get_report_definition, generate_report
+
 logger = logging.getLogger(__name__)
+
 
 def create_policyholder_openkmfolder(data):
     camu_code = data['code']
@@ -105,7 +108,7 @@ def generate_pdf_for_policyholder(policyholder, report_name):
                      "phone": str(policyholder.phone) if hasattr(policyholder, 'phone') else "",
                      "address": policyholder.address['address'], "city": policyholder.locations.parent.parent.name,
                      "muncipality": policyholder.locations.parent.name if policyholder.locations else "",
-                     "village":policyholder.locations.name if policyholder.locations else "",
+                     "village": policyholder.locations.name if policyholder.locations else "",
                      "qrcode": final_img}}
     if final_img:
         elements = template_dict.get("docElements")
@@ -195,3 +198,39 @@ def create_folder_for_cat_chnage_req(insuree, req_no):
     except requests.exceptions.RequestException as e:
         # Handle connection errors or other exceptions
         return JsonResponse({"error": str(e)}, status=500)
+
+
+beneficiary_remove_notification = """
+Hello {hoi_name},
+
+Your beneficiary {sd_name} with camu number {sd_camu} is removed him/her from the family.
+
+Thank you
+"""
+
+
+def send_beneficiary_remove_notification(old_insuree_obj_id):
+    old_insuree_obj = Insuree.objects.filter(id=old_insuree_obj_id).first()
+    if old_insuree_obj:
+        family_head = Insuree.objects.filter(
+            family=old_insuree_obj_id.family,
+            head=True,
+            legacy_id__isnull=True,
+            validity_to__isnull=True
+        ).first()
+        if family_head and family_head.email:
+            hoi_name = "{} {}".format(family_head.last_name, family_head.other_names)
+            sd_name = "{} {}".format(old_insuree_obj.last_name, old_insuree_obj.other_names)
+            subject = "Removed your Son/Daughter form family because exception period is over."
+            email_body = beneficiary_remove_notification.format(
+                hoi_name=hoi_name,
+                sd_name=sd_name,
+                sd_camu=old_insuree_obj.camu_number
+            )
+            email_message = EmailMessage(
+                subject,
+                email_body,
+                settings.EMAIL_HOST_USER,
+                [family_head.email]
+            )
+            email_message.send()

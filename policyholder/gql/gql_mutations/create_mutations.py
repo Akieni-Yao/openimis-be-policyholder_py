@@ -8,7 +8,7 @@ from insuree.models import Family
 from policyholder.apps import PolicyholderConfig
 from policyholder.constants import CC_APPROVED, CC_REJECTED
 from policyholder.dms_utils import create_policyholder_openkmfolder, send_mail_to_policyholder_with_pdf, \
-    create_folder_for_policy_holder_exception
+    create_folder_for_policy_holder_exception, send_beneficiary_remove_notification
 from policyholder.gql import PolicyHolderExcptionType
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, PolicyHolderUser, \
     Insuree, PolicyHolderExcption, CategoryChange
@@ -262,7 +262,7 @@ class CategoryChangeStatusChange(graphene.Mutation):
                 insuree = cc.insuree
                 new_category = cc.new_category
                 if cc.request_type in ['INDIVIDUAL_REQ', 'DEPENDENT_REQ']:
-                    insuree.save_history()
+                    old_insuree_obj_id = insuree.save_history()
                     new_family = Family.objects.create(
                         head_insuree=insuree,
                         location=insuree.family.location,
@@ -282,6 +282,8 @@ class CategoryChangeStatusChange(graphene.Mutation):
                     insuree.json_ext['insureeEnrolmentType'] = new_category
                     insuree.save()
                     Family.objects.filter(id=new_family.id).update(status=insuree_status)
+                    if cc.request_type == 'DEPENDENT_REQ':
+                        send_beneficiary_remove_notification(old_insuree_obj_id)
                 elif cc.request_type == 'SELF_HEAD_REQ':
                     insuree.save_history()
                     insuree_status = STATUS_WAITING_FOR_BIOMETRIC
