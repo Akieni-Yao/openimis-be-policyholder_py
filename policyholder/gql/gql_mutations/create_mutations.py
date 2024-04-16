@@ -4,6 +4,7 @@ from graphene_django import DjangoObjectType
 
 from core import ExtendedConnection
 from core.gql.gql_mutations.base_mutation import BaseMutation, BaseHistoryModelCreateMutationMixin
+from insuree.models import Family
 from policyholder.apps import PolicyholderConfig
 from policyholder.constants import CC_APPROVED, CC_REJECTED
 from policyholder.dms_utils import create_policyholder_openkmfolder, send_mail_to_policyholder_with_pdf, \
@@ -25,6 +26,7 @@ from django.db.models import Q, F
 from django.apps import apps
 
 from policyholder.views import manuall_check_for_category_change_request
+from workflow.constants import *
 
 logger = logging.getLogger(__name__)
 
@@ -259,11 +261,39 @@ class CategoryChangeStatusChange(graphene.Mutation):
             if cc.status == CC_APPROVED:
                 insuree = cc.insuree
                 new_category = cc.new_category
-                insuree.save_history()
-                old_category = insuree.json_ext.get('insureeEnrolmentType', '')
-                if old_category:
+                if cc.request_type in ['INDIVIDUAL_REQ', 'DEPENDENT_REQ']:
+                    insuree.save_history()
+                    new_family = Family.objects.create(
+                        head_insuree=insuree,
+                        location=insuree.family.location,
+                        audit_user_id=insuree.audit_user_id,
+                        status=insuree.status,
+                        json_ext=f'{"enrolmentType": {new_category}}'
+                    )
+                    insuree.family = new_family
+                    insuree.head = True
+                    insuree_status = STATUS_WAITING_FOR_BIOMETRIC
+                    insuree.document_status = True
+                    if insuree.biometrics_is_master:
+                        insuree_status = STATUS_APPROVED
+                    # elif not insuree.biometrics_status:
+                    #     insuree_status = STATUS_WAITING_FOR_BIOMETRIC
+                    insuree.status = insuree_status
                     insuree.json_ext['insureeEnrolmentType'] = new_category
-                insuree.save()
+                    insuree.save()
+                    Family.objects.filter(id=new_family.id).update(status=insuree_status)
+                elif cc.request_type == 'SELF_HEAD_REQ':
+                    insuree.save_history()
+                    insuree_status = STATUS_WAITING_FOR_BIOMETRIC
+                    insuree.document_status = True
+                    if insuree.biometrics_is_master:
+                        insuree_status = STATUS_APPROVED
+                    # elif not insuree.biometrics_status:
+                    #     insuree_status = STATUS_WAITING_FOR_BIOMETRIC
+                    insuree.status = insuree_status
+                    insuree.json_ext['insureeEnrolmentType'] = new_category
+                    insuree.save()
+                    Family.objects.filter(id=insuree.family.id).update(status=insuree_status)
             else:
                 if rejected_reason:
                     cc.rejected_reason = rejected_reason
