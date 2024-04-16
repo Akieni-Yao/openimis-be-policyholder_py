@@ -265,7 +265,7 @@ class CategoryChangeStatusChange(graphene.Mutation):
                     old_insuree_obj_id = insuree.save_history()
                     new_family = Family.objects.create(
                         head_insuree=insuree,
-                        location=insuree.family.location,
+                        location=insuree.location,
                         audit_user_id=insuree.audit_user_id,
                         status=insuree.status,
                         json_ext=f'{"enrolmentType": {new_category}}'
