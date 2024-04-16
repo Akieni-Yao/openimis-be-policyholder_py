@@ -268,7 +268,7 @@ class CategoryChangeStatusChange(graphene.Mutation):
                         # location=insuree.location,
                         audit_user_id=insuree.audit_user_id,
                         status=insuree.status,
-                        json_ext=f'{"enrolmentType": {new_category}}'
+                        json_ext = f'{{"enrolmentType": "{new_category}"}}'
                     )
                     insuree.family = new_family
                     insuree.head = True
