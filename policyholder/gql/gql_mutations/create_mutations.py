@@ -254,21 +254,26 @@ class CategoryChangeStatusChange(graphene.Mutation):
         cc = None
         if code:
             cc = CategoryChange.objects.filter(code=code).first()
+            logger.info(f"Category change request found by code: {code}")
         elif cc_id:
             cc = CategoryChange.objects.filter(id=cc_id).first()
+            logger.info(f"Category change request found by ID: {cc_id}")
         if cc:
             cc.status = status
+            logger.info(f"Updating category change request status to: {status}")
             if cc.status == CC_APPROVED:
+                logger.info("Category change request status is approved")
                 insuree = cc.insuree
                 new_category = cc.new_category
                 if cc.request_type in ['INDIVIDUAL_REQ', 'DEPENDENT_REQ']:
+                    logger.info("Processing individual or dependent request")
                     old_insuree_obj_id = insuree.save_history()
                     new_family = Family.objects.create(
                         head_insuree=insuree,
                         # location=insuree.location,
                         audit_user_id=insuree.audit_user_id,
                         status=insuree.status,
-                        json_ext = f'{{"enrolmentType": "{new_category}"}}'
+                        json_ext=f'{{"enrolmentType": "{new_category}"}}'
                     )
                     insuree.family = new_family
                     insuree.head = True
@@ -285,6 +290,7 @@ class CategoryChangeStatusChange(graphene.Mutation):
                     if cc.request_type == 'DEPENDENT_REQ':
                         send_beneficiary_remove_notification(old_insuree_obj_id)
                 elif cc.request_type == 'SELF_HEAD_REQ':
+                    logger.info("Processing self head request")
                     insuree.save_history()
                     insuree_status = STATUS_WAITING_FOR_BIOMETRIC
                     insuree.document_status = True
@@ -297,13 +303,16 @@ class CategoryChangeStatusChange(graphene.Mutation):
                     insuree.save()
                     Family.objects.filter(id=insuree.family.id).update(status=insuree_status)
             else:
+                logger.info("Category change request status is not approved")
                 if rejected_reason:
                     cc.rejected_reason = rejected_reason
             cc.save()
+            logger.info("Category change request status updated")
             return CategoryChangeStatusChange(
                 success=True,
                 message="Request status successfully updated!"
             )
+        logger.warning("Category change request not found")
         return CategoryChangeStatusChange(
             success=False,
             message="Request not found!"
