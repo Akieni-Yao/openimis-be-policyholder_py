@@ -245,5 +245,5 @@ def get_location_from_insuree(insuree):
         code_value = data_dict['insureelocations']['code']
         location = Location.objects.filter(validity_to__isnull=True,
                                        type="V",
-                                       code=code_value)
+                                       code=code_value).first()
     return location
