@@ -10,6 +10,7 @@ from core.utils import generate_qr
 from insuree.dms_utils import CNSS_CREATE_FOLDER_API_URL, get_headers_with_token
 from insuree.models import Insuree
 from insuree.reports.code_converstion_for_report import convert_activity_data
+from location.models import Location
 from report.apps import ReportConfig
 from report.services import get_report_definition, generate_report
 
@@ -234,3 +235,15 @@ def send_beneficiary_remove_notification(old_insuree_obj_id):
                 [family_head.email]
             )
             email_message.send()
+
+
+def get_location_from_insuree(insuree):
+    json_data = insuree.json_ext
+    location = None
+    if json_data:
+        data_dict = json.loads(json_data)
+        code_value = data_dict['insureelocations']['code']
+        location = Location.objects.filter(validity_to__isnull=True,
+                                       type="V",
+                                       code=code_value)
+    return location
