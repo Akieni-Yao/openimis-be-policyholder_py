@@ -1,3 +1,4 @@
+import json
 import logging
 
 from graphene_django import DjangoObjectType
@@ -8,7 +9,8 @@ from insuree.models import Family
 from policyholder.apps import PolicyholderConfig
 from policyholder.constants import CC_APPROVED, CC_REJECTED
 from policyholder.dms_utils import create_policyholder_openkmfolder, send_mail_to_policyholder_with_pdf, \
-    create_folder_for_policy_holder_exception, send_beneficiary_remove_notification, get_location_from_insuree
+    create_folder_for_policy_holder_exception, send_beneficiary_remove_notification, get_location_from_insuree, \
+    create_phi_for_cat_change
 from policyholder.gql import PolicyHolderExcptionType
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, PolicyHolderUser, \
     Insuree, PolicyHolderExcption, CategoryChange
@@ -107,7 +109,9 @@ class CreatePolicyHolderInsureeMutation(BaseHistoryModelCreateMutationMixin, Bas
                                                         is_deleted=False).first()
         if is_insuree:
             raise ValidationError(message="Already Exists")
-        is_cc_request = manuall_check_for_category_change_request(user, insuree_id, policyholder_id)
+        employer_number = data.get('employer_number', '')
+        income = data.get('json_ext', {}).get('calculation_rule', {}).get('income')
+        is_cc_request = manuall_check_for_category_change_request(user, insuree_id, policyholder_id, income, employer_number)
         if is_cc_request:
             raise ValidationError(message="Change Request Created.")
         super()._validate_mutation(user, **data)
@@ -265,29 +269,33 @@ class CategoryChangeStatusChange(graphene.Mutation):
                 logger.info("Category change request status is approved")
                 insuree = cc.insuree
                 new_category = cc.new_category
+                logger.info(f"new_category: {new_category}")
                 if cc.request_type in ['INDIVIDUAL_REQ', 'DEPENDENT_REQ']:
                     logger.info("Processing individual or dependent request")
                     location = get_location_from_insuree(insuree)
                     old_insuree_obj_id = insuree.save_history()
                     logger.info(f"old_insuree_obj_id: {old_insuree_obj_id}")
+                    json_data = {"enrolmentType": new_category}
+                    logger.info(f"json_data: {json_data}")
                     new_family = Family.objects.create(
                         head_insuree=insuree,
                         location=location,
                         audit_user_id=insuree.audit_user_id,
                         status=insuree.status,
-                        json_ext=f'{{"enrolmentType": "{new_category}"}}'
+                        json_ext=json_data
                     )
                     logger.info(f"new_family: {new_family}")
+                    logger.info(f"new_family id: {new_family.id}")
                     insuree.family = new_family
                     insuree.head = True
                     insuree_status = STATUS_WAITING_FOR_BIOMETRIC
-                    logger.info(f"insuree_status: {insuree_status}")
                     insuree.document_status = True
                     if insuree.biometrics_is_master:
                         insuree_status = STATUS_APPROVED
                     # elif not insuree.biometrics_status:
                     #     insuree_status = STATUS_WAITING_FOR_BIOMETRIC
                     insuree.status = insuree_status
+                    logger.info(f"insuree_status: {insuree_status}")
                     insuree.json_ext['insureeEnrolmentType'] = new_category
                     insuree.save()
                     # Family.objects.filter(id=new_family.id).update(status=insuree_status)
@@ -303,6 +311,7 @@ class CategoryChangeStatusChange(graphene.Mutation):
                     # elif not insuree.biometrics_status:
                     #     insuree_status = STATUS_WAITING_FOR_BIOMETRIC
                     insuree.status = insuree_status
+                    logger.info(f"insuree_status: {insuree_status}")
                     insuree.json_ext['insureeEnrolmentType'] = new_category
                     insuree.save()
                     Family.objects.filter(id=insuree.family.id).update(status=insuree_status)
@@ -312,6 +321,7 @@ class CategoryChangeStatusChange(graphene.Mutation):
                     cc.rejected_reason = rejected_reason
             cc.save()
             logger.info("Category change request status updated")
+            create_phi_for_cat_change(info.context.user, cc)
             return CategoryChangeStatusChange(
                 success=True,
                 message="Request status successfully updated!"

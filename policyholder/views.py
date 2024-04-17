@@ -457,7 +457,7 @@ def import_phi(request, policy_holder_code):
         #     pass
         #     continue
 
-        is_cc_request = check_for_category_change_request(request.user, line, policy_holder, enrolment_type)
+        is_cc_request = check_for_category_change_request(request.user, line, policy_holder, enrolment_type, line[HEADER_INCOME], line[HEADER_EMPLOYER_NUMBER])
         if is_cc_request:
             continue
 
@@ -564,32 +564,23 @@ def import_phi(request, policy_holder_code):
                 logger.info("---------------  email is sent   -------------------")
         except Exception as e:
             logger.error(f"Fail to send auto mail : {e}")
-    
+
     output_headers = list(org_columns) + ['Status', 'Reason']
 
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        processed_data.to_excel(writer, sheet_name='Processed Data', index=False, header=output_headers)
-        
-    output.seek(0)
-    response = HttpResponse(output.getvalue(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    response['Content-Disposition'] = 'attachment; filename=import_results.xlsx'
-    
-    # result = {
-    #     "total_lines": total_lines,
-    #     "total_insurees_created": total_insurees_created,
-    #     "total_families_created": total_families_created,
-    #     "total_phi_created": total_phi_created,
-    #     "total_phi_updated": total_phi_updated,
-    #     "total_errors": total_locations_not_found + total_contribution_plan_not_found,
-    #     "total_locations_not_found": total_locations_not_found,
-    #     "total_contribution_plan_not_found": total_contribution_plan_not_found,
-    #     "total_validation_errors": total_validation_errors,
-    #     "errors": errors,
-    # }
-    # logger.info("Import of PolicyHolderInsurees done")
-    # return JsonResponse(data=result)
-    return response
+    # Check if processed_data is empty
+    if processed_data.empty:
+        logger.info("No data processed.")
 
+
+    else:
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            processed_data.to_excel(writer, sheet_name='Processed Data', index=False, header=output_headers)
+
+        output.seek(0)
+        response = HttpResponse(output.getvalue(),
+                                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = 'attachment; filename=import_results.xlsx'
+        return response
 
 
 def export_phi(request, policy_holder_code):
@@ -1008,7 +999,10 @@ def request_number_cc():
         return None
 
 
-def create_dependent_category_change(user, code, insuree, old_category, new_category, policy_holder, request_type, status):
+def create_dependent_category_change(user, code, insuree, old_category, new_category, policy_holder, request_type, status, income=None, employer_number=None):
+    json_ext = {}
+    if income and employer_number:
+        json_ext = {"income": new_category, "employer_number": employer_number}
     cc = CategoryChange.objects.create(
         code=code,
         insuree=insuree,
@@ -1018,14 +1012,15 @@ def create_dependent_category_change(user, code, insuree, old_category, new_cate
         request_type=request_type,
         status=status,
         created_by=user,
-        modified_by=user
+        modified_by=user,
+        json_ext=json_ext
     )
     req_no = cc.code
     create_folder_for_cat_chnage_req(insuree, req_no)
     logger.info(f"CategoryChange request created for Insuree {insuree} for {request_type.lower()} request")
 
 
-def check_for_category_change_request(user, line, policy_holder, enrolment_type):
+def check_for_category_change_request(user, line, policy_holder, enrolment_type, income, employer_number):
     try:
         insuree_id = line.get(HEADER_INSUREE_ID)
         camu_num = line.get(HEADER_INSUREE_CAMU_NO)
@@ -1047,18 +1042,18 @@ def check_for_category_change_request(user, line, policy_holder, enrolment_type)
                         if new_category != old_category:
                             create_dependent_category_change(user, code, insuree, old_category, new_category, policy_holder,
                                                              'SELF_HEAD_REQ',
-                                                             CC_PENDING)
+                                                             CC_PENDING, income, employer_number)
                             return True
                         else:
                             return False
                     else:
                         create_dependent_category_change(user, code, insuree, old_category, new_category, policy_holder,
                                                          'DEPENDENT_REQ',
-                                                         CC_PENDING)
+                                                         CC_PENDING,  income, employer_number)
                         return True
                 else:
                     create_dependent_category_change(user, code, insuree, old_category, new_category, policy_holder, 'INDIVIDUAL_REQ',
-                                                     CC_PENDING)
+                                                     CC_PENDING,  income, employer_number)
                     return True
         return False
     except Exception as e:
@@ -1066,7 +1061,7 @@ def check_for_category_change_request(user, line, policy_holder, enrolment_type)
         return False
 
 
-def manuall_check_for_category_change_request(user, insuree_id, policyholder_id):
+def manuall_check_for_category_change_request(user, insuree_id, policyholder_id, income, employer_number):
     try:
         policy_holder = PolicyHolder.objects.filter(id=policyholder_id, is_deleted=False).first()
         if not policy_holder:
@@ -1085,7 +1080,7 @@ def manuall_check_for_category_change_request(user, insuree_id, policyholder_id)
             'insuree_id': insuree.chf_id,
             'camu_number': insuree.camu_number
         }
-        response = check_for_category_change_request(user, line, policy_holder, enrolment_type)
+        response = check_for_category_change_request(user, line, policy_holder, enrolment_type, income, employer_number)
         return response
     except Exception as e:
         return False

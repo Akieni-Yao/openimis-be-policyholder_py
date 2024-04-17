@@ -11,6 +11,7 @@ from insuree.dms_utils import CNSS_CREATE_FOLDER_API_URL, get_headers_with_token
 from insuree.models import Insuree
 from insuree.reports.code_converstion_for_report import convert_activity_data
 from location.models import Location
+from policyholder.models import PolicyHolderInsuree, PolicyHolderContributionPlan
 from report.apps import ReportConfig
 from report.services import get_report_definition, generate_report
 
@@ -246,3 +247,52 @@ def get_location_from_insuree(insuree):
                                        type="V",
                                        code=code_value).first()
     return location
+
+
+def create_phi_for_cat_change(user, cc):
+    insuree = cc.insuree
+    policy_holder = cc.policy_holder
+    json_ext = cc.json_ext
+    phi_json_ext = {}
+    income = None
+    employer_number = None
+    phi = PolicyHolderInsuree.objects.filter(insuree=insuree, policy_holder=policy_holder).first()
+    ph_cpb = PolicyHolderContributionPlan.objects.filter(policy_holder=policy_holder, is_deleted=False).first()
+
+    if not insuree or not policy_holder:
+        logger.error("Insuree or policy holder is null. Aborting...")
+        return False
+
+    if not ph_cpb:
+        logger.error("No valid contribution plan found for the policy holder. Aborting...")
+        return False
+
+    cpb = ph_cpb.contribution_plan_bundle
+
+    if json_ext:
+        income = json_ext.get('income', '')
+        employer_number = json_ext.get('employer_number', '')
+
+    phi_json_ext["calculation_rule"] = {
+        "income": income
+    }
+
+    if phi:
+        logger.info("PolicyHolderInsuree already exists for the insuree and policy holder.")
+        return False
+    else:
+        try:
+            new_phi = PolicyHolderInsuree(
+                insuree=insuree,
+                policy_holder=policy_holder,
+                contribution_plan_bundle=cpb,
+                employer_number=employer_number,
+                json_ext=phi_json_ext,
+            )
+            new_phi.save(username=user.username)
+            logger.info("PolicyHolderInsuree created successfully.")
+            return True
+        except Exception as e:
+            logger.error(f"Error occurred while creating PolicyHolderInsuree: {str(e)}")
+            return False
+
