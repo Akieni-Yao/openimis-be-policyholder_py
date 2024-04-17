@@ -232,6 +232,7 @@ class CategoryChange(models.Model):
     request_type = models.CharField(db_column='RequestType', max_length=256)
     status = models.CharField(db_column='Status', max_length=256)
     rejected_reason = models.CharField(db_column='Reason', max_length=256, null=True)
+    json_ext = models.JSONField(db_column="JsonExt", blank=True, null=True)
     created_by = models.ForeignKey(core_models.User, on_delete=models.DO_NOTHING, db_column='CreatedBy', related_name ='created_by_user', null=True)
     modified_by = models.ForeignKey(core_models.User, on_delete=models.DO_NOTHING, db_column='modified_by', related_name='modified_by_user', null=True)
     created_time = models.DateTimeField(db_column='CreatedTime', auto_now_add=True)
