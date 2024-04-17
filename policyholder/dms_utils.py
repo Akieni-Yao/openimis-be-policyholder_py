@@ -7,7 +7,7 @@ from django.core.mail import EmailMessage
 from django.http import JsonResponse, Http404
 
 from core.utils import generate_qr
-from insuree.dms_utils import CNSS_CREATE_FOLDER_API_URL, get_headers_with_token
+from insuree.dms_utils import CNSS_CREATE_FOLDER_API_URL, get_headers_with_token, enrolment_mapping_to_french
 from insuree.models import Insuree
 from insuree.reports.code_converstion_for_report import convert_activity_data
 from location.models import Location
@@ -181,11 +181,13 @@ def create_folder_for_policy_holder_exception(user, policy_holder, ph_exc_code):
         return JsonResponse({"error": str(e)}, status=500)
 
 
-def create_folder_for_cat_chnage_req(insuree, req_no):
+def create_folder_for_cat_chnage_req(insuree, req_no, old_category, new_category):
     body_data = {
         "fileNumber": req_no,
         "metaData": {
-            "folder_type": "CATEGORY_CHANGE_REQ"
+            "folder_type": "CATEGORY_CHANGE_REQ",
+            "old_category": enrolment_mapping_to_french(old_category),
+            "new_category": enrolment_mapping_to_french(new_category)
         },
         "parent": insuree.chf_id
     }

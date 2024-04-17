@@ -998,7 +998,7 @@ def request_number_cc():
 def create_dependent_category_change(user, code, insuree, old_category, new_category, policy_holder, request_type, status, income=None, employer_number=None):
     json_ext = {}
     if income and employer_number:
-        json_ext = {"income": new_category, "employer_number": employer_number}
+        json_ext = {"income": income, "employer_number": employer_number}
     cc = CategoryChange.objects.create(
         code=code,
         insuree=insuree,
@@ -1012,7 +1012,7 @@ def create_dependent_category_change(user, code, insuree, old_category, new_cate
         json_ext=json_ext
     )
     req_no = cc.code
-    create_folder_for_cat_chnage_req(insuree, req_no)
+    create_folder_for_cat_chnage_req(insuree, req_no, old_category, new_category)
     logger.info(f"CategoryChange request created for Insuree {insuree} for {request_type.lower()} request")
 
 
