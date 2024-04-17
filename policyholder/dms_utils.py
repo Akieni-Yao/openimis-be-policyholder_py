@@ -241,8 +241,7 @@ def get_location_from_insuree(insuree):
     json_data = insuree.json_ext
     location = None
     if json_data:
-        data_dict = json.loads(json_data)
-        code_value = data_dict['insureelocations']['code']
+        code_value = json_data['insureelocations']['code']
         location = Location.objects.filter(validity_to__isnull=True,
                                        type="V",
                                        code=code_value).first()
