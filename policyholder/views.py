@@ -459,6 +459,9 @@ def import_phi(request, policy_holder_code):
 
         is_cc_request = check_for_category_change_request(request.user, line, policy_holder, enrolment_type, line[HEADER_INCOME], line[HEADER_EMPLOYER_NUMBER])
         if is_cc_request:
+            row_data = line.tolist()
+            row_data.extend(["Success", "Category Change Request Created."])
+            processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
             continue
 
         family, family_created = get_or_create_family_from_line(line, village, user_id,enrolment_type)
@@ -566,21 +569,14 @@ def import_phi(request, policy_holder_code):
             logger.error(f"Fail to send auto mail : {e}")
 
     output_headers = list(org_columns) + ['Status', 'Reason']
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        processed_data.to_excel(writer, sheet_name='Processed Data', index=False, header=output_headers)
 
-    # Check if processed_data is empty
-    if processed_data.empty:
-        logger.info("No data processed.")
-
-
-    else:
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            processed_data.to_excel(writer, sheet_name='Processed Data', index=False, header=output_headers)
-
-        output.seek(0)
-        response = HttpResponse(output.getvalue(),
-                                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        response['Content-Disposition'] = 'attachment; filename=import_results.xlsx'
-        return response
+    output.seek(0)
+    response = HttpResponse(output.getvalue(),
+                            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = 'attachment; filename=import_results.xlsx'
+    return response
 
 
 def export_phi(request, policy_holder_code):
