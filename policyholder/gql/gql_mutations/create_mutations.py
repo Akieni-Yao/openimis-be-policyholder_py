@@ -18,6 +18,7 @@ from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderC
     Insuree, PolicyHolderExcption, CategoryChange
 from policyholder.gql.gql_mutations import PolicyHolderInputType, PolicyHolderInsureeInputType, \
     PolicyHolderContributionPlanInputType, PolicyHolderUserInputType, PolicyHolderExcptionInput, PHPortalUserCreateInput
+from policyholder.portal_utils import send_verification_email
 from policyholder.validation import PolicyHolderValidation
 from policyholder.validation.permission_validation import PermissionValidation
 from django.core.exceptions import ValidationError
@@ -300,7 +301,7 @@ class CategoryChangeStatusChange(graphene.Mutation):
                     logger.info(f"insuree_status: {insuree_status}")
                     insuree.json_ext['insureeEnrolmentType'] = new_category
                     insuree.save()
-                    # Family.objects.filter(id=new_family.id).update(status=insuree_status)
+                    Family.objects.filter(id=new_family.id).update(status=insuree_status)
                     if cc.request_type == 'DEPENDENT_REQ':
                         send_beneficiary_remove_notification(old_insuree_obj_id)
                 elif cc.request_type == 'SELF_HEAD_REQ':
@@ -365,8 +366,8 @@ class CreatePHPortalUserMutation(OpenIMISMutation):
             ph_trade_name = data.pop("trade_name")
             ph_json_ext = data.pop("json_ext")
             
-            update_or_create_user(data, user)
-            
+            core_user = update_or_create_user(data, user)
+            # send_verification_email(core_user.i_user)
             return None
         except Exception as exc:
             return [
