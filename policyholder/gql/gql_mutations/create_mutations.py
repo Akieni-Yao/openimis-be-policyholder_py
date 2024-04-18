@@ -357,7 +357,7 @@ class CreatePHPortalUserMutation(OpenIMISMutation):
             #     raise PermissionDenied("unauthorized")
             from core.utils import TimeUtils
             data['validity_from'] = TimeUtils.now()
-            data['audit_user_id'] = user.id_for_audit
+            data['audit_user_id'] = -1 #user.id_for_audit
             ph_portal_user_admin_role = Role.objects.filter(name=PH_ADMIN_ROLE).first()
             if not ph_portal_user_admin_role:
                 raise ValidationError("Policy Holder Admin Role not exists.")
