@@ -5,9 +5,11 @@ from graphene_django import DjangoObjectType
 
 from core import ExtendedConnection
 from core.gql.gql_mutations.base_mutation import BaseMutation, BaseHistoryModelCreateMutationMixin
+from core.schema import OpenIMISMutation, update_or_create_user
+from core.models import Role, User
 from insuree.models import Family
 from policyholder.apps import PolicyholderConfig
-from policyholder.constants import CC_APPROVED, CC_REJECTED
+from policyholder.constants import *
 from policyholder.dms_utils import create_policyholder_openkmfolder, send_mail_to_policyholder_with_pdf, \
     create_folder_for_policy_holder_exception, send_beneficiary_remove_notification, get_location_from_insuree, \
     create_phi_for_cat_change
@@ -15,7 +17,7 @@ from policyholder.gql import PolicyHolderExcptionType
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, PolicyHolderUser, \
     Insuree, PolicyHolderExcption, CategoryChange
 from policyholder.gql.gql_mutations import PolicyHolderInputType, PolicyHolderInsureeInputType, \
-    PolicyHolderContributionPlanInputType, PolicyHolderUserInputType, PolicyHolderExcptionInput
+    PolicyHolderContributionPlanInputType, PolicyHolderUserInputType, PolicyHolderExcptionInput, PHPortalUserCreateInput
 from policyholder.validation import PolicyHolderValidation
 from policyholder.validation.permission_validation import PermissionValidation
 from django.core.exceptions import ValidationError
@@ -332,3 +334,43 @@ class CategoryChangeStatusChange(graphene.Mutation):
             message="Request not found!"
         )
 
+
+class CreatePHPortalUserMutation(OpenIMISMutation):
+    """
+    Create a new policy holder portal user.
+    """
+    _mutation_module = "core"
+    _mutation_class = "CreateUserMutation"
+
+    class Input(PHPortalUserCreateInput, OpenIMISMutation.Input):
+        pass
+
+    @classmethod
+    def async_mutate(cls, user, **data):
+        try:
+            # if type(user) is AnonymousUser or not user.id:
+            #     raise ValidationError("mutation.authentication_required")
+            if User.objects.filter(username=data['username']).exists():
+                raise ValidationError("User with this user name already exists.")
+            # if not user.has_perms(CoreConfig.gql_mutation_create_users_perms):
+            #     raise PermissionDenied("unauthorized")
+            from core.utils import TimeUtils
+            data['validity_from'] = TimeUtils.now()
+            data['audit_user_id'] = user.id_for_audit
+            ph_portal_user_admin_role = Role.objects.filter(name=PH_ADMIN_ROLE).first()
+            if not ph_portal_user_admin_role:
+                raise ValidationError("Policy Holder Admin Role not exists.")
+            data['roles'] = ["{}".format(ph_portal_user_admin_role.id)]
+            
+            ph_trade_name = data.pop("trade_name")
+            ph_json_ext = data.pop("json_ext")
+            
+            update_or_create_user(data, user)
+            
+            return None
+        except Exception as exc:
+            return [
+                {
+                    'message': "core.mutation.failed_to_create_user",
+                    'detail': str(exc)
+                }]
