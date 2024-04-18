@@ -7,11 +7,15 @@ import calendar
 from datetime import datetime, timedelta
 
 from django.conf import settings
+from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import EmailMessage
+from django.shortcuts import redirect
 from django.utils import timezone
 
 import pandas as pd
 from django.http import JsonResponse, FileResponse, HttpResponse
+from django.utils.encoding import force_text
+from django.utils.http import urlsafe_base64_decode
 from graphql import GraphQLError
 
 from rest_framework.decorators import permission_classes, api_view, authentication_classes
@@ -185,13 +189,13 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
     #     json_ext['employeeNumber'] = line[HEADER_EMPLOYER_NUMBER]
     #     insuree.json_ext = json_ext
     #     insuree.save()
-        
+
     if not insuree:
         insuree_dob = line[HEADER_INSUREE_DOB]
         if not isinstance(insuree_dob, datetime):
             datetime_obj = datetime.strptime(insuree_dob, "%d/%m/%Y")
-            line[HEADER_INSUREE_DOB] = timezone.make_aware(datetime_obj).date()            
-        
+            line[HEADER_INSUREE_DOB] = timezone.make_aware(datetime_obj).date()
+
         insuree_id = generate_available_chf_id(
             line[HEADER_INSUREE_GENDER],
             location if location else family.location,
@@ -229,12 +233,12 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
 
     return insuree, created
 
-def validating_insuree_on_name_dob(line):    
+def validating_insuree_on_name_dob(line):
     insuree_dob = line[HEADER_INSUREE_DOB]
     if not isinstance(insuree_dob, datetime):
         datetime_obj = datetime.strptime(insuree_dob, "%d/%m/%Y")
-        line[HEADER_INSUREE_DOB] = timezone.make_aware(datetime_obj).date() 
-            
+        line[HEADER_INSUREE_DOB] = timezone.make_aware(datetime_obj).date()
+
     insuree = Insuree.objects.filter(
         other_names=line[HEADER_INSUREE_OTHER_NAMES], last_name=line[HEADER_INSUREE_LAST_NAME],
         dob=line[HEADER_INSUREE_DOB], validity_to__isnull=True, legacy_id__isnull=True).first()
@@ -254,8 +258,8 @@ def soft_delete_insuree(line, policy_holder_code, user_id):
     if not insuree:
         insuree = (Insuree.objects.filter(validity_to__isnull=True, camu_number=camu_num).first())
     if insuree:
-        phn = PolicyHolderInsuree.objects.filter(insuree_id=insuree.id, policy_holder__code=policy_holder_code, policy_holder__date_valid_to__isnull=True, 
-                                                            policy_holder__is_deleted=False, date_valid_to__isnull=True, 
+        phn = PolicyHolderInsuree.objects.filter(insuree_id=insuree.id, policy_holder__code=policy_holder_code, policy_holder__date_valid_to__isnull=True,
+                                                            policy_holder__is_deleted=False, date_valid_to__isnull=True,
                                                             is_deleted=False).first()
         if phn:
             PolicyHolderInsuree.objects.filter(id=phn.id).update(is_deleted=True, date_valid_to=datetime.now())
@@ -323,7 +327,7 @@ def import_phi(request, policy_holder_code):
 
     errors = []
     logger.debug("Importing %s lines", len(df))
-    
+
     # For output excel with error and success message
     output = io.BytesIO()
     writer = pd.ExcelWriter(output, engine='xlsxwriter')
@@ -394,7 +398,7 @@ def import_phi(request, policy_holder_code):
             errors.append(f"Error line {total_lines} - validation issues ({validation_errors})")
             logger.debug(f"Error line {total_lines} - validation issues ({validation_errors})")
             total_validation_errors += 1
-            
+
             # Adding error in output excel
             row_data = line.tolist()
             row_data.extend(["Failed", validation_errors])
@@ -411,13 +415,13 @@ def import_phi(request, policy_holder_code):
             errors.append(f"Error line {total_lines} - unknown village ({line[HEADER_FAMILY_LOCATION_CODE]})")
             logger.debug(f"Error line {total_lines} - unknown village ({line[HEADER_FAMILY_LOCATION_CODE]})")
             total_locations_not_found += 1
-            
+
             # Adding error in output excel
             row_data = line.tolist()
             row_data.extend(["Failed", f"unknown village - {line[HEADER_FAMILY_LOCATION_CODE]}"])
             processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
             continue
-        
+
         try:
             ph_cpb = PolicyHolderContributionPlan.objects.filter(policy_holder=policy_holder, is_deleted=False).first()
             if not ph_cpb:
@@ -426,7 +430,7 @@ def import_phi(request, policy_holder_code):
                 logger.debug(
                     f"Error line {total_lines} - No contribution plan bundle with ({policy_holder.trade_name})")
                 total_contribution_plan_not_found += 1
-                
+
                 # Adding error in output excel
                 row_data = line.tolist()
                 row_data.extend(["Failed", f"No contribution plan bundle with - {policy_holder.trade_name}"])
@@ -440,7 +444,7 @@ def import_phi(request, policy_holder_code):
                 logger.debug(
                     f"Error line {total_lines} - unknown contribution plan bundle ({ph_cpb.contribution_plan_bundle})")
                 total_locations_not_found += 1
-                
+
                 # Adding error in output excel
                 row_data = line.tolist()
                 row_data.extend(["Failed", f"unknown contribution plan bundle - {ph_cpb.contribution_plan_bundle}"])
@@ -451,7 +455,7 @@ def import_phi(request, policy_holder_code):
         except Exception as e:
             logger.error(f"Error occurred while retrieving Contribution Plan Bundle: {e}")
             enrolment_type = None
-        
+
         # insuree = validating_insuree_on_name_dob(line)
         # if insuree:
         #     pass
@@ -497,12 +501,12 @@ def import_phi(request, policy_holder_code):
                 logger.error(f"insuree bulk upload error for abis or workflow : {e}")
         elif not insuree_created:
             reason = None
-            
+
             insuree_dob = line[HEADER_INSUREE_DOB]
             if not isinstance(insuree_dob, datetime):
                 datetime_obj = datetime.strptime(insuree_dob, "%d/%m/%Y")
                 line[HEADER_INSUREE_DOB] = timezone.make_aware(datetime_obj).date()
-                    
+
             if insuree.other_names != line[HEADER_INSUREE_OTHER_NAMES]:
                 reason = "Insuree First Name does not match."
             elif insuree.last_name != line[HEADER_INSUREE_LAST_NAME]:
@@ -513,7 +517,7 @@ def import_phi(request, policy_holder_code):
                 reason = "Insuree Gender does not match."
             elif insuree.marital != mapping_marital_status(line[HEADER_CIVILITY]):
                 reason = "Insuree Marital does not match."
-                
+
             if reason:
                 # Adding error in output excel
                 row_data = line.tolist()
@@ -553,7 +557,7 @@ def import_phi(request, policy_holder_code):
             )
             total_phi_created += 1
             phi.save(username=request.user.username)
-        
+
         # Adding success entry in output Excel
         row_data = line.tolist()
         row_data.extend(["Success", ""])
@@ -581,10 +585,10 @@ def import_phi(request, policy_holder_code):
 
 def export_phi(request, policy_holder_code):
     try:
-        insuree_ids = PolicyHolderInsuree.objects.filter(policy_holder__code=policy_holder_code, policy_holder__date_valid_to__isnull=True, 
-                                                            policy_holder__is_deleted=False, date_valid_to__isnull=True, 
+        insuree_ids = PolicyHolderInsuree.objects.filter(policy_holder__code=policy_holder_code, policy_holder__date_valid_to__isnull=True,
+                                                            policy_holder__is_deleted=False, date_valid_to__isnull=True,
                                                             is_deleted=False).values_list('insuree_id', flat=True).distinct()
-        
+
         queryset = Insuree.objects.filter(validity_to__isnull=True, id__in=insuree_ids, head=True) \
                 .select_related('gender', 'current_village', 'family', 'family__location', 'family__location__parent',
                                 'family__location__parent__parent', 'family__location__parent__parent__parent')
@@ -593,45 +597,45 @@ def export_phi(request, policy_holder_code):
                                     'family__location__code', 'family__head_insuree__chf_id', 'email', 'json_ext', 'id', 'dob', 'marital'))
 
         df = pd.DataFrame(data)
-        
+
         insuree_dob = [dob.strftime("%d/%m/%Y") for dob in df['dob']]
         df.insert(loc=4, column='Date de naissance', value=insuree_dob)
 
         def extract_birth_place(json_data):
             return json_data.get('BirthPlace', None) if json_data else None
-        
+
         birth_place = [extract_birth_place(json_data) for json_data in df['json_ext']]
         df.insert(loc=5, column='Lieu de naissance', value=birth_place)
-        
+
         def extract_civility(marital):
             return mapping_marital_status(None, marital)
             # return json_data.get('civilQuality', None) if json_data else None
-        
+
         civility = [extract_civility(json_data) for json_data in df['marital']]
         df.insert(loc=7, column='Civilité', value=civility)
-        
+
         def extract_address(json_data):
             return json_data.get('insureeaddress', None) if json_data else None
-        
+
         address = [extract_address(json_data) for json_data in df['json_ext']]
         df.insert(loc=9, column='Adresse', value=address)
-        
+
         def extract_emp_no(insuree_id, policy_holder_code):
-            phn_json = PolicyHolderInsuree.objects.filter(insuree_id=insuree_id, policy_holder__code=policy_holder_code, policy_holder__date_valid_to__isnull=True, 
-                                                            policy_holder__is_deleted=False, date_valid_to__isnull=True, 
+            phn_json = PolicyHolderInsuree.objects.filter(insuree_id=insuree_id, policy_holder__code=policy_holder_code, policy_holder__date_valid_to__isnull=True,
+                                                            policy_holder__is_deleted=False, date_valid_to__isnull=True,
                                                             is_deleted=False).first()
             # return json_data.get('employeeNumber', None) if json_data else None
             if phn_json:
                 return phn_json.employer_number
             return None
-        
+
         emp_no = [extract_emp_no(insuree_id, policy_holder_code) for insuree_id in df['id']]
         df.insert(loc=13, column='Matricule', value=emp_no)
 
         employee_income = dict()
         def extract_income(insuree_id, policy_holder_code):
-            phn_json = PolicyHolderInsuree.objects.filter(insuree_id=insuree_id, policy_holder__code=policy_holder_code, policy_holder__date_valid_to__isnull=True, 
-                                                            policy_holder__is_deleted=False, date_valid_to__isnull=True, 
+            phn_json = PolicyHolderInsuree.objects.filter(insuree_id=insuree_id, policy_holder__code=policy_holder_code, policy_holder__date_valid_to__isnull=True,
+                                                            policy_holder__is_deleted=False, date_valid_to__isnull=True,
                                                             is_deleted=False).first()
             if phn_json:
                 json_data = phn_json.json_ext
@@ -640,10 +644,10 @@ def export_phi(request, policy_holder_code):
                     employee_income.update({insuree_id: ei})
                     return ei
             return None
-        
+
         income = [extract_income(insuree_id, policy_holder_code) for insuree_id in df['id']]
         df.insert(loc=15, column='Salaire Brut', value=income)
-        
+
         conti_plan = None
         ph_cpb = PolicyHolderContributionPlan.objects.filter(policy_holder__code=policy_holder_code, is_deleted=False).first()
         if ph_cpb and ph_cpb.contribution_plan_bundle:
@@ -652,7 +656,7 @@ def export_phi(request, policy_holder_code):
             conti_plan = cpbd.contribution_plan if cpbd else None
         else:
             logger.debug(" No contribution plan bundle.")
-        
+
         employer_contri_per = dict()
         def extract_employer_percentage(insuree_id):
             if conti_plan:
@@ -662,10 +666,10 @@ def export_phi(request, policy_holder_code):
                 employer_contri_per.update({insuree_id: ercp})
                 return f"{ercp}%" if ercp else None
             return None
-        
+
         employer_percentage = [extract_employer_percentage(insuree_id) for insuree_id in df['id']]
         df.insert(loc=16, column='Part Patronale %', value=employer_percentage)
-        
+
         employer_contri = dict()
         def extract_employer_share(insuree_id):
             try:
@@ -676,10 +680,10 @@ def export_phi(request, policy_holder_code):
                 return None
             except Exception as e:
                 return None
-        
+
         employer_share = [extract_employer_share(insuree_id) for insuree_id in df['id']]
         df.insert(loc=17, column='Part Patronale', value=employer_share)
-        
+
         employee_contri_per = dict()
         def extract_employee_percentage(insuree_id):
             if conti_plan:
@@ -689,10 +693,10 @@ def export_phi(request, policy_holder_code):
                 employee_contri_per.update({insuree_id: eecp})
                 return f"{eecp}%" if eecp else None
             return None
-        
+
         employee_percentage = [extract_employee_percentage(insuree_id) for insuree_id in df['id']]
         df.insert(loc=18, column='Part Salariale %', value=employee_percentage)
-        
+
         employee_contri = dict()
         def extract_employee_share(insuree_id):
             try:
@@ -703,10 +707,10 @@ def export_phi(request, policy_holder_code):
                 return None
             except Exception as e:
                 return None
-        
+
         employee_share = [extract_employee_share(insuree_id) for insuree_id in df['id']]
         df.insert(loc=19, column='Part Salariale', value=employee_share)
-        
+
         def extract_total_share(insuree_id):
             try:
                 if employee_contri[insuree_id] and employer_contri[insuree_id]:
@@ -715,10 +719,10 @@ def export_phi(request, policy_holder_code):
                 return None
             except Exception as e:
                 return None
-        
+
         total_share = [extract_total_share(insuree_id) for insuree_id in df['id']]
         df.insert(loc=20, column='Cotisation total', value=total_share)
-        
+
         df['Supprimé'] = '' #
 
         df.rename(columns={'camu_number': 'Numéro CAMU', 'last_name': 'Nom', 'other_names': 'Prénom',
@@ -815,16 +819,16 @@ def not_declared_policy_holder(request):
         camu_code = request.GET.get('camu_code', None)
         trade_name = request.GET.get('trade_name', None)
         department = request.GET.get('department', None)
-        
+
         if declared and declared.lower() == 'true':
             declared = True
         else:
             declared = False
-        
+
         print("declared : ", declared)
-        
+
         from contract.models import Contract
-        
+
         today = datetime.today()
         if contract_from_date:
             contract_from_date = datetime.strptime(contract_from_date, "%Y-%m-%d").date()
@@ -833,7 +837,7 @@ def not_declared_policy_holder(request):
             contract_from_date = today.replace(day=1)
             contract_from_date = contract_from_date.date()
         print("contract_from_date : ", contract_from_date)
-        
+
         if contract_to_date:
             contract_to_date = datetime.strptime(contract_to_date, "%Y-%m-%d").date()
         else:
@@ -842,14 +846,14 @@ def not_declared_policy_holder(request):
             contract_to_date = today.replace(day=last_day)
             contract_to_date = contract_to_date.date()
         print("contract_to_date : ", contract_to_date)
-            
+
         if contract_from_date > contract_to_date:
             error = GraphQLError("Dates are not proper!", extensions={"code": 200})
             raise error
-        
+
         contract_list = list(set(Contract.objects.filter(
-                date_valid_from__date__gte=contract_from_date, 
-                date_valid_to__date__lte=contract_to_date, 
+                date_valid_from__date__gte=contract_from_date,
+                date_valid_to__date__lte=contract_to_date,
                 is_deleted=False).values_list('policy_holder__id', flat=True)))
         print(contract_list)
         ph_object = None
@@ -857,13 +861,13 @@ def not_declared_policy_holder(request):
             ph_object = PolicyHolder.objects.filter(id__in=contract_list, is_deleted=False).all()
         else:
             ph_object = PolicyHolder.objects.filter(is_deleted=False).all().exclude(id__in=contract_list)
-        
+
         if camu_code:
             ph_object = ph_object.filter(code=camu_code)
-        
+
         if trade_name:
             ph_object = ph_object.filter(trade_name=trade_name)
-        
+
         if department:
             ph_object = ph_object.filter(locations__parent__parent__parent__uuid=department)
 
@@ -888,7 +892,7 @@ def not_declared_policy_holder(request):
 
         data_frame.to_excel(response, index=False, engine='openpyxl')
         return response
-        
+
     return True
 
 
@@ -1082,3 +1086,18 @@ def manuall_check_for_category_change_request(user, insuree_id, policyholder_id,
         return False
 
 
+@authentication_classes([])
+@permission_classes([AllowAny])
+def verify_email(request, uidb64, token):
+    try:
+        uid = force_text(urlsafe_base64_decode(uidb64))
+        user = InteractiveUser.objects.get(pk=uid)
+    except (TypeError, ValueError, OverflowError, InteractiveUser.DoesNotExist):
+        user = None
+
+    if user is not None and default_token_generator.check_token(user, token):
+        user.is_verified = True
+        user.save()
+        return redirect('verification_success_url')
+    else:
+        return redirect('verification_error_url')
