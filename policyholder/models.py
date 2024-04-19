@@ -21,7 +21,7 @@ class PolicyHolderManager(core_models.HistoryModelManager):
 
 
 class PolicyHolder(core_models.HistoryBusinessModel):
-    code = models.CharField(db_column='PolicyHolderCode', max_length=32)
+    code = models.CharField(db_column='PolicyHolderCode', max_length=32, null=True)
     trade_name = models.CharField(db_column='TradeName', max_length=255)
     locations = models.ForeignKey(Location, db_column='LocationsId', on_delete=models.deletion.DO_NOTHING, blank=True, null=True)
     address = models.JSONField(db_column='Address', blank=True, null=True)
@@ -34,6 +34,7 @@ class PolicyHolder(core_models.HistoryBusinessModel):
     accountancy_account = models.CharField(db_column='AccountancyAccount', max_length=64, blank=True, null=True)
     bank_account = models.JSONField(db_column="bankAccount", blank=True, null=True)
     payment_reference = models.CharField(db_column='PaymentReference', max_length=128, blank=True, null=True)
+    is_approved = models.BooleanField(db_column="IsApproved", default=False)
 
     objects = PolicyHolderManager()
 

@@ -337,43 +337,60 @@ class CategoryChangeStatusChange(graphene.Mutation):
         )
 
 
-class CreatePHPortalUserMutation(OpenIMISMutation):
+class CreatePHPortalUserMutation(graphene.Mutation):
     """
     Create a new policy holder portal user.
     """
-    _mutation_module = "core"
-    _mutation_class = "CreateUserMutation"
+    # _mutation_module = "core"
+    # _mutation_class = "CreateUserMutation"
+    success = graphene.Boolean()
+    message = graphene.String()
 
-    class Input(PHPortalUserCreateInput, OpenIMISMutation.Input):
-        pass
+    # class Input(PHPortalUserCreateInput):
+    #     pass
+    class Arguments:
+        input = graphene.Argument(PHPortalUserCreateInput)
+        
 
     @classmethod
-    def async_mutate(cls, user, **data):
+    def mutate(cls, root, info, input):
         try:
+            user = info.context.user
             # if type(user) is AnonymousUser or not user.id:
             #     raise ValidationError("mutation.authentication_required")
-            if User.objects.filter(username=data['username']).exists():
+            if User.objects.filter(username=input['username']).exists():
                 raise ValidationError("User with this user name already exists.")
             # if not user.has_perms(CoreConfig.gql_mutation_create_users_perms):
             #     raise PermissionDenied("unauthorized")
             from core.utils import TimeUtils
-            data['validity_from'] = TimeUtils.now()
-            data['audit_user_id'] = -1 #user.id_for_audit
+            input['validity_from'] = TimeUtils.now()
+            input['audit_user_id'] = -1 #user.id_for_audit
             ph_portal_user_admin_role = Role.objects.filter(name=PH_ADMIN_ROLE).first()
             if not ph_portal_user_admin_role:
                 raise ValidationError("Policy Holder Admin Role not exists.")
-            data['roles'] = ["{}".format(ph_portal_user_admin_role.id)]
+            input['roles'] = ["{}".format(ph_portal_user_admin_role.id)]
             
-            ph_trade_name = data.pop("trade_name")
-            ph_json_ext = data.pop("json_ext")
+            ph_trade_name = input.pop("trade_name")
+            ph_json_ext = input.pop("json_ext")
             
-            core_user = update_or_create_user(data, user)
+            core_user = update_or_create_user(input, user)
+            logger.info(f"CreatePHPortalUserMutation : core_user : {core_user}")
+            
+            ph_obj = PolicyHolder()
+            ph_obj.trade_name = ph_trade_name
+            ph_obj.json_ext = ph_json_ext
+            ph_obj.save(username=core_user.username)
+            logger.info(f"CreatePHPortalUserMutation : ph_obj : {ph_obj}")
+            
+            phu_obj = PolicyHolderUser()
+            phu_obj.user = core_user
+            phu_obj.policy_holder = ph_obj
+            phu_obj.save(username=core_user.username)
+            logger.info(f"CreatePHPortalUserMutation : phu_obj : {phu_obj}")
+            
             # send_verification_email(core_user.i_user)
 
-            return None
+            return CreatePHPortalUserMutation(success=True, message="Successful!")
         except Exception as exc:
-            return [
-                {
-                    'message': "core.mutation.failed_to_create_user",
-                    'detail': str(exc)
-                }]
+            return CreatePHPortalUserMutation(success=False, message=str(exc))
+

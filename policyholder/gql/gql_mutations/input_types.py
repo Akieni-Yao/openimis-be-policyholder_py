@@ -131,6 +131,6 @@ class PolicyHolderExcptionInput(graphene.InputObjectType):
     exception_reason = graphene.String()
 
 
-class PHPortalUserCreateInput(UserBase):
+class PHPortalUserCreateInput(graphene.InputObjectType, UserBase):
     trade_name = graphene.String(max_length=255, required=True)
     json_ext = graphene.types.json.JSONString(required=False)
