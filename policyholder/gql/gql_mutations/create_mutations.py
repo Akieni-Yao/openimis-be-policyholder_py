@@ -12,7 +12,7 @@ from policyholder.apps import PolicyholderConfig
 from policyholder.constants import *
 from policyholder.dms_utils import create_policyholder_openkmfolder, send_mail_to_policyholder_with_pdf, \
     create_folder_for_policy_holder_exception, send_beneficiary_remove_notification, get_location_from_insuree, \
-    create_phi_for_cat_change
+    create_phi_for_cat_change, change_insuree_doc_status
 from policyholder.gql import PolicyHolderExcptionType
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, PolicyHolderUser, \
     Insuree, PolicyHolderExcption, CategoryChange
@@ -267,10 +267,10 @@ class CategoryChangeStatusChange(graphene.Mutation):
             logger.info(f"Category change request found by ID: {cc_id}")
         if cc:
             cc.status = status
+            insuree = cc.insuree
             logger.info(f"Updating category change request status to: {status}")
             if cc.status == CC_APPROVED:
                 logger.info("Category change request status is approved")
-                insuree = cc.insuree
                 new_category = cc.new_category
                 logger.info(f"new_category: {new_category}")
                 family_json_data = {"enrolmentType": new_category}
@@ -325,6 +325,7 @@ class CategoryChangeStatusChange(graphene.Mutation):
             cc.save()
             logger.info("Category change request status updated")
             create_phi_for_cat_change(info.context.user, cc)
+            change_insuree_doc_status(insuree.chf_id)
             return CategoryChangeStatusChange(
                 success=True,
                 message="Request status successfully updated!"
@@ -368,6 +369,7 @@ class CreatePHPortalUserMutation(OpenIMISMutation):
             
             core_user = update_or_create_user(data, user)
             # send_verification_email(core_user.i_user)
+
             return None
         except Exception as exc:
             return [

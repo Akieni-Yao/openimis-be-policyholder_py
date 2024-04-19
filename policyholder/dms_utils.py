@@ -3,12 +3,13 @@ import logging
 
 import requests
 from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
 from django.core.mail import EmailMessage
 from django.http import JsonResponse, Http404
 
 from core.utils import generate_qr
 from insuree.dms_utils import CNSS_CREATE_FOLDER_API_URL, get_headers_with_token, enrolment_mapping_to_french
-from insuree.models import Insuree
+from insuree.models import Insuree, InsureeDocuments
 from insuree.reports.code_converstion_for_report import convert_activity_data
 from location.models import Location
 from policyholder.models import PolicyHolderInsuree, PolicyHolderContributionPlan
@@ -246,8 +247,8 @@ def get_location_from_insuree(insuree):
     if json_data:
         code_value = json_data['insureelocations']['code']
         location = Location.objects.filter(validity_to__isnull=True,
-                                       type="V",
-                                       code=code_value).first()
+                                           type="V",
+                                           code=code_value).first()
     return location
 
 
@@ -298,3 +299,18 @@ def create_phi_for_cat_change(user, cc):
             logger.error(f"Error occurred while creating PolicyHolderInsuree: {str(e)}")
             return False
 
+
+def change_insuree_doc_status(cc_id=None):
+    try:
+        if cc_id is not None:
+            ids = InsureeDocuments.objects.filter(temp_camu=cc_id).all()
+            for id in ids:
+                if id.document_status != 'APPROVED':
+                    id.document_status = 'APPROVED'
+                    id.save()
+        else:
+            logging.error("cc_id is None.")
+    except ObjectDoesNotExist as e:
+        logging.error(f"Object does not exist: {e}")
+    except Exception as e:
+        logging.error(f"An error occurred: {e}")
