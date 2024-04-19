@@ -119,6 +119,7 @@ def clean_line(line):
         elif header == HEADER_PHONE and isinstance(value, float):
             line[header] = int(value)
 
+
 def validate_line(line):
     errors = ""
     # add here any additional cleaning/conditions/formatting:
@@ -140,7 +141,7 @@ def get_village_from_line(line):
     return village
 
 
-def get_or_create_family_from_line(line, village: Location, audit_user_id: int,enrolment_type):
+def get_or_create_family_from_line(line, village: Location, audit_user_id: int, enrolment_type):
     head_id = line[HEADER_FAMILY_HEAD]
     family = None
     if head_id:
@@ -174,7 +175,8 @@ def generate_available_chf_id(gender, village, dob, insureeEnrolmentType):
     return temp_generate_employee_camu_registration_number(None, data)
 
 
-def get_or_create_insuree_from_line(line, family: Family, is_family_created: bool, audit_user_id: int, location=None, core_user_id=None,enrolment_type=None):
+def get_or_create_insuree_from_line(line, family: Family, is_family_created: bool, audit_user_id: int, location=None,
+                                    core_user_id=None, enrolment_type=None):
     id = line[HEADER_INSUREE_ID]
     camu_num = line[HEADER_INSUREE_CAMU_NO]
     insuree = None
@@ -233,6 +235,7 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
 
     return insuree, created
 
+
 def validating_insuree_on_name_dob(line):
     insuree_dob = line[HEADER_INSUREE_DOB]
     if not isinstance(insuree_dob, datetime):
@@ -249,6 +252,7 @@ def validating_insuree_on_name_dob(line):
 def get_policy_holder_from_code(ph_code: str):
     return PolicyHolder.objects.filter(code=ph_code, is_deleted=False).first()
 
+
 def soft_delete_insuree(line, policy_holder_code, user_id):
     id = line[HEADER_INSUREE_ID]
     camu_num = line[HEADER_INSUREE_CAMU_NO]
@@ -258,9 +262,10 @@ def soft_delete_insuree(line, policy_holder_code, user_id):
     if not insuree:
         insuree = (Insuree.objects.filter(validity_to__isnull=True, camu_number=camu_num).first())
     if insuree:
-        phn = PolicyHolderInsuree.objects.filter(insuree_id=insuree.id, policy_holder__code=policy_holder_code, policy_holder__date_valid_to__isnull=True,
-                                                            policy_holder__is_deleted=False, date_valid_to__isnull=True,
-                                                            is_deleted=False).first()
+        phn = PolicyHolderInsuree.objects.filter(insuree_id=insuree.id, policy_holder__code=policy_holder_code,
+                                                 policy_holder__date_valid_to__isnull=True,
+                                                 policy_holder__is_deleted=False, date_valid_to__isnull=True,
+                                                 is_deleted=False).first()
         if phn:
             PolicyHolderInsuree.objects.filter(id=phn.id).update(is_deleted=True, date_valid_to=datetime.now())
             return True
@@ -313,7 +318,7 @@ def import_phi(request, policy_holder_code):
         "Village": HEADER_FAMILY_LOCATION_CODE,
         "ID Famille": HEADER_FAMILY_HEAD,
         "Email": HEADER_EMAIL,
-        "Matricule":HEADER_EMPLOYER_NUMBER,
+        "Matricule": HEADER_EMPLOYER_NUMBER,
         "Salaire Brut": HEADER_INCOME,
         "Part Patronale %": HEADER_EMPLOYER_PERCENTAGE,
         "Part Patronale": HEADER_EMPLOYER_SHARE,
@@ -368,7 +373,8 @@ def import_phi(request, policy_holder_code):
 
             age = (datetime.now().date() - dob.date()) // timedelta(days=365.25)  # Calculate age in years
             if age < MINIMUM_AGE_LIMIT:
-                errors.append(f"Error line {total_lines} - Head insuree must be at least {MINIMUM_AGE_LIMIT} years old.")
+                errors.append(
+                    f"Error line {total_lines} - Head insuree must be at least {MINIMUM_AGE_LIMIT} years old.")
                 logger.debug(f"Error line {total_lines} - Head insuree be at least {MINIMUM_AGE_LIMIT} years old.")
                 total_validation_errors += 1
                 # Adding error in output excel
@@ -461,14 +467,14 @@ def import_phi(request, policy_holder_code):
         #     pass
         #     continue
 
-        is_cc_request = check_for_category_change_request(request.user, line, policy_holder, enrolment_type, line[HEADER_INCOME], line[HEADER_EMPLOYER_NUMBER])
+        is_cc_request = check_for_category_change_request(request.user, line, policy_holder, enrolment_type)
         if is_cc_request:
             row_data = line.tolist()
             row_data.extend(["Success", "Category Change Request Created."])
             processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
             continue
 
-        family, family_created = get_or_create_family_from_line(line, village, user_id,enrolment_type)
+        family, family_created = get_or_create_family_from_line(line, village, user_id, enrolment_type)
         logger.debug("family_created: %s", family_created)
         if family_created:
             total_families_created += 1
@@ -479,15 +485,18 @@ def import_phi(request, policy_holder_code):
             processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
             continue
 
-        insuree, insuree_created = get_or_create_insuree_from_line(line, family, family_created, user_id, None, core_user_id,enrolment_type)
+        insuree, insuree_created = get_or_create_insuree_from_line(line, family, family_created, user_id, None,
+                                                                   core_user_id, enrolment_type)
         logger.debug("insuree_created: %s", insuree_created)
         if insuree_created:
             total_insurees_created += 1
             try:
-                logger.info("====  policyholder  ====  import_phi  ====  create_openKm_folder_for_bulkupload  ====  Start")
+                logger.info(
+                    "====  policyholder  ====  import_phi  ====  create_openKm_folder_for_bulkupload  ====  Start")
                 user = request.user
-                create_openKm_folder_for_bulkupload(user,insuree)
-                logger.info("====  policyholder  ====  import_phi  ====  create_openKm_folder_for_bulkupload  ====  End")
+                create_openKm_folder_for_bulkupload(user, insuree)
+                logger.info(
+                    "====  policyholder  ====  import_phi  ====  create_openKm_folder_for_bulkupload  ====  End")
             except Exception as e:
                 logger.error(f"insuree bulk upload error for dms: {e}")
             try:
@@ -585,16 +594,19 @@ def import_phi(request, policy_holder_code):
 
 def export_phi(request, policy_holder_code):
     try:
-        insuree_ids = PolicyHolderInsuree.objects.filter(policy_holder__code=policy_holder_code, policy_holder__date_valid_to__isnull=True,
-                                                            policy_holder__is_deleted=False, date_valid_to__isnull=True,
-                                                            is_deleted=False).values_list('insuree_id', flat=True).distinct()
+        insuree_ids = PolicyHolderInsuree.objects.filter(policy_holder__code=policy_holder_code,
+                                                         policy_holder__date_valid_to__isnull=True,
+                                                         policy_holder__is_deleted=False, date_valid_to__isnull=True,
+                                                         is_deleted=False).values_list('insuree_id',
+                                                                                       flat=True).distinct()
 
         queryset = Insuree.objects.filter(validity_to__isnull=True, id__in=insuree_ids, head=True) \
-                .select_related('gender', 'current_village', 'family', 'family__location', 'family__location__parent',
-                                'family__location__parent__parent', 'family__location__parent__parent__parent')
+            .select_related('gender', 'current_village', 'family', 'family__location', 'family__location__parent',
+                            'family__location__parent__parent', 'family__location__parent__parent__parent')
 
         data = list(queryset.values('camu_number', 'last_name', 'other_names', 'chf_id', 'gender__code', 'phone',
-                                    'family__location__code', 'family__head_insuree__chf_id', 'email', 'json_ext', 'id', 'dob', 'marital'))
+                                    'family__location__code', 'family__head_insuree__chf_id', 'email', 'json_ext', 'id',
+                                    'dob', 'marital'))
 
         df = pd.DataFrame(data)
 
@@ -621,9 +633,10 @@ def export_phi(request, policy_holder_code):
         df.insert(loc=9, column='Adresse', value=address)
 
         def extract_emp_no(insuree_id, policy_holder_code):
-            phn_json = PolicyHolderInsuree.objects.filter(insuree_id=insuree_id, policy_holder__code=policy_holder_code, policy_holder__date_valid_to__isnull=True,
-                                                            policy_holder__is_deleted=False, date_valid_to__isnull=True,
-                                                            is_deleted=False).first()
+            phn_json = PolicyHolderInsuree.objects.filter(insuree_id=insuree_id, policy_holder__code=policy_holder_code,
+                                                          policy_holder__date_valid_to__isnull=True,
+                                                          policy_holder__is_deleted=False, date_valid_to__isnull=True,
+                                                          is_deleted=False).first()
             # return json_data.get('employeeNumber', None) if json_data else None
             if phn_json:
                 return phn_json.employer_number
@@ -633,10 +646,12 @@ def export_phi(request, policy_holder_code):
         df.insert(loc=13, column='Matricule', value=emp_no)
 
         employee_income = dict()
+
         def extract_income(insuree_id, policy_holder_code):
-            phn_json = PolicyHolderInsuree.objects.filter(insuree_id=insuree_id, policy_holder__code=policy_holder_code, policy_holder__date_valid_to__isnull=True,
-                                                            policy_holder__is_deleted=False, date_valid_to__isnull=True,
-                                                            is_deleted=False).first()
+            phn_json = PolicyHolderInsuree.objects.filter(insuree_id=insuree_id, policy_holder__code=policy_holder_code,
+                                                          policy_holder__date_valid_to__isnull=True,
+                                                          policy_holder__is_deleted=False, date_valid_to__isnull=True,
+                                                          is_deleted=False).first()
             if phn_json:
                 json_data = phn_json.json_ext
                 if json_data:
@@ -649,7 +664,8 @@ def export_phi(request, policy_holder_code):
         df.insert(loc=15, column='Salaire Brut', value=income)
 
         conti_plan = None
-        ph_cpb = PolicyHolderContributionPlan.objects.filter(policy_holder__code=policy_holder_code, is_deleted=False).first()
+        ph_cpb = PolicyHolderContributionPlan.objects.filter(policy_holder__code=policy_holder_code,
+                                                             is_deleted=False).first()
         if ph_cpb and ph_cpb.contribution_plan_bundle:
             cpb = ph_cpb.contribution_plan_bundle
             cpbd = ContributionPlanBundleDetails.objects.filter(contribution_plan_bundle=cpb, is_deleted=False).first()
@@ -658,6 +674,7 @@ def export_phi(request, policy_holder_code):
             logger.debug(" No contribution plan bundle.")
 
         employer_contri_per = dict()
+
         def extract_employer_percentage(insuree_id):
             if conti_plan:
                 json_data = conti_plan.json_ext if conti_plan.json_ext else None
@@ -671,6 +688,7 @@ def export_phi(request, policy_holder_code):
         df.insert(loc=16, column='Part Patronale %', value=employer_percentage)
 
         employer_contri = dict()
+
         def extract_employer_share(insuree_id):
             try:
                 if employer_contri_per[insuree_id] and employee_income[insuree_id]:
@@ -685,6 +703,7 @@ def export_phi(request, policy_holder_code):
         df.insert(loc=17, column='Part Patronale', value=employer_share)
 
         employee_contri_per = dict()
+
         def extract_employee_percentage(insuree_id):
             if conti_plan:
                 json_data = conti_plan.json_ext if conti_plan.json_ext else None
@@ -698,6 +717,7 @@ def export_phi(request, policy_holder_code):
         df.insert(loc=18, column='Part Salariale %', value=employee_percentage)
 
         employee_contri = dict()
+
         def extract_employee_share(insuree_id):
             try:
                 if employee_income[insuree_id] and employee_contri_per[insuree_id]:
@@ -723,11 +743,12 @@ def export_phi(request, policy_holder_code):
         total_share = [extract_total_share(insuree_id) for insuree_id in df['id']]
         df.insert(loc=20, column='Cotisation total', value=total_share)
 
-        df['Supprimé'] = '' #
+        df['Supprimé'] = ''  #
 
         df.rename(columns={'camu_number': 'Numéro CAMU', 'last_name': 'Nom', 'other_names': 'Prénom',
-                        'chf_id': 'Numéro CAMU temporaire', 'gender__code': 'Sexe', 'phone': 'Téléphone',
-                        'family__location__code': 'Village', 'family__head_insuree__chf_id': 'ID Famille', 'email': 'Email'}, inplace=True)
+                           'chf_id': 'Numéro CAMU temporaire', 'gender__code': 'Sexe', 'phone': 'Téléphone',
+                           'family__location__code': 'Village', 'family__head_insuree__chf_id': 'ID Famille',
+                           'email': 'Email'}, inplace=True)
 
         df.drop(columns=['json_ext', 'id', 'dob', 'marital'], inplace=True)
 
@@ -742,6 +763,7 @@ def export_phi(request, policy_holder_code):
     except Exception as e:
         logger.error("Unexpected error while exporting insurees", exc_info=e)
         return Response({'success': False, 'error': str(e)}, status=500)
+
 
 class LocationEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -787,7 +809,8 @@ def mapping_marital_status(marital, value=None):
         "Marié": "M",
     }
     if value and marital is None:
-        logger.info("mapping_marital_status passing value : ", list(mapping.keys())[list(mapping.values()).index(value)])
+        logger.info("mapping_marital_status passing value : ",
+                    list(mapping.keys())[list(mapping.values()).index(value)])
         return list(mapping.keys())[list(mapping.values()).index(value)]
     elif marital in mapping:
         return mapping[marital]
@@ -852,9 +875,9 @@ def not_declared_policy_holder(request):
             raise error
 
         contract_list = list(set(Contract.objects.filter(
-                date_valid_from__date__gte=contract_from_date,
-                date_valid_to__date__lte=contract_to_date,
-                is_deleted=False).values_list('policy_holder__id', flat=True)))
+            date_valid_from__date__gte=contract_from_date,
+            date_valid_to__date__lte=contract_to_date,
+            is_deleted=False).values_list('policy_holder__id', flat=True)))
         print(contract_list)
         ph_object = None
         if declared:
@@ -907,8 +930,8 @@ def get_emails_for_imis_administrators():
         # Extract the emails from the InteractiveUser objects, skipping records without email
         emails = [user.email for user in imis_admin_users if user.email]
         # getting unique emails
-        if len(emails)>0:
-            emails=list(set(emails))
+        if len(emails) > 0:
+            emails = list(set(emails))
 
         return emails
     except Role.DoesNotExist:
@@ -919,6 +942,7 @@ def get_emails_for_imis_administrators():
         # Handle other exceptions if needed
         print(f"An error occurred: {str(e)}")
         return []
+
 
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -979,7 +1003,8 @@ def not_declared_ph_rest(request):
         recipient_list = get_emails_for_imis_administrators()
 
         email = EmailMessage(subject, message, from_email, recipient_list)
-        email.attach('non declare.xlsx', response.content, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        email.attach('non declare.xlsx', response.content,
+                     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         email.send()
 
         return Response({"message": "Email sent successfully."})
@@ -999,7 +1024,8 @@ def request_number_cc():
         return None
 
 
-def create_dependent_category_change(user, code, insuree, old_category, new_category, policy_holder, request_type, status, income=None, employer_number=None):
+def create_dependent_category_change(user, code, insuree, old_category, new_category, policy_holder, request_type,
+                                     status, income=None, employer_number=None):
     json_ext = {}
     if income and employer_number:
         json_ext = {"income": income, "employer_number": employer_number}
@@ -1020,10 +1046,12 @@ def create_dependent_category_change(user, code, insuree, old_category, new_cate
     logger.info(f"CategoryChange request created for Insuree {insuree} for {request_type.lower()} request")
 
 
-def check_for_category_change_request(user, line, policy_holder, enrolment_type, income, employer_number):
+def check_for_category_change_request(user, line, policy_holder, enrolment_type):
     try:
-        insuree_id = line.get(HEADER_INSUREE_ID)
-        camu_num = line.get(HEADER_INSUREE_CAMU_NO)
+        insuree_id = line.get(HEADER_INSUREE_ID, '')
+        camu_num = line.get(HEADER_INSUREE_CAMU_NO, '')
+        income = line.get(HEADER_INCOME, '')
+        employer_number = line.get(HEADER_EMPLOYER_NUMBER, '')
         insuree = None
 
         if insuree_id:
@@ -1040,7 +1068,8 @@ def check_for_category_change_request(user, line, policy_holder, enrolment_type,
                 if insuree.family:
                     if insuree.head:
                         if new_category != old_category:
-                            create_dependent_category_change(user, code, insuree, old_category, new_category, policy_holder,
+                            create_dependent_category_change(user, code, insuree, old_category, new_category,
+                                                             policy_holder,
                                                              'SELF_HEAD_REQ',
                                                              CC_PENDING, income, employer_number)
                             return True
@@ -1049,11 +1078,12 @@ def check_for_category_change_request(user, line, policy_holder, enrolment_type,
                     else:
                         create_dependent_category_change(user, code, insuree, old_category, new_category, policy_holder,
                                                          'DEPENDENT_REQ',
-                                                         CC_PENDING,  income, employer_number)
+                                                         CC_PENDING, income, employer_number)
                         return True
                 else:
-                    create_dependent_category_change(user, code, insuree, old_category, new_category, policy_holder, 'INDIVIDUAL_REQ',
-                                                     CC_PENDING,  income, employer_number)
+                    create_dependent_category_change(user, code, insuree, old_category, new_category, policy_holder,
+                                                     'INDIVIDUAL_REQ',
+                                                     CC_PENDING, income, employer_number)
                     return True
         return False
     except Exception as e:
@@ -1078,9 +1108,11 @@ def manuall_check_for_category_change_request(user, insuree_id, policyholder_id,
             raise ValueError("Insuree not found.")
         line = {
             'insuree_id': insuree.chf_id,
-            'camu_number': insuree.camu_number
+            'camu_number': insuree.camu_number,
+            'income': income,
+            'employer_number': employer_number
         }
-        response = check_for_category_change_request(user, line, policy_holder, enrolment_type, income, employer_number)
+        response = check_for_category_change_request(user, line, policy_holder, enrolment_type)
         return response
     except Exception as e:
         return False
@@ -1088,16 +1120,29 @@ def manuall_check_for_category_change_request(user, insuree_id, policyholder_id,
 
 @authentication_classes([])
 @permission_classes([AllowAny])
-def verify_email(request, uidb64, token):
+def verify_email(request, uidb64, token, timestamp):
     try:
         uid = force_text(urlsafe_base64_decode(uidb64))
         user = InteractiveUser.objects.get(pk=uid)
     except (TypeError, ValueError, OverflowError, InteractiveUser.DoesNotExist):
-        user = None
+        return redirect('https://www.fb.com')
 
-    if user is not None and default_token_generator.check_token(user, token):
-        user.is_verified = True
-        user.save()
-        return redirect('verification_success_url')
+    # Check if the token is valid and not expired
+    if default_token_generator.check_token(user, token):
+        # Convert timestamp from string to integer
+        timestamp = int(timestamp)
+        # Check if the token has expired (24 hours)
+        expiration_time = timezone.make_aware(timezone.datetime.fromtimestamp(timestamp)) + timezone.timedelta(hours=24)
+        if timezone.now() <= expiration_time:
+            if not user.is_verified:
+                user.is_verified = True
+                user.save()
+                return redirect('https://www.google.co.in')
+            else:
+                return redirect('https://www.yahoo.in')
+        else:
+            # Token has expired
+            return redirect('https://www.yahoo.in')
     else:
-        return redirect('verification_error_url')
+        # Invalid token
+        return redirect('https://www.yahoo.in')

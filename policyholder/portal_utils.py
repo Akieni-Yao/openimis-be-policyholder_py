@@ -1,4 +1,7 @@
+import logging
+
 import graphene
+from django.conf import settings
 from django.contrib.auth.tokens import default_token_generator
 from django.contrib.sites.shortcuts import get_current_site
 from django.core.mail import send_mail
@@ -11,17 +14,28 @@ from gitdb.utils.encoding import force_text
 
 from core.models import InteractiveUser
 
+logger = logging.getLogger(__name__)
+
 
 def send_verification_email(user):
     token = default_token_generator.make_token(user)
+    logger.info(f"Token generated: {token}")
+
     uid = urlsafe_base64_encode(force_bytes(user.pk))
-    domain = get_current_site(None).domain
-    verification_url = f"https://{domain}/verify-email/{uid}/{token}/"
+    logger.info(f"User ID encoded: {uid}")
+
+    timestamp = int(timezone.now().timestamp())
+    logger.info(f"Timestamp: {timestamp}")
+
+    domain = 'example.com'
+    verification_url = f"http://localhost:8000/api/policyholder/verify-email/{uid}/{token}/{timestamp}/"
+    logger.info(f"Verification URL: {verification_url}")
 
     subject = 'Verify your email'
-    message = f'Hi {user.first_name}, Please click the link below to verify your email:\n\n{verification_url}'
-    send_mail(subject, message, 'from@example.com', [user.email])
-
+    message = f'Hi {user.last_name}, Please click the link below to verify your email:\n\n{verification_url}'
+    logger.info("Sending verification email...")
+    send_mail(subject, message, settings.EMAIL_HOST_USER, ['lakshya.soni@walkingtree.tech'])
+    logger.info("Verification email sent.")
 
 
 def send_password_reset_email(user):
@@ -36,7 +50,6 @@ def send_password_reset_email(user):
         'reset_url': reset_url,
     })
     send_mail(subject, message, 'from@example.com', [user.email])
-
 
 
 class ForgotPassword(graphene.Mutation):
@@ -89,4 +102,3 @@ class ResetPassword(graphene.Mutation):
                 return ResetPassword(success=False, message="Password reset link expired.")
         else:
             return ResetPassword(success=False, message="Invalid password reset link.")
-
