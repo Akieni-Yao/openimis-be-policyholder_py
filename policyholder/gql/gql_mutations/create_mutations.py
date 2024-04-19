@@ -273,19 +273,19 @@ class CategoryChangeStatusChange(graphene.Mutation):
                 insuree = cc.insuree
                 new_category = cc.new_category
                 logger.info(f"new_category: {new_category}")
+                family_json_data = {"enrolmentType": new_category}
+                logger.info(f"json_data: {family_json_data}")
                 if cc.request_type in ['INDIVIDUAL_REQ', 'DEPENDENT_REQ']:
                     logger.info("Processing individual or dependent request")
                     location = get_location_from_insuree(insuree)
                     old_insuree_obj_id = insuree.save_history()
                     logger.info(f"old_insuree_obj_id: {old_insuree_obj_id}")
-                    json_data = {"enrolmentType": new_category}
-                    logger.info(f"json_data: {json_data}")
                     new_family = Family.objects.create(
                         head_insuree=insuree,
                         location=location,
                         audit_user_id=insuree.audit_user_id,
                         status=insuree.status,
-                        json_ext=json_data
+                        json_ext=family_json_data
                     )
                     logger.info(f"new_family: {new_family}")
                     logger.info(f"new_family id: {new_family.id}")
@@ -317,7 +317,7 @@ class CategoryChangeStatusChange(graphene.Mutation):
                     logger.info(f"insuree_status: {insuree_status}")
                     insuree.json_ext['insureeEnrolmentType'] = new_category
                     insuree.save()
-                    Family.objects.filter(id=insuree.family.id).update(status=insuree_status)
+                    Family.objects.filter(id=insuree.family.id).update(status=insuree_status, json_ext=family_json_data)
             else:
                 logger.info("Category change request status is not approved")
                 if rejected_reason:
