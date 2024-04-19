@@ -325,7 +325,6 @@ class CategoryChangeStatusChange(graphene.Mutation):
             cc.save()
             logger.info("Category change request status updated")
             create_phi_for_cat_change(info.context.user, cc)
-            change_insuree_doc_status(insuree.chf_id)
             return CategoryChangeStatusChange(
                 success=True,
                 message="Request status successfully updated!"

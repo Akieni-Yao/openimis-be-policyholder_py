@@ -308,6 +308,7 @@ def change_insuree_doc_status(cc_id=None):
                 if id.document_status != 'APPROVED':
                     id.document_status = 'APPROVED'
                     id.save()
+                    logging.info(f"Document statuses updated for cc_id: {cc_id}")
         else:
             logging.error("cc_id is None.")
     except ObjectDoesNotExist as e:
