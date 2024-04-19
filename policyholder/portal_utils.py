@@ -1,3 +1,4 @@
+from datetime import datetime
 import logging
 
 import graphene
@@ -24,11 +25,12 @@ def send_verification_email(user):
     uid = urlsafe_base64_encode(force_bytes(user.pk))
     logger.info(f"User ID encoded: {uid}")
 
-    timestamp = int(timezone.now().timestamp())
+    timestamp = int(datetime.now().timestamp())
+    e_timestamp = urlsafe_base64_encode(force_bytes(timestamp))
     logger.info(f"Timestamp: {timestamp}")
 
-    domain = 'example.com'
-    verification_url = f"http://localhost:8000/api/policyholder/verify-email/{uid}/{token}/{timestamp}/"
+    domain = settings.FRONTEND_URL
+    verification_url = f"https://dev-camu.devopsdemo.live/api/policyholder/verify-email/{uid}/{token}/{e_timestamp}/"
     logger.info(f"Verification URL: {verification_url}")
 
     subject = 'Verify your email'

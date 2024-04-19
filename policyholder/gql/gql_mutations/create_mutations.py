@@ -387,7 +387,7 @@ class CreatePHPortalUserMutation(graphene.Mutation):
             phu_obj.save(username=core_user.username)
             logger.info(f"CreatePHPortalUserMutation : phu_obj : {phu_obj}")
             
-            # send_verification_email(core_user.i_user)
+            send_verification_email(core_user.i_user)
 
             return CreatePHPortalUserMutation(success=True, message="Successful!")
         except Exception as exc:

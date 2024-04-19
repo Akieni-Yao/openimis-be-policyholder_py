@@ -1120,29 +1120,36 @@ def manuall_check_for_category_change_request(user, insuree_id, policyholder_id,
 
 @authentication_classes([])
 @permission_classes([AllowAny])
-def verify_email(request, uidb64, token, timestamp):
+def verify_email(request, uidb64, token, e_timestamp):
     try:
         uid = force_text(urlsafe_base64_decode(uidb64))
         user = InteractiveUser.objects.get(pk=uid)
-    except (TypeError, ValueError, OverflowError, InteractiveUser.DoesNotExist):
+        timestamp = force_text(urlsafe_base64_decode(e_timestamp))
+    except (TypeError, ValueError, OverflowError, InteractiveUser.DoesNotExist) as e:
+        logger.error(f"Error occurred while decoding parameters: {e}")
         return redirect('https://www.fb.com')
 
     # Check if the token is valid and not expired
     if default_token_generator.check_token(user, token):
-        # Convert timestamp from string to integer
         timestamp = int(timestamp)
-        # Check if the token has expired (24 hours)
-        expiration_time = timezone.make_aware(timezone.datetime.fromtimestamp(timestamp)) + timezone.timedelta(hours=24)
-        if timezone.now() <= expiration_time:
+        logger.info("Timestamp decoded successfully.")
+        expiration_time = datetime.fromtimestamp(timestamp) + timedelta(hours=24)
+        logger.info(f"Expiration time calculated: {expiration_time}")
+        current_time = datetime.now()
+        logger.info(f"Current time: {current_time}")
+
+        if current_time <= expiration_time:
             if not user.is_verified:
                 user.is_verified = True
                 user.save()
-                return redirect('https://www.google.co.in')
+                logger.info("User verification successful.")
+                return redirect('https://www.google.co.in')  # open page after verified successfully
             else:
-                return redirect('https://www.yahoo.in')
+                logger.info("User already verified.")
+                return redirect('https://www.yahoo.in')  # open page after already verified
         else:
-            # Token has expired
-            return redirect('https://www.yahoo.in')
+            logger.info("Token has expired.")
+            return redirect('https://www.yahoo.in')  # open page when token has expired
     else:
-        # Invalid token
-        return redirect('https://www.yahoo.in')
+        logger.info("Invalid token.")
+        return redirect('https://www.yahoo.in')  # open page when token is invalid
