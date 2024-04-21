@@ -1143,13 +1143,14 @@ def verify_email(request, uidb64, token, e_timestamp):
                 user.is_verified = True
                 user.save()
                 logger.info("User verification successful.")
-                return redirect('http://dev-camu.devopsdemo.live:8282/portal')  # open page after verified successfully
+                return redirect('http://dev-dms.devopsdemo.live:9002/signupsuccess')  # open page after verified successfully
             else:
                 logger.info("User already verified.")
-                return redirect('https://www.yahoo.in')  # open page after already verified
+                return redirect('http://dev-dms.devopsdemo.live:9002/signupfailed')  # open page after already verified
         else:
             logger.info("Token has expired.")
-            return redirect('https://www.yahoo.in')  # open page when token has expired
+            # TODO ACCOUNT DELETION WHEN TOKEN LINK EXPIRED WITHOUT CLICK
+            return redirect('http://dev-dms.devopsdemo.live:9002/signupfailed')  # open page when token has expired
     else:
         logger.info("Invalid token.")
-        return redirect('https://www.yahoo.in')  # open page when token is invalid
+        return redirect('http://dev-dms.devopsdemo.live:9002/signupfailed')  # open page when token is invalid
