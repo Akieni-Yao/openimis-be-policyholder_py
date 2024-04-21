@@ -34,9 +34,27 @@ def send_verification_email(user):
     logger.info(f"Verification URL: {verification_url}")
 
     subject = 'Verify your email'
+
     message = f'Hi {user.last_name}, Please click the link below to verify your email:\n\n{verification_url}'
     logger.info("Sending verification email...")
-    send_mail(subject, message, settings.EMAIL_HOST_USER, ['lakshya.soni@walkingtree.tech'])
+
+    html_message = '''
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Email Verification</title>
+    </head>
+    <body>
+        <p>Hi {last_name},</p>
+        <p>Please click the link below to verify your email:</p>
+        <a href="{verification_url}">Verify Email</a>
+    </body>
+    </html>
+    '''.format(last_name=user.last_name, verification_url=verification_url)
+
+    send_mail(subject, message, settings.EMAIL_HOST_USER, [user.email], html_message=html_message)
     logger.info("Verification email sent.")
 
 

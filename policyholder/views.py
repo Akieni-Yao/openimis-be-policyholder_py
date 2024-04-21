@@ -1143,7 +1143,7 @@ def verify_email(request, uidb64, token, e_timestamp):
                 user.is_verified = True
                 user.save()
                 logger.info("User verification successful.")
-                return redirect('https://www.google.co.in')  # open page after verified successfully
+                return redirect('http://dev-camu.devopsdemo.live:8282/portal')  # open page after verified successfully
             else:
                 logger.info("User already verified.")
                 return redirect('https://www.yahoo.in')  # open page after already verified
