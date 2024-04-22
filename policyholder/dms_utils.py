@@ -329,7 +329,7 @@ def documents_check_after_cat_change(temp_camu):
             category_change = CategoryChange.objects.filter(
                 insuree=insuree,
                 status=CC_APPROVED
-            ).first()
+            ).order_by('-created_time').first()
             if category_change:
                 logger.info(f"Documents check after category change successful for Insuree with chf_id: {temp_camu}")
                 return True
