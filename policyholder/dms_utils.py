@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import timezone, timedelta
 
 import requests
 from django.conf import settings
@@ -12,9 +13,11 @@ from insuree.dms_utils import CNSS_CREATE_FOLDER_API_URL, get_headers_with_token
 from insuree.models import Insuree, InsureeDocuments
 from insuree.reports.code_converstion_for_report import convert_activity_data
 from location.models import Location
-from policyholder.models import PolicyHolderInsuree, PolicyHolderContributionPlan
+from policyholder.constants import CC_APPROVED
+from policyholder.models import PolicyHolderInsuree, PolicyHolderContributionPlan, CategoryChange
 from report.apps import ReportConfig
 from report.services import get_report_definition, generate_report
+from workflow.constants import STATUS_APPROVED
 
 logger = logging.getLogger(__name__)
 
@@ -315,3 +318,27 @@ def change_insuree_doc_status(cc_id=None):
         logging.error(f"Object does not exist: {e}")
     except Exception as e:
         logging.error(f"An error occurred: {e}")
+
+
+def documents_check_after_cat_change(temp_camu):
+    try:
+        if not temp_camu:
+            raise ValueError("Invalid temp_camu value")
+        insuree = Insuree.objects.filter(chf_id=temp_camu, validity_to__isnull=True, status=STATUS_APPROVED).first()
+        if insuree:
+            category_change = CategoryChange.objects.filter(
+                insuree=insuree,
+                status=CC_APPROVED
+            ).first()
+            if category_change:
+                logger.info(f"Documents check after category change successful for Insuree with chf_id: {temp_camu}")
+                return True
+            else:
+                logger.warning(f"No CategoryChange object found for Insuree with chf_id: {temp_camu}")
+                return False
+        else:
+            logger.warning(f"No Insuree found with chf_id: {temp_camu}")
+            return False
+    except Exception as e:
+        logger.error(f"An error occurred in documents_check_after_cat_change: {e}")
+    return False
