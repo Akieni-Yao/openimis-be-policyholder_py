@@ -29,7 +29,7 @@ from insuree.gql_mutations import temp_generate_employee_camu_registration_numbe
 from insuree.models import Insuree, Gender, Family
 from location.models import Location
 from policyholder.apps import PolicyholderConfig
-from policyholder.constants import CC_PENDING
+from policyholder.constants import  CC_WAITING_FOR_DOCUMENT
 from policyholder.dms_utils import create_folder_for_cat_chnage_req
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, CategoryChange
 from contribution_plan.models import ContributionPlanBundleDetails
@@ -1071,19 +1071,19 @@ def check_for_category_change_request(user, line, policy_holder, enrolment_type)
                             create_dependent_category_change(user, code, insuree, old_category, new_category,
                                                              policy_holder,
                                                              'SELF_HEAD_REQ',
-                                                             CC_PENDING, income, employer_number)
+                                                             CC_WAITING_FOR_DOCUMENT, income, employer_number)
                             return True
                         else:
                             return False
                     else:
                         create_dependent_category_change(user, code, insuree, old_category, new_category, policy_holder,
                                                          'DEPENDENT_REQ',
-                                                         CC_PENDING, income, employer_number)
+                                                         CC_WAITING_FOR_DOCUMENT, income, employer_number)
                         return True
                 else:
                     create_dependent_category_change(user, code, insuree, old_category, new_category, policy_holder,
                                                      'INDIVIDUAL_REQ',
-                                                     CC_PENDING, income, employer_number)
+                                                     CC_WAITING_FOR_DOCUMENT, income, employer_number)
                     return True
         return False
     except Exception as e:

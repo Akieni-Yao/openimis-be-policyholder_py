@@ -32,7 +32,7 @@ from django.core.exceptions import PermissionDenied
 from django.utils.translation import gettext as _
 
 from payment.signals import signal_before_payment_query
-from .constants import CC_PROCESSING
+from .constants import  CC_WAITING_FOR_APPROVAL
 from .signals import append_policy_holder_filter
 
 from contract.models import Contract
@@ -279,7 +279,7 @@ class Query(graphene.ObjectType):
         cc_object = CategoryChange.objects.filter(code=code).first()
         if cc_object:
             if document_provided:
-                cc_object.status = CC_PROCESSING
+                cc_object.status = CC_WAITING_FOR_APPROVAL
                 cc_object.save()
                 return CommonQueryType(success=True, message="Request Updated successfully!")
             else:
