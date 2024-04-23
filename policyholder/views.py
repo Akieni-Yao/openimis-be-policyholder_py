@@ -32,6 +32,7 @@ from insuree.abis_api import create_abis_insuree
 
 logger = logging.getLogger(__name__)
 
+MINIMUM_AGE_LIMIT = 16
 HEADER_INSUREE_CAMU_NO = 'camu_number'
 HEADER_FAMILY_HEAD = "family_head"
 HEADER_FAMILY_LOCATION_CODE = "family_location_code"
@@ -226,6 +227,18 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
 
     return insuree, created
 
+def validating_insuree_on_name_dob(line):    
+    insuree_dob = line[HEADER_INSUREE_DOB]
+    if not isinstance(insuree_dob, datetime):
+        datetime_obj = datetime.strptime(insuree_dob, "%d/%m/%Y")
+        line[HEADER_INSUREE_DOB] = timezone.make_aware(datetime_obj).date() 
+            
+    insuree = Insuree.objects.filter(
+        other_names=line[HEADER_INSUREE_OTHER_NAMES], last_name=line[HEADER_INSUREE_LAST_NAME],
+        dob=line[HEADER_INSUREE_DOB], validity_to__isnull=True, legacy_id__isnull=True).first()
+
+    return insuree
+
 
 def get_policy_holder_from_code(ph_code: str):
     return PolicyHolder.objects.filter(code=ph_code, is_deleted=False).first()
@@ -319,8 +332,61 @@ def import_phi(request, policy_holder_code):
         total_lines += 1
         clean_line(line)
         logger.debug("Importing line %s: %s", total_lines, line)
-        
-        
+
+        # List of possible date formats to try
+        date_formats = ['%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y']  # Add more formats as needed
+
+        dob_value = line[HEADER_INSUREE_DOB]
+
+        if isinstance(dob_value, datetime):
+            dob = dob_value
+        else:
+            dob = None
+            for date_format in date_formats:
+                try:
+                    dob = datetime.strptime(dob_value, date_format)
+                    break  # If parsing succeeds, break out of the loop
+                except ValueError:
+                    continue  # If parsing fails, try the next format
+
+            if dob is None:
+                # If none of the formats match, handle the error
+                errors.append(f"Error line {total_lines} - Invalid date format for date of birth: {dob_value}")
+                logger.debug(f"Error line {total_lines} - Invalid date format for date of birth: {dob_value}")
+                total_validation_errors += 1
+                # Adding error in output excel
+                row_data = line.tolist()
+                row_data.extend(["Failed", f"Invalid date format for date of birth: {dob_value}"])
+                processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
+                continue
+
+        age = (datetime.now().date() - dob.date()) // timedelta(days=365.25)  # Calculate age in years
+        if age < MINIMUM_AGE_LIMIT:
+            errors.append(f"Error line {total_lines} - Head insuree must be at least {MINIMUM_AGE_LIMIT} years old.")
+            logger.debug(f"Error line {total_lines} - Head insuree be at least {MINIMUM_AGE_LIMIT} years old.")
+            total_validation_errors += 1
+            # Adding error in output excel
+            row_data = line.tolist()
+            row_data.extend(["Failed", f"Insuree must be at least {MINIMUM_AGE_LIMIT} years old."])
+            processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
+            continue
+        force_value = str(line.get('Force', '')).strip().lower()
+        if force_value not in ['yes', 'Yes', 'YES']:
+            # Check if insuree with the same name and DOB already exists
+            insuree = validating_insuree_on_name_dob(line)
+            if insuree:
+                # Generate an error message instructing to add insuree forcibly
+                errors.append(
+                    f"Error line {total_lines} - Insuree with same name and dob already exists. If you want to add, please add forcibly by adding a new column named 'Force' with the value 'YES'.")
+                logger.debug(
+                    f"Error line {total_lines} - Insuree with same name and dob already exists. If you want to add, please add forcibly by adding a new column named 'Force' with the value 'YES'.")
+
+                # Adding error in output excel
+                row_data = line.tolist()
+                row_data.extend(["Failed",
+                                 "Insuree with same name and dob already exists. If you want to add, please add forcibly by adding a new column named 'Force' with the value 'YES'."])
+                processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
+                continue
         validation_errors = validate_line(line)
         if validation_errors:
             errors.append(f"Error line {total_lines} - validation issues ({validation_errors})")
@@ -332,7 +398,7 @@ def import_phi(request, policy_holder_code):
             row_data.extend(["Failed", validation_errors])
             processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
             continue
-        
+
         if line[HEADER_DELETE] and line[HEADER_DELETE].lower() == "yes":
             is_deleted = soft_delete_insuree(line, policy_holder_code, user_id)
             if is_deleted:
@@ -383,6 +449,12 @@ def import_phi(request, policy_holder_code):
         except Exception as e:
             logger.error(f"Error occurred while retrieving Contribution Plan Bundle: {e}")
             enrolment_type = None
+        
+        # insuree = validating_insuree_on_name_dob(line)
+        # if insuree:
+        #     pass
+        #     continue
+        
         family, family_created = get_or_create_family_from_line(line, village, user_id,enrolment_type)
         logger.debug("family_created: %s", family_created)
         if family_created:
