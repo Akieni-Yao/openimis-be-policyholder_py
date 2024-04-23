@@ -24,6 +24,7 @@ from rest_framework.response import Response
 
 from contract.models import Contract
 from core.models import Role, InteractiveUser
+from core.schema import set_user_deleted
 from insuree.dms_utils import create_openKm_folder_for_bulkupload, send_mail_to_temp_insuree_with_pdf
 from insuree.gql_mutations import temp_generate_employee_camu_registration_number
 from insuree.models import Insuree, Gender, Family
@@ -472,7 +473,7 @@ def import_phi(request, policy_holder_code):
             row_data = line.tolist()
             row_data.extend(["Success", "Category Change Request Created."])
             processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
-            continue
+            # continue
 
         family, family_created = get_or_create_family_from_line(line, village, user_id, enrolment_type)
         logger.debug("family_created: %s", family_created)
@@ -1152,7 +1153,7 @@ def verify_email(request, uidb64, token, e_timestamp):
                 return redirect('http://dev-dms.devopsdemo.live:9002/signupfailed')  # open page after already verified
         else:
             logger.info("Token has expired.")
-            # TODO ACCOUNT DELETION WHEN TOKEN LINK EXPIRED WITHOUT CLICK
+            user.delete_history()
             return redirect('http://dev-dms.devopsdemo.live:9002/signupfailed')  # open page when token has expired
     else:
         logger.info("Invalid token.")

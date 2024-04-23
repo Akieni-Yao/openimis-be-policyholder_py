@@ -115,8 +115,8 @@ class CreatePolicyHolderInsureeMutation(BaseHistoryModelCreateMutationMixin, Bas
         employer_number = data.get('employer_number', '')
         income = data.get('json_ext', {}).get('calculation_rule', {}).get('income')
         is_cc_request = manuall_check_for_category_change_request(user, insuree_id, policyholder_id, income, employer_number)
-        if is_cc_request:
-            raise ValidationError(message="Change Request Created.")
+        # if is_cc_request:
+        #     raise ValidationError(message="Change Request Created.")
         super()._validate_mutation(user, **data)
         PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_create_policyholderinsuree_perms)
 
