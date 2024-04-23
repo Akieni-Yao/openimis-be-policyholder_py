@@ -1,6 +1,6 @@
 import graphene
 
-from core.schema import OpenIMISMutation, TinyInt
+from core.schema import OpenIMISMutation, TinyInt, UserBase
 from core.gql.gql_mutations import ReplaceInputType
 
 
@@ -129,3 +129,8 @@ class PolicyHolderUserReplaceInputType(ReplaceInputType):
 class PolicyHolderExcptionInput(graphene.InputObjectType):
     policy_holder_id = graphene.UUID(required=True)
     exception_reason = graphene.String()
+
+
+class PHPortalUserCreateInput(graphene.InputObjectType, UserBase):
+    trade_name = graphene.String(max_length=255, required=True)
+    json_ext = graphene.types.json.JSONString(required=False)
