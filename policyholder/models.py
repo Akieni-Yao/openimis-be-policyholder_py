@@ -35,6 +35,9 @@ class PolicyHolder(core_models.HistoryBusinessModel):
     bank_account = models.JSONField(db_column="bankAccount", blank=True, null=True)
     payment_reference = models.CharField(db_column='PaymentReference', max_length=128, blank=True, null=True)
     is_approved = models.BooleanField(db_column="IsApproved", default=False)
+    is_review = models.BooleanField(db_column="IsReview", default=False)
+    is_submit = models.BooleanField(db_column="IsSubmit", default=False)
+    request_number = models.CharField(db_column='RequestNumber', max_length=255, null=True)
 
     objects = PolicyHolderManager()
 
