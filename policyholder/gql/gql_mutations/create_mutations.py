@@ -1,5 +1,6 @@
 import json
 import logging
+import uuid
 
 from graphene_django import DjangoObjectType
 
@@ -63,8 +64,11 @@ class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutati
             data["is_submit"] = True
             data["is_approved"] = True
             data["code"] = generated_number
+            create_policyholder_openkmfolder(data)
+        else:
+            data["request_number"] = uuid.uuid4().hex[:8].upper()
+            # create_policyholder_openkmfolder(data) # TODO : Create folder with request number
             
-        create_policyholder_openkmfolder(data)
         if "client_mutation_id" in data:
             client_mutation_id = data.pop('client_mutation_id')
         if "client_mutation_label" in data:
