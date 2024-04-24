@@ -25,6 +25,7 @@ class PolicyHolderInputType(OpenIMISMutation.Input):
     json_ext = graphene.types.json.JSONString(required=False)
     is_review = graphene.Boolean(required=False)
     is_submit = graphene.Boolean(required=False)
+    form_ims = graphene.Boolean(required=True)
 
 
 class PolicyHolderUpdateInputType(OpenIMISMutation.Input):

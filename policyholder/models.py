@@ -38,6 +38,7 @@ class PolicyHolder(core_models.HistoryBusinessModel):
     is_review = models.BooleanField(db_column="IsReview", default=False)
     is_submit = models.BooleanField(db_column="IsSubmit", default=False)
     request_number = models.CharField(db_column='RequestNumber', max_length=255, null=True)
+    form_ims = models.BooleanField(db_column="FormIMS", default=False)
 
     objects = PolicyHolderManager()
 
