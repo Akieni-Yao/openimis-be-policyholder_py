@@ -58,6 +58,9 @@ class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutati
         activitycode = json_ext_dict.get("activityCode")
         generated_number = cls.generate_camu_registration_number(activitycode)
         data["code"] = generated_number
+        data["is_review"] = True
+        data["is_submit"] = True
+        data["is_approved"] = True
         create_policyholder_openkmfolder(data)
         if "client_mutation_id" in data:
             client_mutation_id = data.pop('client_mutation_id')
