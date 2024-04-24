@@ -31,7 +31,7 @@ from insuree.models import Insuree, Gender, Family
 from location.models import Location
 from policyholder.apps import PolicyholderConfig
 from policyholder.constants import  CC_WAITING_FOR_DOCUMENT
-from policyholder.dms_utils import create_folder_for_cat_chnage_req
+from policyholder.dms_utils import create_folder_for_cat_chnage_req, validate_enrolment_type
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, CategoryChange
 from contribution_plan.models import ContributionPlanBundleDetails
 from workflow.workflow_stage import insuree_add_to_workflow
@@ -463,10 +463,12 @@ def import_phi(request, policy_holder_code):
             logger.error(f"Error occurred while retrieving Contribution Plan Bundle: {e}")
             enrolment_type = None
 
-        # insuree = validating_insuree_on_name_dob(line)
-        # if insuree:
-        #     pass
-        #     continue
+        is_valid_enrolment = validate_enrolment_type(line, enrolment_type)
+        if not is_valid_enrolment:
+            row_data = line.tolist()
+            row_data.extend(["Failed", "Enrolment Type should be other than 'Student'."])
+            processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
+            continue
 
         is_cc_request = check_for_category_change_request(request.user, line, policy_holder, enrolment_type)
         if is_cc_request:
@@ -1068,9 +1070,6 @@ def check_for_category_change_request(user, line, policy_holder, enrolment_type)
             if code:
                 if insuree.family:
                     if insuree.head:
-                        if old_category != "students":
-                            if new_category == "students":
-                                return False
                         if new_category != old_category:
                             create_dependent_category_change(user, code, insuree, old_category, new_category,
                                                              policy_holder,
@@ -1131,7 +1130,7 @@ def verify_email(request, uidb64, token, e_timestamp):
         timestamp = force_text(urlsafe_base64_decode(e_timestamp))
     except (TypeError, ValueError, OverflowError, InteractiveUser.DoesNotExist) as e:
         logger.error(f"Error occurred while decoding parameters: {e}")
-        return redirect('https://www.fb.com')
+        return redirect(settings.PORTAL_FRONTEND)
 
     # Check if the token is valid and not expired
     if default_token_generator.check_token(user, token):
@@ -1147,14 +1146,14 @@ def verify_email(request, uidb64, token, e_timestamp):
                 user.is_verified = True
                 user.save()
                 logger.info("User verification successful.")
-                return redirect('http://dev-dms.devopsdemo.live:9002/signupsuccess')  # open page after verified successfully
+                return redirect(settings.PORTAL_FRONTEND + '/signupsuccess')  # open page after verified successfully
             else:
                 logger.info("User already verified.")
-                return redirect('http://dev-dms.devopsdemo.live:9002/signupfailed')  # open page after already verified
+                return redirect(settings.PORTAL_FRONTEND + '/signupfailed')  # open page after already verified
         else:
             logger.info("Token has expired.")
             user.delete_history()
-            return redirect('http://dev-dms.devopsdemo.live:9002/signupfailed')  # open page when token has expired
+            return redirect(settings.PORTAL_FRONTEND + '/signupfailed')  # open page when token has expired
     else:
         logger.info("Invalid token.")
-        return redirect('http://dev-dms.devopsdemo.live:9002/signupfailed')  # open page when token is invalid
+        return redirect(settings.PORTAL_FRONTEND + '/signupfailed')  # open page when token is invalid

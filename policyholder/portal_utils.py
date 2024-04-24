@@ -29,8 +29,7 @@ def send_verification_email(user):
     e_timestamp = urlsafe_base64_encode(force_bytes(timestamp))
     logger.info(f"Timestamp: {timestamp}")
 
-    domain = settings.FRONTEND_URL
-    verification_url = f"https://dev-camu.devopsdemo.live/api/policyholder/verify-email/{uid}/{token}/{e_timestamp}/"
+    verification_url = f"{settings.BACKEND_URL}/api/policyholder/verify-email/{uid}/{token}/{e_timestamp}/"
     logger.info(f"Verification URL: {verification_url}")
 
     subject = 'Verify your email'

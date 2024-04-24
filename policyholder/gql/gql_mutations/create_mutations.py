@@ -12,7 +12,7 @@ from policyholder.apps import PolicyholderConfig
 from policyholder.constants import *
 from policyholder.dms_utils import create_policyholder_openkmfolder, send_mail_to_policyholder_with_pdf, \
     create_folder_for_policy_holder_exception, send_beneficiary_remove_notification, get_location_from_insuree, \
-    create_phi_for_cat_change, change_insuree_doc_status
+    create_phi_for_cat_change, change_insuree_doc_status, validate_enrolment_type, manual_validate_enrolment_type
 from policyholder.gql import PolicyHolderExcptionType
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, PolicyHolderUser, \
     Insuree, PolicyHolderExcption, CategoryChange
@@ -117,9 +117,10 @@ class CreatePolicyHolderInsureeMutation(BaseHistoryModelCreateMutationMixin, Bas
             raise ValidationError(message="Already Exists")
         employer_number = data.get('employer_number', '')
         income = data.get('json_ext', {}).get('calculation_rule', {}).get('income')
-        is_cc_request = manuall_check_for_category_change_request(user, insuree_id, policyholder_id, income, employer_number)
-        # if is_cc_request:
-        #     raise ValidationError(message="Change Request Created.")
+        is_valid_enrolment = manual_validate_enrolment_type(insuree_id, policyholder_id)
+        if not is_valid_enrolment:
+            raise ValidationError(message="Enrolment Type - 'Students' !")
+        manuall_check_for_category_change_request(user, insuree_id, policyholder_id, income, employer_number)
         super()._validate_mutation(user, **data)
         PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_create_policyholderinsuree_perms)
 
