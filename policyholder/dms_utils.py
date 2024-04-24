@@ -15,7 +15,7 @@ from insuree.reports.code_converstion_for_report import convert_activity_data
 from location.models import Location
 from policyholder.constants import CC_APPROVED
 from policyholder.models import PolicyHolderInsuree, PolicyHolderContributionPlan, CategoryChange, PolicyHolder
-from policyholder.views import HEADER_INSUREE_ID, HEADER_INSUREE_CAMU_NO
+
 from report.apps import ReportConfig
 from report.services import get_report_definition, generate_report
 from workflow.constants import STATUS_APPROVED
@@ -346,6 +346,7 @@ def documents_check_after_cat_change(temp_camu):
 
 
 def validate_enrolment_type(line, new_enrolment_type):
+    from policyholder.views import HEADER_INSUREE_ID, HEADER_INSUREE_CAMU_NO
     insuree_id = line.get(HEADER_INSUREE_ID, '')
     camu_num = line.get(HEADER_INSUREE_CAMU_NO, '')
     insuree = None
