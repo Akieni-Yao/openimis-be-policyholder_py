@@ -31,7 +31,7 @@ from insuree.models import Insuree, Gender, Family
 from location.models import Location
 from policyholder.apps import PolicyholderConfig
 from policyholder.constants import  CC_WAITING_FOR_DOCUMENT
-from policyholder.dms_utils import create_folder_for_cat_chnage_req, validate_enrolment_type
+from policyholder.dms_utils import create_folder_for_cat_chnage_req, validate_enrolment_type, send_notification_to_head
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, CategoryChange
 from contribution_plan.models import ContributionPlanBundleDetails
 from workflow.workflow_stage import insuree_add_to_workflow
@@ -1082,6 +1082,8 @@ def check_for_category_change_request(user, line, policy_holder, enrolment_type)
                         create_dependent_category_change(user, code, insuree, old_category, new_category, policy_holder,
                                                          'DEPENDENT_REQ',
                                                          CC_WAITING_FOR_DOCUMENT, income, employer_number)
+                        if new_category == 'students':
+                            send_notification_to_head(insuree)
                         return True
                 else:
                     create_dependent_category_change(user, code, insuree, old_category, new_category, policy_holder,

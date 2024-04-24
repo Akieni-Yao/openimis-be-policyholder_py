@@ -5,7 +5,7 @@ from datetime import timezone, timedelta
 import requests
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
-from django.core.mail import EmailMessage
+from django.core.mail import EmailMessage, send_mail
 from django.http import JsonResponse, Http404
 
 from core.utils import generate_qr
@@ -399,3 +399,21 @@ def manual_validate_enrolment_type(insuree_id, policyholder_id):
         logger.error(f"Unexpected error: {e}")
         return False
 
+
+def send_notification_to_head(insuree):
+    family = insuree.family
+    if family:
+        head_insuree = family.head_insuree
+        if head_insuree:
+            email = head_insuree.email
+            subject = 'Notification'
+            message = f'Hi {head_insuree.last_name}, Your Son/Daughter {insuree.last_name} is getting enrolled now we have removed him/her from your family.'
+            logger.info("Sending notification email...")
+            if email:
+                try:
+                    send_mail(subject, message, settings.EMAIL_HOST_USER, [email])
+                    logger.info("Notification email sent.")
+                except Exception as e:
+                    logger.error(f"Failed to send notification email: {e}")
+            else:
+                logger.warning("Email address not available for head insuree.")
