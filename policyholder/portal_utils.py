@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 
 import graphene
@@ -121,3 +121,15 @@ class ResetPassword(graphene.Mutation):
                 return ResetPassword(success=False, message="Password reset link expired.")
         else:
             return ResetPassword(success=False, message="Invalid password reset link.")
+
+
+def make_portal_reset_password_link(user, token):
+    i_user = user.i_user
+    if not token:
+        raise ValueError("Token is required.")
+    uid = urlsafe_base64_encode(force_bytes(i_user.pk))
+    expiration_time = datetime.now() + timedelta(hours=24)  # Expiring in 24 hours
+    timestamp = int(expiration_time.timestamp())
+    e_timestamp = urlsafe_base64_encode(force_bytes(timestamp))
+    verification_url = f"{settings.BACKEND_URL}/api/policyholder/portal-reset/{uid}/{token}/{e_timestamp}/"
+    return verification_url

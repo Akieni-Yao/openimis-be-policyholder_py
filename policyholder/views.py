@@ -1159,3 +1159,32 @@ def verify_email(request, uidb64, token, e_timestamp):
     else:
         logger.info("Invalid token.")
         return redirect(settings.PORTAL_FRONTEND + '/signupfailed')  # open page when token is invalid
+
+
+@authentication_classes([])
+@permission_classes([AllowAny])
+def portal_reset(request, uidb64, token, e_timestamp):
+    try:
+        uid = force_text(urlsafe_base64_decode(uidb64))
+        user = InteractiveUser.objects.get(pk=uid)
+        timestamp = force_text(urlsafe_base64_decode(e_timestamp))
+    except (TypeError, ValueError, OverflowError, InteractiveUser.DoesNotExist) as e:
+        logger.error(f"Error occurred while decoding parameters: {e}")
+        return redirect(settings.PORTAL_FRONTEND)
+
+    if default_token_generator.check_token(user, token):
+        timestamp = int(timestamp)
+        logger.info("Timestamp decoded successfully.")
+        expiration_time = datetime.fromtimestamp(timestamp) + timedelta(hours=24)
+        logger.info(f"Expiration time calculated: {expiration_time}")
+        current_time = datetime.now()
+        logger.info(f"Current time: {current_time}")
+
+        if current_time <= expiration_time:
+            return redirect(settings.PORTAL_FRONTEND + '/set_password')  # open page after verified successfully
+        else:
+            logger.info("Token has expired.")
+            return redirect(settings.PORTAL_FRONTEND + '/signupfailed')  # open page when token has expired
+    else:
+        logger.info("Invalid token.")
+        return redirect(settings.PORTAL_FRONTEND + '/resetFailure')  # open page when token is invalid
