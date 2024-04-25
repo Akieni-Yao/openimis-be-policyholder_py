@@ -1184,7 +1184,7 @@ def portal_reset(request, uidb64, token, e_timestamp):
             return redirect(settings.PORTAL_FRONTEND + '/set_password')  # open page after verified successfully
         else:
             logger.info("Token has expired.")
-            return redirect(settings.PORTAL_FRONTEND + '/signupfailed')  # open page when token has expired
+            return redirect(settings.PORTAL_FRONTEND + '/resetFailure')  # open page when token has expired
     else:
         logger.info("Invalid token.")
-        return redirect(settings.PORTAL_FRONTEND + '/resetFailure')  # open page when token is invalid
+        return redirect(settings.PORTAL_FRONTEND)  # open page when token is invalid
