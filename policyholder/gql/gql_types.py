@@ -29,7 +29,15 @@ class PolicyHolderGQLType(DjangoObjectType):
             "payment_reference": ["exact"],
             "date_created": ["exact", "lt", "lte", "gt", "gte"],
             "date_updated": ["exact", "lt", "lte", "gt", "gte"],
-            "is_deleted": ["exact"]
+            "is_deleted": ["exact"],
+            "request_number": ["exact", "istartswith", "icontains", "iexact"],
+            "status": ["exact", "istartswith", "icontains", "iexact"],
+            "form_ims": ["exact"],
+            "is_approved": ["exact"],
+            "is_review": ["exact"],
+            "is_submit": ["exact"],
+            "is_rejected": ["exact"],
+            "is_rework": ["exact"]
         }
 
         connection_class = ExtendedConnection
