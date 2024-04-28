@@ -67,7 +67,7 @@ class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutati
             create_policyholder_openkmfolder(data)
         else:
             data["request_number"] = uuid.uuid4().hex[:8].upper()
-            # create_policyholder_openkmfolder(data) # TODO : Create folder with request number
+            create_policyholder_openkmfolder(data) # TODO : Create folder with request number
             
         if "client_mutation_id" in data:
             client_mutation_id = data.pop('client_mutation_id')
