@@ -4,9 +4,10 @@ from core.models import InteractiveUser
 from policyholder.apps import PolicyholderConfig
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, PolicyHolderUser
 from policyholder.gql.gql_mutations import PolicyHolderInsureeUpdateInputType, \
-    PolicyHolderContributionPlanUpdateInputType, PolicyHolderUserUpdateInputType, PolicyHolderUpdateInputType
+    PolicyHolderContributionPlanUpdateInputType, PolicyHolderUserUpdateInputType, PolicyHolderUpdateInputType, PHApprovalInput
 from policyholder.validation import PolicyHolderValidation
 from policyholder.validation.permission_validation import PermissionValidation
+from policyholder.constants import *
 
 
 class UpdatePolicyHolderMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
@@ -113,3 +114,56 @@ class UpdatePolicyHolderInsureeDesignation(graphene.Mutation):
             success = False
             message = "Record not found."
         return UpdatePolicyHolderInsureeDesignation(success=success, message=message)
+
+
+class PHApprovalMutation(graphene.Mutation):
+    success = graphene.Boolean()
+    message = graphene.String()
+    
+    class Arguments:
+        input = graphene.Argument(PHApprovalInput)
+
+    def mutate(self, info, **kwargs):
+        try:
+            success = True
+            message = None
+            
+            ph_id = kwargs.get("id")
+            request_number = kwargs.get("request_number")
+            is_approved = kwargs.get("is_approved")
+            is_rejected = kwargs.get("is_rejected")
+            is_rework = kwargs.get("is_rework")
+            
+            ph_obj = PolicyHolder.objects.filter(id=ph_id, request_number=request_number).first()
+            
+            if is_approved and ph_obj:
+                # TODO : Generate camu code of policy holder
+                # ph_obj.code = "code"
+                ph_obj.is_approved = True
+                ph_obj.status = PH_STATUS_APPROVED
+                ph_obj.save()
+                message = "Policy Holder Request Successfully Approved."
+            elif is_rejected and ph_obj:
+                ph_obj.is_rejected = True
+                ph_obj.rejected_reason = kwargs.get("rejected_reason")
+                ph_obj.save()
+                message = "Policy Holder Request Rejected."
+                # TODO : Send rejection email
+            elif is_rework and ph_obj:
+                ph_obj.is_rework = True
+                ph_obj.rework_option = kwargs.get("rework_option")
+                ph_obj.rework_comment = kwargs.get("rework_comment")
+                ph_obj.save()
+                message = "Policy Holder Request Sent for Rework."
+                # TODO : Send rework email
+            elif ph_obj:
+                success = False
+                message = "Policy Holder request action is not valid."
+            else:
+                success = False
+                message = "Policy Holder Request not found"
+            return PHApprovalMutation(success=success, message=message)
+        except Exception as e:
+            success = False
+            message = e
+            return PHApprovalMutation(success=success, message=message)

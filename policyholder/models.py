@@ -39,6 +39,7 @@ class PolicyHolder(core_models.HistoryBusinessModel):
     is_submit = models.BooleanField(db_column="IsSubmit", default=False)
     request_number = models.CharField(db_column='RequestNumber', max_length=255, null=True)
     form_ims = models.BooleanField(db_column="FormIMS", default=False)
+    form_ph_portal = models.BooleanField(db_column="FormPhPortal", default=False)
     status = models.CharField(db_column='Status', max_length=255, blank=True, null=True)
     is_rejected = models.BooleanField(db_column="IsRejected", default=False)
     rejected_reason = models.CharField(db_column='RejectedReason', max_length=255, blank=True, null=True)

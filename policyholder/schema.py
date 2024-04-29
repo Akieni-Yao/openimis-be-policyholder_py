@@ -18,7 +18,7 @@ from policyholder.gql.gql_mutations.delete_mutations import DeletePolicyHolderMu
     DeletePolicyHolderInsureeMutation, DeletePolicyHolderUserMutation, DeletePolicyHolderContributionPlanMutation
 from policyholder.gql.gql_mutations.update_mutations import UpdatePolicyHolderMutation, \
     UpdatePolicyHolderInsureeMutation, UpdatePolicyHolderUserMutation, UpdatePolicyHolderContributionPlanMutation, \
-    UpdatePolicyHolderInsureeDesignation
+    UpdatePolicyHolderInsureeDesignation, PHApprovalMutation
 from policyholder.gql.gql_mutations.replace_mutation import ReplacePolicyHolderInsureeMutation, \
     ReplacePolicyHolderContributionPlanMutation, ReplacePolicyHolderUserMutation
 
@@ -311,6 +311,7 @@ class Mutation(graphene.ObjectType):
     create_policy_holder_exception = CreatePolicyHolderExcption.Field()
     category_change_status_change = CategoryChangeStatusChange.Field()
     create_ph_portal_user = CreatePHPortalUserMutation.Field()
+    policyholder_approval = PHApprovalMutation.Field()
 
 
 def on_policy_holder_mutation(sender, **kwargs):

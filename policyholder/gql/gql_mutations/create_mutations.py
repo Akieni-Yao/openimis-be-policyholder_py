@@ -59,15 +59,11 @@ class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutati
         activitycode = json_ext_dict.get("activityCode")
         generated_number = cls.generate_camu_registration_number(activitycode)
         
-        if data["form_ims"] == True:
-            data["is_review"] = True
-            data["is_submit"] = True
-            data["is_approved"] = True
-            data["code"] = generated_number
-            create_policyholder_openkmfolder(data)
-        else:
-            data["request_number"] = uuid.uuid4().hex[:8].upper()
-            create_policyholder_openkmfolder(data) # TODO : Create folder with request number
+        data["is_review"] = True
+        data["is_submit"] = True
+        data["is_approved"] = True
+        data["code"] = generated_number
+        create_policyholder_openkmfolder(data)
             
         if "client_mutation_id" in data:
             client_mutation_id = data.pop('client_mutation_id')
@@ -389,6 +385,8 @@ class CreatePHPortalUserMutation(graphene.Mutation):
             ph_obj = PolicyHolder()
             ph_obj.trade_name = ph_trade_name
             ph_obj.json_ext = ph_json_ext
+            ph_obj.form_ph_portal = True
+            ph_obj.request_number = uuid.uuid4().hex[:8].upper()
             ph_obj.save(username=core_user.username)
             logger.info(f"CreatePHPortalUserMutation : ph_obj : {ph_obj}")
             

@@ -23,9 +23,6 @@ class PolicyHolderInputType(OpenIMISMutation.Input):
     date_valid_from = graphene.Date(required=False)
     date_valid_to = graphene.Date(required=False)
     json_ext = graphene.types.json.JSONString(required=False)
-    is_review = graphene.Boolean(required=False)
-    is_submit = graphene.Boolean(required=False)
-    form_ims = graphene.Boolean(required=True)
 
 
 class PolicyHolderUpdateInputType(OpenIMISMutation.Input):
@@ -48,7 +45,6 @@ class PolicyHolderUpdateInputType(OpenIMISMutation.Input):
     json_ext = graphene.types.json.JSONString(required=False)
     is_review = graphene.Boolean(required=False)
     is_submit = graphene.Boolean(required=False)
-    form_ims = graphene.Boolean(required=False)
 
 
 class PolicyHolderInsureeInputType(OpenIMISMutation.Input):
@@ -140,3 +136,14 @@ class PolicyHolderExcptionInput(graphene.InputObjectType):
 class PHPortalUserCreateInput(graphene.InputObjectType, UserBase):
     trade_name = graphene.String(max_length=255, required=True)
     json_ext = graphene.types.json.JSONString(required=False)
+
+
+class PHApprovalInput(graphene.InputObjectType):
+    id = graphene.UUID(required=True)
+    request_number = graphene.String(required=True)
+    is_approved = graphene.Boolean(required=True)
+    is_rejected = graphene.Boolean(required=True)
+    is_rework = graphene.Boolean(required=True)
+    rejected_reason = graphene.String(required=False)
+    rework_option = graphene.String(required=False)
+    rework_comment = graphene.String(required=False)
