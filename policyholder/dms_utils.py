@@ -24,8 +24,8 @@ logger = logging.getLogger(__name__)
 
 
 def create_policyholder_openkmfolder(data):
-    camu_code = data['code']
-    if 'request_number' in data:
+    camu_code = data['code'] if "code" in data else None
+    if not camu_code and 'request_number' in data:
         camu_code = data['request_number']
     body_data = {
         "fileNumber": camu_code,

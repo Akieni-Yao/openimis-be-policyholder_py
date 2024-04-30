@@ -32,7 +32,7 @@ class PolicyHolderGQLType(DjangoObjectType):
             "is_deleted": ["exact"],
             "request_number": ["exact", "istartswith", "icontains", "iexact"],
             "status": ["exact", "istartswith", "icontains", "iexact"],
-            "form_ims": ["exact"],
+            "form_ph_portal": ["exact"],
             "is_approved": ["exact"],
             "is_review": ["exact"],
             "is_submit": ["exact"],

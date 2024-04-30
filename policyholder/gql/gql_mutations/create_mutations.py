@@ -389,6 +389,7 @@ class CreatePHPortalUserMutation(graphene.Mutation):
             ph_obj.request_number = uuid.uuid4().hex[:8].upper()
             ph_obj.save(username=core_user.username)
             logger.info(f"CreatePHPortalUserMutation : ph_obj : {ph_obj}")
+            create_policyholder_openkmfolder({"request_number": request_number})
             
             phu_obj = PolicyHolderUser()
             phu_obj.user = core_user
