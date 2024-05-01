@@ -8,6 +8,8 @@ from policyholder.gql.gql_mutations import PolicyHolderInsureeUpdateInputType, \
 from policyholder.validation import PolicyHolderValidation
 from policyholder.validation.permission_validation import PermissionValidation
 from policyholder.constants import *
+from policyholder.services import generate_camu_registration_number
+from insuree.dms_utils import rename_folder_dms_and_openkm
 
 
 class UpdatePolicyHolderMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
@@ -137,11 +139,14 @@ class PHApprovalMutation(graphene.Mutation):
             ph_obj = PolicyHolder.objects.filter(id=ph_id, request_number=request_number).first()
             
             if is_approved and ph_obj:
-                # TODO : Generate camu code of policy holder
-                # ph_obj.code = "code"
+                json_ext_dict = ph_obj.json_ext.get("jsonExt")
+                activity_code = json_ext_dict.get("activityCode")
+                generated_number = generate_camu_registration_number(activity_code)
+                ph_obj.code = generated_number
                 ph_obj.is_approved = True
                 ph_obj.status = PH_STATUS_APPROVED
                 ph_obj.save()
+                rename_folder_dms_and_openkm(ph_obj.request_number, generated_number)
                 message = "Policy Holder Request Successfully Approved."
             elif is_rejected and ph_obj:
                 ph_obj.is_rejected = True
