@@ -10,3 +10,10 @@ CC_REJECTED = 'Rejected'
 # policy holder admin role name
 PH_ADMIN_ROLE = "Policy Holder Admin"
 
+PH_STATUS_CREATED = 'Created'
+PH_STATUS_PENDING = 'Pending'
+PH_STATUS_APPROVED = 'Approved'
+PH_STATUS_REJECTED = 'Rejected'
+PH_STATUS_REWORK = 'Rework'
+
+

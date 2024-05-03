@@ -5,7 +5,7 @@ from datetime import timezone, timedelta
 import requests
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
-from django.core.mail import EmailMessage
+from django.core.mail import EmailMessage, send_mail
 from django.http import JsonResponse, Http404
 
 from core.utils import generate_qr
@@ -14,7 +14,8 @@ from insuree.models import Insuree, InsureeDocuments
 from insuree.reports.code_converstion_for_report import convert_activity_data
 from location.models import Location
 from policyholder.constants import CC_APPROVED
-from policyholder.models import PolicyHolderInsuree, PolicyHolderContributionPlan, CategoryChange
+from policyholder.models import PolicyHolderInsuree, PolicyHolderContributionPlan, CategoryChange, PolicyHolder
+
 from report.apps import ReportConfig
 from report.services import get_report_definition, generate_report
 from workflow.constants import STATUS_APPROVED
@@ -23,7 +24,9 @@ logger = logging.getLogger(__name__)
 
 
 def create_policyholder_openkmfolder(data):
-    camu_code = data['code']
+    camu_code = data['code'] if "code" in data else None
+    if not camu_code and 'request_number' in data:
+        camu_code = data['request_number']
     body_data = {
         "fileNumber": camu_code,
         "metaData": {
@@ -343,3 +346,77 @@ def documents_check_after_cat_change(temp_camu):
     except Exception as e:
         logger.error(f"An error occurred in documents_check_after_cat_change: {e}")
     return False
+
+
+def validate_enrolment_type(line, new_enrolment_type):
+    from policyholder.views import HEADER_INSUREE_ID, HEADER_INSUREE_CAMU_NO
+    insuree_id = line.get(HEADER_INSUREE_ID, '')
+    camu_num = line.get(HEADER_INSUREE_CAMU_NO, '')
+    insuree = None
+    logger.debug(
+        f"Input: Insuree ID - {insuree_id}, CAMU Number - {camu_num}, New Enrolment Type - {new_enrolment_type}")
+    if insuree_id:
+        insuree = Insuree.objects.filter(validity_to__isnull=True, chf_id=insuree_id).first()
+    elif camu_num:
+        insuree = Insuree.objects.filter(validity_to__isnull=True, camu_number=camu_num).first()
+    logger.debug(f"Insuree retrieved: {insuree}")
+    if insuree:
+        old_enrolment_type = insuree.json_ext.get('insureeEnrolmentType', '')
+        logger.debug(f"Old Enrolment Type: {old_enrolment_type}")
+
+        if old_enrolment_type == "none":
+            logger.debug("Validation successful: Old enrolment type is 'none'.")
+            return True
+
+        if old_enrolment_type == "students":
+            logger.debug("Validation successful: Old enrolment type is 'students'.")
+            return True
+
+        if old_enrolment_type != "students" and new_enrolment_type == "students":
+            logger.debug("Validation failed: Insuree's old enrolment type is not 'students'.")
+            return False
+
+    logger.debug("Validation successful: New enrolment type can be assigned.")
+    return True
+
+
+def manual_validate_enrolment_type(insuree_id, policyholder_id):
+    try:
+        policy_holder = PolicyHolder.objects.get(id=policyholder_id, is_deleted=False)
+        ph_cpb = PolicyHolderContributionPlan.objects.get(policy_holder=policy_holder, is_deleted=False)
+        cpb = ph_cpb.contribution_plan_bundle
+        if not cpb:
+            raise ValueError("Contribution plan bundle not found.")
+        enrolment_type = cpb.name
+        insuree = Insuree.objects.get(id=insuree_id)
+        line = {
+            'insuree_id': insuree.chf_id,
+            'camu_number': insuree.camu_number,
+        }
+        response = validate_enrolment_type(line, enrolment_type)
+        return response
+    except (PolicyHolder.DoesNotExist, PolicyHolderContributionPlan.DoesNotExist, Insuree.DoesNotExist) as e:
+        logger.error(f"Validation failed: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        return False
+
+
+def send_notification_to_head(insuree):
+    family = insuree.family
+    if family:
+        head_insuree = family.head_insuree
+        if head_insuree:
+            email = head_insuree.email
+            subject = 'Notification'
+            message = f'Hi {head_insuree.last_name}, Your Son/Daughter {insuree.last_name} is getting enrolled now we have removed him/her from your family.'
+            logger.info("Sending notification email...")
+            if email:
+                try:
+                    send_mail(subject, message, settings.EMAIL_HOST_USER, [email])
+                    logger.info("Notification email sent.")
+                except Exception as e:
+                    logger.error(f"Failed to send notification email: {e}")
+            else:
+                logger.warning("Email address not available for head insuree.")

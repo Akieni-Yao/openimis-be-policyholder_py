@@ -8,4 +8,5 @@ urlpatterns = [
     path("export/notdeclaredpolicyholder", views.not_declared_policy_holder),
     path('not-declared-ph/', views.not_declared_ph_rest),
     path('verify-email/<uidb64>/<token>/<e_timestamp>/', views.verify_email, name='verify_email'),
+    path('portal-reset/<uidb64>/<token>/<e_timestamp>/', views.portal_reset),
 ]

@@ -1,5 +1,6 @@
 import json
 import logging
+import uuid
 
 from graphene_django import DjangoObjectType
 
@@ -12,7 +13,7 @@ from policyholder.apps import PolicyholderConfig
 from policyholder.constants import *
 from policyholder.dms_utils import create_policyholder_openkmfolder, send_mail_to_policyholder_with_pdf, \
     create_folder_for_policy_holder_exception, send_beneficiary_remove_notification, get_location_from_insuree, \
-    create_phi_for_cat_change, change_insuree_doc_status
+    create_phi_for_cat_change, change_insuree_doc_status, validate_enrolment_type, manual_validate_enrolment_type
 from policyholder.gql import PolicyHolderExcptionType
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, PolicyHolderUser, \
     Insuree, PolicyHolderExcption, CategoryChange
@@ -57,8 +58,13 @@ class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutati
         json_ext_dict = data["json_ext"]["jsonExt"]
         activitycode = json_ext_dict.get("activityCode")
         generated_number = cls.generate_camu_registration_number(activitycode)
+        
+        data["is_review"] = True
+        data["is_submit"] = True
+        data["is_approved"] = True
         data["code"] = generated_number
         create_policyholder_openkmfolder(data)
+            
         if "client_mutation_id" in data:
             client_mutation_id = data.pop('client_mutation_id')
         if "client_mutation_label" in data:
@@ -114,9 +120,10 @@ class CreatePolicyHolderInsureeMutation(BaseHistoryModelCreateMutationMixin, Bas
             raise ValidationError(message="Already Exists")
         employer_number = data.get('employer_number', '')
         income = data.get('json_ext', {}).get('calculation_rule', {}).get('income')
-        is_cc_request = manuall_check_for_category_change_request(user, insuree_id, policyholder_id, income, employer_number)
-        # if is_cc_request:
-        #     raise ValidationError(message="Change Request Created.")
+        is_valid_enrolment = manual_validate_enrolment_type(insuree_id, policyholder_id)
+        if not is_valid_enrolment:
+            raise ValidationError(message="Enrolment Type - 'Students' !")
+        manuall_check_for_category_change_request(user, insuree_id, policyholder_id, income, employer_number)
         super()._validate_mutation(user, **data)
         PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_create_policyholderinsuree_perms)
 
@@ -378,8 +385,11 @@ class CreatePHPortalUserMutation(graphene.Mutation):
             ph_obj = PolicyHolder()
             ph_obj.trade_name = ph_trade_name
             ph_obj.json_ext = ph_json_ext
+            ph_obj.form_ph_portal = True
+            ph_obj.request_number = uuid.uuid4().hex[:8].upper()
             ph_obj.save(username=core_user.username)
             logger.info(f"CreatePHPortalUserMutation : ph_obj : {ph_obj}")
+            create_policyholder_openkmfolder({"request_number": ph_obj.request_number})
             
             phu_obj = PolicyHolderUser()
             phu_obj.user = core_user

@@ -18,7 +18,7 @@ from policyholder.gql.gql_mutations.delete_mutations import DeletePolicyHolderMu
     DeletePolicyHolderInsureeMutation, DeletePolicyHolderUserMutation, DeletePolicyHolderContributionPlanMutation
 from policyholder.gql.gql_mutations.update_mutations import UpdatePolicyHolderMutation, \
     UpdatePolicyHolderInsureeMutation, UpdatePolicyHolderUserMutation, UpdatePolicyHolderContributionPlanMutation, \
-    UpdatePolicyHolderInsureeDesignation
+    UpdatePolicyHolderInsureeDesignation, PHApprovalMutation
 from policyholder.gql.gql_mutations.replace_mutation import ReplacePolicyHolderInsureeMutation, \
     ReplacePolicyHolderContributionPlanMutation, ReplacePolicyHolderUserMutation
 
@@ -53,6 +53,8 @@ class Query(graphene.ObjectType):
         dateValidFrom__Gte=graphene.DateTime(),
         dateValidTo__Lte=graphene.DateTime(),
         applyDefaultValidityFilter=graphene.Boolean(),
+        contactName=graphene.String(),
+        shortName=graphene.String(),
     )
 
     policy_holder_by_family = OrderedDjangoFilterConnectionField(
@@ -222,6 +224,9 @@ class Query(graphene.ObjectType):
                 raise PermissionError("Unauthorized, user has neither policyholder perms nor policyholder portal perms")
         # if there is a filter it means that there is restricted permission found by a signal
 
+        contact_name = kwargs.pop("contactName") if "contactName" in kwargs else None
+        short_name = kwargs.pop("shortName") if "shortName" in kwargs else None
+        
         filters += append_validity_filter(**kwargs)
         parent_location = kwargs.get('parent_location')
         if parent_location is not None:
@@ -233,7 +238,15 @@ class Query(graphene.ObjectType):
                 f = "parent__" + f
             f = "locations__" + f
             filters += [Q(**{f: parent_location})]
-        return gql_optimizer.query(PolicyHolder.objects.filter(*filters).all(), info)
+        # return gql_optimizer.query(PolicyHolder.objects.filter(*filters).all(), info)
+        
+        queryset = PolicyHolder.objects.filter(*filters).all()
+        
+        if contact_name:
+            queryset = queryset.filter(**{'contact_name__contactName__icontains': contact_name})
+        if short_name:
+            queryset = queryset.filter(**{'json_ext__jsonExt__shortName__icontains': short_name})
+        return gql_optimizer.query(queryset, info)
 
     def resolve_policy_holder_insuree(self, info, **kwargs):
         if not info.context.user.has_perms(PolicyholderConfig.gql_query_policyholderinsuree_perms):
@@ -311,6 +324,7 @@ class Mutation(graphene.ObjectType):
     create_policy_holder_exception = CreatePolicyHolderExcption.Field()
     category_change_status_change = CategoryChangeStatusChange.Field()
     create_ph_portal_user = CreatePHPortalUserMutation.Field()
+    policyholder_approval = PHApprovalMutation.Field()
 
 
 def on_policy_holder_mutation(sender, **kwargs):
