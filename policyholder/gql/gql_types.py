@@ -7,7 +7,7 @@ from insuree.schema import InsureeGQLType
 from location.gql_queries import LocationGQLType
 
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderUser, PolicyHolderContributionPlan, \
-    PolicyHolderMutation, PolicyHolderExcption
+    PolicyHolderMutation, PolicyHolderExcption, CategoryChange
 
 
 class PolicyHolderGQLType(DjangoObjectType):
@@ -207,6 +207,22 @@ class PolicyHolderExcptionType(DjangoObjectType):
             "id": ["exact"],
             "status": ["exact", "istartswith", "icontains", "iexact"],
             "exception_reason": ["exact", "istartswith", "icontains", "iexact"],
+            **prefix_filterset("policy_holder__", PolicyHolderGQLType._meta.filter_fields),
+        }
+        interfaces = (graphene.relay.Node,)
+        connection_class = ExtendedConnection
+
+
+class CategoryChangeGQLType(DjangoObjectType):
+    class Meta:
+        model = CategoryChange
+        filter_fields = {
+            "id": ["exact"],
+            "code": ["exact", "istartswith", "icontains", "iexact"],
+            "new_category": ["exact", "istartswith", "icontains", "iexact"],
+            "request_type": ["exact", "istartswith", "icontains", "iexact"],
+            "status": ["exact", "istartswith", "icontains", "iexact"],
+            **prefix_filterset("insuree__", InsureeGQLType._meta.filter_fields),
             **prefix_filterset("policy_holder__", PolicyHolderGQLType._meta.filter_fields),
         }
         interfaces = (graphene.relay.Node,)

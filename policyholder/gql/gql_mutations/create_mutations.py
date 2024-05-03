@@ -1,17 +1,24 @@
+import json
 import logging
 
 from graphene_django import DjangoObjectType
 
 from core import ExtendedConnection
 from core.gql.gql_mutations.base_mutation import BaseMutation, BaseHistoryModelCreateMutationMixin
+from core.schema import OpenIMISMutation, update_or_create_user
+from core.models import Role, User
+from insuree.models import Family
 from policyholder.apps import PolicyholderConfig
+from policyholder.constants import *
 from policyholder.dms_utils import create_policyholder_openkmfolder, send_mail_to_policyholder_with_pdf, \
-    create_folder_for_policy_holder_exception
+    create_folder_for_policy_holder_exception, send_beneficiary_remove_notification, get_location_from_insuree, \
+    create_phi_for_cat_change, change_insuree_doc_status
 from policyholder.gql import PolicyHolderExcptionType
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, PolicyHolderUser, \
-    Insuree, PolicyHolderExcption
+    Insuree, PolicyHolderExcption, CategoryChange
 from policyholder.gql.gql_mutations import PolicyHolderInputType, PolicyHolderInsureeInputType, \
-    PolicyHolderContributionPlanInputType, PolicyHolderUserInputType, PolicyHolderExcptionInput
+    PolicyHolderContributionPlanInputType, PolicyHolderUserInputType, PolicyHolderExcptionInput, PHPortalUserCreateInput
+from policyholder.portal_utils import send_verification_email
 from policyholder.validation import PolicyHolderValidation
 from policyholder.validation.permission_validation import PermissionValidation
 from django.core.exceptions import ValidationError
@@ -22,6 +29,9 @@ import base64
 from django.db import connection
 from django.db.models import Q, F
 from django.apps import apps
+
+from policyholder.views import manuall_check_for_category_change_request
+from workflow.constants import *
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +112,11 @@ class CreatePolicyHolderInsureeMutation(BaseHistoryModelCreateMutationMixin, Bas
                                                         is_deleted=False).first()
         if is_insuree:
             raise ValidationError(message="Already Exists")
+        employer_number = data.get('employer_number', '')
+        income = data.get('json_ext', {}).get('calculation_rule', {}).get('income')
+        is_cc_request = manuall_check_for_category_change_request(user, insuree_id, policyholder_id, income, employer_number)
+        # if is_cc_request:
+        #     raise ValidationError(message="Change Request Created.")
         super()._validate_mutation(user, **data)
         PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_create_policyholderinsuree_perms)
 
@@ -220,3 +235,161 @@ class CreatePolicyHolderExcption(graphene.Mutation):
             logging.error(f"An error occurred: {str(e)}")
             error_message = f"An error occurred: {str(e)}"
             return CreatePolicyHolderExcption(policy_holder_excption=None, message=error_message)
+
+
+class CategoryChangeInput(graphene.InputObjectType):
+    id = graphene.Int(required=False)
+    code = graphene.String(required=False)
+    status = graphene.String(required=True)
+    request_type = graphene.String(required=False)
+    rejected_reason = graphene.String(required=False)
+
+
+class CategoryChangeStatusChange(graphene.Mutation):
+    class Arguments:
+        input = graphene.Argument(CategoryChangeInput)
+
+    success = graphene.Boolean()
+    message = graphene.String()
+
+    @classmethod
+    def mutate(cls, root, info, input):
+        cc_id = input.get("id")
+        code = input.get("code")
+        status = input.get("status")
+        rejected_reason = input.get("rejected_reason")
+        cc = None
+        if code:
+            cc = CategoryChange.objects.filter(code=code).first()
+            logger.info(f"Category change request found by code: {code}")
+        elif cc_id:
+            cc = CategoryChange.objects.filter(id=cc_id).first()
+            logger.info(f"Category change request found by ID: {cc_id}")
+        if cc:
+            cc.status = status
+            insuree = cc.insuree
+            logger.info(f"Updating category change request status to: {status}")
+            if cc.status == CC_APPROVED:
+                logger.info("Category change request status is approved")
+                new_category = cc.new_category
+                logger.info(f"new_category: {new_category}")
+                family_json_data = {"enrolmentType": new_category}
+                logger.info(f"json_data: {family_json_data}")
+                if cc.request_type in ['INDIVIDUAL_REQ', 'DEPENDENT_REQ']:
+                    logger.info("Processing individual or dependent request")
+                    location = get_location_from_insuree(insuree)
+                    old_insuree_obj_id = insuree.save_history()
+                    logger.info(f"old_insuree_obj_id: {old_insuree_obj_id}")
+                    new_family = Family.objects.create(
+                        head_insuree=insuree,
+                        location=location,
+                        audit_user_id=insuree.audit_user_id,
+                        status=insuree.status,
+                        json_ext=family_json_data
+                    )
+                    logger.info(f"new_family: {new_family}")
+                    logger.info(f"new_family id: {new_family.id}")
+                    insuree.family = new_family
+                    insuree.head = True
+                    insuree_status = STATUS_WAITING_FOR_BIOMETRIC
+                    insuree.document_status = True
+                    if insuree.biometrics_is_master:
+                        insuree_status = STATUS_APPROVED
+                    # elif not insuree.biometrics_status:
+                    #     insuree_status = STATUS_WAITING_FOR_BIOMETRIC
+                    insuree.status = insuree_status
+                    logger.info(f"insuree_status: {insuree_status}")
+                    insuree.json_ext['insureeEnrolmentType'] = new_category
+                    insuree.save()
+                    Family.objects.filter(id=new_family.id).update(status=insuree_status)
+                    if cc.request_type == 'DEPENDENT_REQ':
+                        send_beneficiary_remove_notification(old_insuree_obj_id)
+                elif cc.request_type == 'SELF_HEAD_REQ':
+                    logger.info("Processing self head request")
+                    insuree.save_history()
+                    insuree_status = STATUS_WAITING_FOR_BIOMETRIC
+                    insuree.document_status = True
+                    if insuree.biometrics_is_master:
+                        insuree_status = STATUS_APPROVED
+                    # elif not insuree.biometrics_status:
+                    #     insuree_status = STATUS_WAITING_FOR_BIOMETRIC
+                    insuree.status = insuree_status
+                    logger.info(f"insuree_status: {insuree_status}")
+                    insuree.json_ext['insureeEnrolmentType'] = new_category
+                    insuree.save()
+                    Family.objects.filter(id=insuree.family.id).update(status=insuree_status, json_ext=family_json_data)
+            else:
+                logger.info("Category change request status is not approved")
+                if rejected_reason:
+                    cc.rejected_reason = rejected_reason
+            cc.save()
+            logger.info("Category change request status updated")
+            create_phi_for_cat_change(info.context.user, cc)
+            return CategoryChangeStatusChange(
+                success=True,
+                message="Request status successfully updated!"
+            )
+        logger.warning("Category change request not found")
+        return CategoryChangeStatusChange(
+            success=False,
+            message="Request not found!"
+        )
+
+
+class CreatePHPortalUserMutation(graphene.Mutation):
+    """
+    Create a new policy holder portal user.
+    """
+    # _mutation_module = "core"
+    # _mutation_class = "CreateUserMutation"
+    success = graphene.Boolean()
+    message = graphene.String()
+
+    # class Input(PHPortalUserCreateInput):
+    #     pass
+    class Arguments:
+        input = graphene.Argument(PHPortalUserCreateInput)
+        
+
+    @classmethod
+    def mutate(cls, root, info, input):
+        try:
+            user = info.context.user
+            # if type(user) is AnonymousUser or not user.id:
+            #     raise ValidationError("mutation.authentication_required")
+            if User.objects.filter(username=input['username']).exists():
+                raise ValidationError("User with this user name already exists.")
+            # if not user.has_perms(CoreConfig.gql_mutation_create_users_perms):
+            #     raise PermissionDenied("unauthorized")
+            from core.utils import TimeUtils
+            input['validity_from'] = TimeUtils.now()
+            input['audit_user_id'] = -1 #user.id_for_audit
+            ph_portal_user_admin_role = Role.objects.filter(name=PH_ADMIN_ROLE).first()
+            if not ph_portal_user_admin_role:
+                raise ValidationError("Policy Holder Admin Role not exists.")
+            input['roles'] = ["{}".format(ph_portal_user_admin_role.id)]
+            
+            ph_trade_name = input.pop("trade_name")
+            ph_json_ext = input.pop("json_ext")
+            
+            core_user = update_or_create_user(input, user)
+            logger.info(f"CreatePHPortalUserMutation : core_user : {core_user}")
+            
+            ph_obj = PolicyHolder()
+            ph_obj.trade_name = ph_trade_name
+            ph_obj.json_ext = ph_json_ext
+            ph_obj.save(username=core_user.username)
+            logger.info(f"CreatePHPortalUserMutation : ph_obj : {ph_obj}")
+            
+            phu_obj = PolicyHolderUser()
+            phu_obj.user = core_user
+            phu_obj.policy_holder = ph_obj
+            phu_obj.save(username=core_user.username)
+            logger.info(f"CreatePHPortalUserMutation : phu_obj : {phu_obj}")
+            
+            send_verification_email(core_user.i_user)
+
+            return CreatePHPortalUserMutation(success=True, message="Successful!")
+        except Exception as exc:
+            return CreatePHPortalUserMutation(success=False, message=str(exc))
+

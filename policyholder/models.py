@@ -21,7 +21,7 @@ class PolicyHolderManager(core_models.HistoryModelManager):
 
 
 class PolicyHolder(core_models.HistoryBusinessModel):
-    code = models.CharField(db_column='PolicyHolderCode', max_length=32)
+    code = models.CharField(db_column='PolicyHolderCode', max_length=32, null=True)
     trade_name = models.CharField(db_column='TradeName', max_length=255)
     locations = models.ForeignKey(Location, db_column='LocationsId', on_delete=models.deletion.DO_NOTHING, blank=True, null=True)
     address = models.JSONField(db_column='Address', blank=True, null=True)
@@ -34,6 +34,10 @@ class PolicyHolder(core_models.HistoryBusinessModel):
     accountancy_account = models.CharField(db_column='AccountancyAccount', max_length=64, blank=True, null=True)
     bank_account = models.JSONField(db_column="bankAccount", blank=True, null=True)
     payment_reference = models.CharField(db_column='PaymentReference', max_length=128, blank=True, null=True)
+    is_approved = models.BooleanField(db_column="IsApproved", default=False)
+    is_review = models.BooleanField(db_column="IsReview", default=False)
+    is_submit = models.BooleanField(db_column="IsSubmit", default=False)
+    request_number = models.CharField(db_column='RequestNumber', max_length=255, null=True)
 
     objects = PolicyHolderManager()
 
@@ -220,3 +224,24 @@ class PolicyHolderExcption(models.Model):
     class Meta:
         managed = True
         db_table = 'tblPolicyHolderException'
+
+
+class CategoryChange(models.Model):
+    id = models.AutoField(db_column='ID', primary_key=True)
+    code = models.CharField(db_column='Code', max_length=256)
+    insuree = models.ForeignKey(Insuree, on_delete=models.DO_NOTHING, db_column='Insuree')
+    old_category = models.CharField(db_column='OldCategory', max_length=256, null=True)
+    new_category = models.CharField(db_column='NewCategory', max_length=256)
+    policy_holder = models.ForeignKey(PolicyHolder, on_delete=models.DO_NOTHING, db_column='PolicyHolder')
+    request_type = models.CharField(db_column='RequestType', max_length=256)
+    status = models.CharField(db_column='Status', max_length=256)
+    rejected_reason = models.CharField(db_column='Reason', max_length=256, null=True)
+    json_ext = models.JSONField(db_column="JsonExt", blank=True, null=True)
+    created_by = models.ForeignKey(core_models.User, on_delete=models.DO_NOTHING, db_column='CreatedBy', related_name ='created_by_user', null=True)
+    modified_by = models.ForeignKey(core_models.User, on_delete=models.DO_NOTHING, db_column='modified_by', related_name='modified_by_user', null=True)
+    created_time = models.DateTimeField(db_column='CreatedTime', auto_now_add=True)
+    modified_time = models.DateTimeField(db_column='ModifiedTime', auto_now=True)
+    
+    class Meta:
+        managed = True
+        db_table = 'tblCategoryChange'
