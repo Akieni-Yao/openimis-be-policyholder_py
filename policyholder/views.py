@@ -1148,17 +1148,17 @@ def verify_email(request, uidb64, token, e_timestamp):
                 user.is_verified = True
                 user.save()
                 logger.info("User verification successful.")
-                return redirect(settings.PORTAL_FRONTEND + '/signupsuccess')  # open page after verified successfully
+                return redirect(settings.PORTAL_FRONTEND + '/portal/signupsuccess')  # open page after verified successfully
             else:
                 logger.info("User already verified.")
-                return redirect(settings.PORTAL_FRONTEND + '/signupfailed')  # open page after already verified
+                return redirect(settings.PORTAL_FRONTEND + '/portal/signupfailed')  # open page after already verified
         else:
             logger.info("Token has expired.")
             user.delete_history()
-            return redirect(settings.PORTAL_FRONTEND + '/signupfailed')  # open page when token has expired
+            return redirect(settings.PORTAL_FRONTEND + '/portal/signupfailed')  # open page when token has expired
     else:
         logger.info("Invalid token.")
-        return redirect(settings.PORTAL_FRONTEND + '/signupfailed')  # open page when token is invalid
+        return redirect(settings.PORTAL_FRONTEND + '/portal/signupfailed')  # open page when token is invalid
 
 
 @authentication_classes([])
@@ -1181,10 +1181,10 @@ def portal_reset(request, uidb64, token, e_timestamp):
         logger.info(f"Current time: {current_time}")
 
         if current_time <= expiration_time:
-            return redirect(settings.PORTAL_FRONTEND + '/set_password')  # open page after verified successfully
+            return redirect(settings.PORTAL_FRONTEND + '/portal/set_password')  # open page after verified successfully
         else:
             logger.info("Token has expired.")
-            return redirect(settings.PORTAL_FRONTEND + '/resetFailure')  # open page when token has expired
+            return redirect(settings.PORTAL_FRONTEND + '/portal/resetFailure')  # open page when token has expired
     else:
         logger.info("Invalid token.")
         return redirect(settings.PORTAL_FRONTEND)  # open page when token is invalid
