@@ -380,6 +380,8 @@ class CreatePHPortalUserMutation(graphene.Mutation):
             ph_json_ext = input.pop("json_ext")
             
             core_user = update_or_create_user(input, user)
+            core_user.is_portal_user = True
+            core_user.save()
             logger.info(f"CreatePHPortalUserMutation : core_user : {core_user}")
             
             ph_obj = PolicyHolder()
