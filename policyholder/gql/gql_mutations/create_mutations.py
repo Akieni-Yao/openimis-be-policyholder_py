@@ -62,6 +62,7 @@ class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutati
         data["is_review"] = True
         data["is_submit"] = True
         data["is_approved"] = True
+        data["status"] = PH_STATUS_APPROVED
         data["code"] = generated_number
         create_policyholder_openkmfolder(data)
             
@@ -380,6 +381,8 @@ class CreatePHPortalUserMutation(graphene.Mutation):
             ph_json_ext = input.pop("json_ext")
             
             core_user = update_or_create_user(input, user)
+            core_user.is_portal_user = True
+            core_user.save()
             logger.info(f"CreatePHPortalUserMutation : core_user : {core_user}")
             
             ph_obj = PolicyHolder()
@@ -387,6 +390,7 @@ class CreatePHPortalUserMutation(graphene.Mutation):
             ph_obj.json_ext = ph_json_ext
             ph_obj.form_ph_portal = True
             ph_obj.request_number = uuid.uuid4().hex[:8].upper()
+            ph_obj.status = PH_STATUS_CREATED
             ph_obj.save(username=core_user.username)
             logger.info(f"CreatePHPortalUserMutation : ph_obj : {ph_obj}")
             create_policyholder_openkmfolder({"request_number": ph_obj.request_number})

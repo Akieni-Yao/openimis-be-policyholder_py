@@ -9,7 +9,10 @@ from policyholder.validation import PolicyHolderValidation
 from policyholder.validation.permission_validation import PermissionValidation
 from policyholder.constants import *
 from policyholder.services import generate_camu_registration_number
+from policyholder.email_templates import *
 from insuree.dms_utils import rename_folder_dms_and_openkm
+from django.core.mail import EmailMessage
+from django.conf import settings
 
 
 class UpdatePolicyHolderMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
@@ -129,6 +132,8 @@ class PHApprovalMutation(graphene.Mutation):
         try:
             success = True
             message = None
+            subject = None
+            email_body = None
 
             ph_id = input.id
             request_number = input.request_number
@@ -151,20 +156,38 @@ class PHApprovalMutation(graphene.Mutation):
                     message = "Policy Holder Request Successfully Approved."
                 elif is_rejected:
                     ph_obj.is_rejected = True
+                    ph_obj.status = PH_STATUS_REJECTED
                     ph_obj.rejected_reason = input.rejected_reason
+                    # ph_obj.is_deleted = True
                     ph_obj.save()
                     message = "Policy Holder Request Rejected."
-                    # TODO : Send rejection email
+                    subject = "CAMU, Your Policyholder Application request has been rejected."
+                    email_body = policyholder_reject.format(
+                        request_number=ph_obj.request_number,
+                        contact_name=ph_obj.contact_name.get("contactName"), 
+                        rejection_reason=ph_obj.rejected_reason
+                        )
                 elif is_rework:
                     ph_obj.is_rework = True
+                    ph_obj.is_submit = False
+                    ph_obj.status = PH_STATUS_REWORK
                     ph_obj.rework_option = input.rework_option
                     ph_obj.rework_comment = input.rework_comment
                     ph_obj.save()
                     message = "Policy Holder Request Sent for Rework."
-                    # TODO : Send rework email
+                    subject = "CAMU, Your Policyholder Application need some rework."
+                    email_body = policyholder_rework.format(
+                        request_number=ph_obj.request_number, 
+                        contact_name=ph_obj.contact_name.get("contactName"), 
+                        rework_comment=ph_obj.rework_comment
+                        )
                 else:
                     success = False
                     message = "Policy Holder request action is not valid."
+                
+                if ph_obj.email and subject and email_body:
+                    email_message = EmailMessage(subject, email_body, settings.EMAIL_HOST_USER, [ph_obj.email])
+                    email_message.send()
             else:
                 success = False
                 message = "Policy Holder Request not found"
