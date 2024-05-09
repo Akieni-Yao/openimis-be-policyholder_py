@@ -15,6 +15,7 @@ from policyholder.apps import PolicyholderConfig
 from policyholder.models import PolicyHolder as PolicyHolderModel, PolicyHolderUser as PolicyHolderUserModel, \
     PolicyHolderContributionPlan as PolicyHolderContributionPlanModel, PolicyHolderInsuree as PolicyHolderInsureeModel
 from policyholder.validation import PolicyHolderValidation
+from policyholder.constants import *
 from policy.models import Policy
 from insuree.models import Insuree, InsureePolicy, Family
 from payment.models import PaymentDetail
@@ -177,6 +178,9 @@ class PolicyHolder(object):
             updated_phm = PolicyHolderModel.objects.filter(id=policy_holder['id']).first()
             [setattr(updated_phm, key, policy_holder[key]) for key in policy_holder]
             updated_phm.save(username=self.user.username)
+            if updated_phm.is_submit and not updated_phm.is_approved:
+                updated_phm.status = PH_STATUS_PENDING
+                updated_phm.save(username=self.user.username)
             uuid_string = str(updated_phm.id)
             dict_representation = model_to_dict(updated_phm)
             dict_representation["id"], dict_representation["uuid"] = (str(uuid_string), str(uuid_string))
