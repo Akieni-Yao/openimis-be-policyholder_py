@@ -29,10 +29,10 @@ from insuree.dms_utils import create_openKm_folder_for_bulkupload, send_mail_to_
 from insuree.gql_mutations import temp_generate_employee_camu_registration_number
 from insuree.models import Insuree, Gender, Family
 from location.models import Location
-from policyholder.apps import PolicyholderConfig
+from policyholder.apps import *
 from policyholder.constants import  CC_WAITING_FOR_DOCUMENT
 from policyholder.dms_utils import create_folder_for_cat_chnage_req, validate_enrolment_type, send_notification_to_head
-from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, CategoryChange
+from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, CategoryChange, PolicyHolderUser
 from contribution_plan.models import ContributionPlanBundleDetails
 from workflow.workflow_stage import insuree_add_to_workflow
 from insuree.abis_api import create_abis_insuree
@@ -1188,3 +1188,21 @@ def portal_reset(request, uidb64, token, e_timestamp):
     else:
         logger.info("Invalid token.")
         return redirect(settings.PORTAL_FRONTEND)  # open page when token is invalid
+
+@authentication_classes([])
+@permission_classes([AllowAny])
+def deactivate_not_submitted_request(request):
+    logger.info("deactivate_not_submitted_request : Start")
+    thirty_days_ago = timezone.now() - timedelta(days=30)
+    logger.info(f"deactivate_not_submitted_request : thirty_days_ago : {thirty_days_ago}")
+    not_submitted_ph_ids = PolicyHolder.objects.filter(
+        form_ph_portal=True, is_submit=False, 
+        status=PH_STATUS_CREATED, date_updated__lte=thirty_days_ago).values_list('id', flat=True)
+    logger.info(f"deactivate_not_submitted_request : not_submitted_ph_ids : {not_submitted_ph_ids}")
+    ph_user_ids = PolicyHolderUser.objects.filter(policy_holder__id__in=not_submitted_ph_ids).values_list('user__i_user__id', flat=True)
+    logger.info(f"deactivate_not_submitted_request : ph_user_ids : {ph_user_ids}")
+    InteractiveUser.objects.filter(id__in=ph_user_ids).update(validity_to=timezone.now())
+    PolicyHolderUser.objects.filter(policy_holder__id__in=not_submitted_ph_ids).update(is_deleted=True)
+    PolicyHolder.objects.filter(id__in=not_submitted_ph_ids).update(is_deleted=True)
+    logger.info("deactivate_not_submitted_request : End")
+    return Response({"message": "Script Successfully Run."})
