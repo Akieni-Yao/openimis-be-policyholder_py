@@ -30,7 +30,7 @@ from insuree.gql_mutations import temp_generate_employee_camu_registration_numbe
 from insuree.models import Insuree, Gender, Family
 from location.models import Location
 from policyholder.apps import *
-from policyholder.constants import  CC_WAITING_FOR_DOCUMENT
+from policyholder.constants import CC_WAITING_FOR_DOCUMENT, PH_STATUS_CREATED
 from policyholder.dms_utils import create_folder_for_cat_chnage_req, validate_enrolment_type, send_notification_to_head
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, CategoryChange, PolicyHolderUser
 from contribution_plan.models import ContributionPlanBundleDetails
