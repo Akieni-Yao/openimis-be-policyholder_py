@@ -130,6 +130,7 @@ class PHApprovalMutation(graphene.Mutation):
 
     def mutate(self, info, input):
         try:
+            username = info.context.user.username
             success = True
             message = None
             subject = None
@@ -151,7 +152,7 @@ class PHApprovalMutation(graphene.Mutation):
                     ph_obj.code = generated_number
                     ph_obj.is_approved = True
                     ph_obj.status = PH_STATUS_APPROVED
-                    ph_obj.save()
+                    ph_obj.save(username=username)
                     rename_folder_dms_and_openkm(ph_obj.request_number, generated_number)
                     message = "Policy Holder Request Successfully Approved."
                 elif is_rejected:
@@ -159,7 +160,7 @@ class PHApprovalMutation(graphene.Mutation):
                     ph_obj.status = PH_STATUS_REJECTED
                     ph_obj.rejected_reason = input.rejected_reason
                     # ph_obj.is_deleted = True
-                    ph_obj.save()
+                    ph_obj.save(username=username)
                     message = "Policy Holder Request Rejected."
                     subject = "CAMU, Your Policyholder Application request has been rejected."
                     email_body = policyholder_reject.format(
@@ -173,7 +174,7 @@ class PHApprovalMutation(graphene.Mutation):
                     ph_obj.status = PH_STATUS_REWORK
                     ph_obj.rework_option = input.rework_option
                     ph_obj.rework_comment = input.rework_comment
-                    ph_obj.save()
+                    ph_obj.save(username=username)
                     message = "Policy Holder Request Sent for Rework."
                     subject = "CAMU, Your Policyholder Application need some rework."
                     email_body = policyholder_rework.format(
