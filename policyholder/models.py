@@ -6,6 +6,8 @@ from django.conf import settings
 from django.db import models
 from core import models as core_models, fields
 from graphql import ResolveInfo
+
+from core.models import User
 from location.models import Location, UserDistrict
 from insuree.models import Insuree
 from policy.models import Policy
@@ -83,6 +85,7 @@ class PolicyHolderInsuree(core_models.HistoryBusinessModel):
                                 on_delete=models.deletion.DO_NOTHING)
     contribution_plan_bundle = models.ForeignKey(ContributionPlanBundle, db_column='ContributionPlanBundleId',
                                                  on_delete=models.deletion.DO_NOTHING, blank=True, null=True)
+    user = models.ForeignKey(User, db_column='PortalUser', on_delete=models.deletion.DO_NOTHING, blank=True, null=True)
     last_policy = models.ForeignKey(Policy, db_column='LastPolicyId', on_delete=models.deletion.DO_NOTHING, blank=True, null=True)
     is_payment_done_by_policy_holder = models.BooleanField(db_column='IsPaymentDoneByPolicyHolder', default=False)
     is_rights_enable_for_insuree = models.BooleanField(db_column='IsRightsEnableForInsuree', default=False)
