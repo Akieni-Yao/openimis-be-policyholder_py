@@ -272,7 +272,8 @@ class Query(graphene.ObjectType):
                 raise PermissionError("Unauthorized")
 
         filters = append_validity_filter(**kwargs)
-        query = PolicyHolderContributionPlan.objects
+        # query = PolicyHolderContributionPlan.objects
+        query = PolicyHolderContributionPlan.objects.filter(date_valid_to__isnull=True, is_deleted=False)
         return gql_optimizer.query(query.filter(*filters).all(), info)
 
     all_policyholder_exceptions = OrderedDjangoFilterConnectionField(PolicyHolderExcptionType)
