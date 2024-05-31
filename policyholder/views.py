@@ -158,6 +158,7 @@ def get_or_create_family_from_line(line, village: Location, audit_user_id: int, 
             location=village,
             audit_user_id=audit_user_id,
             status="PRE_REGISTERED",
+            address=line[HEADER_ADDRESS],
             json_ext={"enrolmentType": map_enrolment_type_to_category(enrolment_type)}
         )
         created = True
