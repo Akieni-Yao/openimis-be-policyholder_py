@@ -13,6 +13,7 @@ from policyholder.email_templates import *
 from insuree.dms_utils import rename_folder_dms_and_openkm
 from django.core.mail import EmailMessage
 from django.conf import settings
+from django.utils import timezone
 
 
 class UpdatePolicyHolderMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
@@ -159,8 +160,15 @@ class PHApprovalMutation(graphene.Mutation):
                     ph_obj.is_rejected = True
                     ph_obj.status = PH_STATUS_REJECTED
                     ph_obj.rejected_reason = input.rejected_reason
-                    # ph_obj.is_deleted = True
+                    ph_obj.is_deleted = True
                     ph_obj.save(username=username)
+                    
+                    phu_obj = PolicyHolderUser.objects.filter(policy_holder=ph_obj).first() 
+                    phu_obj.is_deleted=True
+                    phu_obj.save(username=username)
+                    
+                    InteractiveUser.objects.filter(id=phu_obj.user.i_user.id).update(validity_to=timezone.now())
+                    
                     message = "Policy Holder Request Rejected."
                     subject = "CAMU, Your Policyholder Application request has been rejected."
                     email_body = policyholder_reject.format(
