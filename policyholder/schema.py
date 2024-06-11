@@ -258,9 +258,9 @@ class Query(graphene.ObjectType):
         return gql_optimizer.query(query.filter(*filters).all(), info)
 
     def resolve_policy_holder_user(self, info, **kwargs):
-        if not info.context.user.has_perms(PolicyholderConfig.gql_query_policyholderuser_perms):
-            if not info.context.user.has_perms(PolicyholderConfig.gql_query_policyholderuser_portal_perms):
-                raise PermissionError("Unauthorized")
+        # if not info.context.user.has_perms(PolicyholderConfig.gql_query_policyholderuser_perms):
+        #     if not info.context.user.has_perms(PolicyholderConfig.gql_query_policyholderuser_portal_perms):
+        #         raise PermissionError("Unauthorized")
 
         filters = append_validity_filter(**kwargs)
         query = PolicyHolderUser.objects
