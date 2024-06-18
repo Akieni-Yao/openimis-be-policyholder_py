@@ -7,7 +7,7 @@ from graphene_django import DjangoObjectType
 from core import ExtendedConnection
 from core.gql.gql_mutations.base_mutation import BaseMutation, BaseHistoryModelCreateMutationMixin
 from core.schema import OpenIMISMutation, update_or_create_user
-from core.models import Role, User
+from core.models import Role, User, InteractiveUser
 from insuree.models import Family
 from policyholder.apps import PolicyholderConfig
 from policyholder.constants import *
@@ -147,6 +147,9 @@ class CreatePolicyHolderContributionPlanMutation(BaseHistoryModelCreateMutationM
 def add_is_poratl(ph_user):
     logger.info("Updating is_portal_user for user: %s", ph_user.user)
     core_user = User.objects.filter(id=ph_user.user.id).first()
+    i_user = InteractiveUser.objects.filter(id=core_user.i_user.id).first()
+    i_user.is_verified = True
+    i_user.save()
     core_user.is_portal_user = True
     core_user.save()
     logger.info("is_portal_user updated for user: %s", core_user)
