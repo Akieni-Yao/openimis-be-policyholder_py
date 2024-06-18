@@ -145,9 +145,11 @@ class CreatePolicyHolderContributionPlanMutation(BaseHistoryModelCreateMutationM
 
 
 def add_is_poratl(ph_user):
-    user = ph_user.user
-    user.is_portal_user = True
-    user.save()
+    logger.info("Updating is_portal_user for user: %s", ph_user.user)
+    core_user = User.objects.filter(id=ph_user.user.id).first()
+    core_user.is_portal_user = True
+    core_user.save()
+    logger.info("is_portal_user updated for user: %s", core_user)
 
 
 class CreatePolicyHolderUserMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
@@ -163,6 +165,7 @@ class CreatePolicyHolderUserMutation(BaseHistoryModelCreateMutationMixin, BaseMu
         if "client_mutation_label" in data:
             data.pop('client_mutation_label')
         ph_user = cls.create_policy_holder_user(user=user, object_data=data)
+        logger.info("Successfully ph_user created.")
         if ph_user:
             add_is_poratl(ph_user)
 
