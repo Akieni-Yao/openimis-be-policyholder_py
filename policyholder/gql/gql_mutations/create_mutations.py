@@ -144,6 +144,12 @@ class CreatePolicyHolderContributionPlanMutation(BaseHistoryModelCreateMutationM
                                             PolicyholderConfig.gql_mutation_create_policyholdercontributionplan_perms)
 
 
+def add_is_poratl(ph_user):
+    user = ph_user.user
+    user.is_portal_user = True
+    user.save()
+
+
 class CreatePolicyHolderUserMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
     _mutation_class = "PolicyHolderUserMutation"
     _mutation_module = "policyholder"
@@ -156,7 +162,9 @@ class CreatePolicyHolderUserMutation(BaseHistoryModelCreateMutationMixin, BaseMu
             data.pop('client_mutation_id')
         if "client_mutation_label" in data:
             data.pop('client_mutation_label')
-        cls.create_policy_holder_user(user=user, object_data=data)
+        ph_user = cls.create_policy_holder_user(user=user, object_data=data)
+        if ph_user:
+            add_is_poratl(ph_user)
 
     @classmethod
     def create_policy_holder_user(cls, user, object_data):
