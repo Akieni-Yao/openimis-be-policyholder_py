@@ -7,4 +7,7 @@ urlpatterns = [
     path("export/<policy_holder_code>/policyholderinsurees", views.export_phi),
     path("export/notdeclaredpolicyholder", views.not_declared_policy_holder),
     path('not-declared-ph/', views.not_declared_ph_rest),
+    path('verify-email/<uidb64>/<token>/<e_timestamp>/', views.verify_email, name='verify_email'),
+    path('portal-reset/<uidb64>/<token>/<e_timestamp>/', views.portal_reset),
+    path('deactivate-not-submitted-request/', views.deactivate_not_submitted_request)
 ]

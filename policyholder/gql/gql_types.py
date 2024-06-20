@@ -7,7 +7,7 @@ from insuree.schema import InsureeGQLType
 from location.gql_queries import LocationGQLType
 
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderUser, PolicyHolderContributionPlan, \
-    PolicyHolderMutation, PolicyHolderExcption
+    PolicyHolderMutation, PolicyHolderExcption, CategoryChange
 
 
 class PolicyHolderGQLType(DjangoObjectType):
@@ -29,7 +29,15 @@ class PolicyHolderGQLType(DjangoObjectType):
             "payment_reference": ["exact"],
             "date_created": ["exact", "lt", "lte", "gt", "gte"],
             "date_updated": ["exact", "lt", "lte", "gt", "gte"],
-            "is_deleted": ["exact"]
+            "is_deleted": ["exact"],
+            "request_number": ["exact", "istartswith", "icontains", "iexact"],
+            "status": ["exact", "istartswith", "icontains", "iexact"],
+            "form_ph_portal": ["exact"],
+            "is_approved": ["exact"],
+            "is_review": ["exact"],
+            "is_submit": ["exact"],
+            "is_rejected": ["exact"],
+            "is_rework": ["exact"]
         }
 
         connection_class = ExtendedConnection
@@ -207,6 +215,22 @@ class PolicyHolderExcptionType(DjangoObjectType):
             "id": ["exact"],
             "status": ["exact", "istartswith", "icontains", "iexact"],
             "exception_reason": ["exact", "istartswith", "icontains", "iexact"],
+            **prefix_filterset("policy_holder__", PolicyHolderGQLType._meta.filter_fields),
+        }
+        interfaces = (graphene.relay.Node,)
+        connection_class = ExtendedConnection
+
+
+class CategoryChangeGQLType(DjangoObjectType):
+    class Meta:
+        model = CategoryChange
+        filter_fields = {
+            "id": ["exact"],
+            "code": ["exact", "istartswith", "icontains", "iexact"],
+            "new_category": ["exact", "istartswith", "icontains", "iexact"],
+            "request_type": ["exact", "istartswith", "icontains", "iexact"],
+            "status": ["exact", "istartswith", "icontains", "iexact"],
+            **prefix_filterset("insuree__", InsureeGQLType._meta.filter_fields),
             **prefix_filterset("policy_holder__", PolicyHolderGQLType._meta.filter_fields),
         }
         interfaces = (graphene.relay.Node,)

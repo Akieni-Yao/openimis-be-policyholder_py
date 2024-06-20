@@ -6,6 +6,8 @@ from django.conf import settings
 from django.db import models
 from core import models as core_models, fields
 from graphql import ResolveInfo
+
+from core.models import User
 from location.models import Location, UserDistrict
 from insuree.models import Insuree
 from policy.models import Policy
@@ -21,7 +23,7 @@ class PolicyHolderManager(core_models.HistoryModelManager):
 
 
 class PolicyHolder(core_models.HistoryBusinessModel):
-    code = models.CharField(db_column='PolicyHolderCode', max_length=32)
+    code = models.CharField(db_column='PolicyHolderCode', max_length=32, null=True)
     trade_name = models.CharField(db_column='TradeName', max_length=255)
     locations = models.ForeignKey(Location, db_column='LocationsId', on_delete=models.deletion.DO_NOTHING, blank=True, null=True)
     address = models.JSONField(db_column='Address', blank=True, null=True)
@@ -34,6 +36,18 @@ class PolicyHolder(core_models.HistoryBusinessModel):
     accountancy_account = models.CharField(db_column='AccountancyAccount', max_length=64, blank=True, null=True)
     bank_account = models.JSONField(db_column="bankAccount", blank=True, null=True)
     payment_reference = models.CharField(db_column='PaymentReference', max_length=128, blank=True, null=True)
+    is_approved = models.BooleanField(db_column="IsApproved", default=False)
+    is_review = models.BooleanField(db_column="IsReview", default=False)
+    is_submit = models.BooleanField(db_column="IsSubmit", default=False)
+    request_number = models.CharField(db_column='RequestNumber', max_length=255, null=True)
+    form_ims = models.BooleanField(db_column="FormIMS", default=False)
+    form_ph_portal = models.BooleanField(db_column="FormPhPortal", default=False)
+    status = models.CharField(db_column='Status', max_length=255, blank=True, null=True)
+    is_rejected = models.BooleanField(db_column="IsRejected", default=False)
+    rejected_reason = models.CharField(db_column='RejectedReason', max_length=255, blank=True, null=True)
+    is_rework = models.BooleanField(db_column="IsRework", default=False)
+    rework_option = models.CharField(db_column='ReworkOption', max_length=255, blank=True, null=True)
+    rework_comment = models.CharField(db_column='ReworkComment', max_length=255, blank=True, null=True)
 
     objects = PolicyHolderManager()
 
@@ -71,6 +85,7 @@ class PolicyHolderInsuree(core_models.HistoryBusinessModel):
                                 on_delete=models.deletion.DO_NOTHING)
     contribution_plan_bundle = models.ForeignKey(ContributionPlanBundle, db_column='ContributionPlanBundleId',
                                                  on_delete=models.deletion.DO_NOTHING, blank=True, null=True)
+    user = models.ForeignKey(User, db_column='PortalUser', on_delete=models.deletion.DO_NOTHING, blank=True, null=True)
     last_policy = models.ForeignKey(Policy, db_column='LastPolicyId', on_delete=models.deletion.DO_NOTHING, blank=True, null=True)
     is_payment_done_by_policy_holder = models.BooleanField(db_column='IsPaymentDoneByPolicyHolder', default=False)
     is_rights_enable_for_insuree = models.BooleanField(db_column='IsRightsEnableForInsuree', default=False)
@@ -220,3 +235,24 @@ class PolicyHolderExcption(models.Model):
     class Meta:
         managed = True
         db_table = 'tblPolicyHolderException'
+
+
+class CategoryChange(models.Model):
+    id = models.AutoField(db_column='ID', primary_key=True)
+    code = models.CharField(db_column='Code', max_length=256)
+    insuree = models.ForeignKey(Insuree, on_delete=models.DO_NOTHING, db_column='Insuree')
+    old_category = models.CharField(db_column='OldCategory', max_length=256, null=True)
+    new_category = models.CharField(db_column='NewCategory', max_length=256)
+    policy_holder = models.ForeignKey(PolicyHolder, on_delete=models.DO_NOTHING, db_column='PolicyHolder')
+    request_type = models.CharField(db_column='RequestType', max_length=256)
+    status = models.CharField(db_column='Status', max_length=256)
+    rejected_reason = models.CharField(db_column='Reason', max_length=256, null=True)
+    json_ext = models.JSONField(db_column="JsonExt", blank=True, null=True)
+    created_by = models.ForeignKey(core_models.User, on_delete=models.DO_NOTHING, db_column='CreatedBy', related_name ='created_by_user', null=True)
+    modified_by = models.ForeignKey(core_models.User, on_delete=models.DO_NOTHING, db_column='modified_by', related_name='modified_by_user', null=True)
+    created_time = models.DateTimeField(db_column='CreatedTime', auto_now_add=True)
+    modified_time = models.DateTimeField(db_column='ModifiedTime', auto_now=True)
+    
+    class Meta:
+        managed = True
+        db_table = 'tblCategoryChange'

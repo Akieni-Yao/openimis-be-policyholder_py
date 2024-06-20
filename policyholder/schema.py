@@ -3,20 +3,22 @@ import graphene_django_optimizer as gql_optimizer
 import calendar
 
 from django.db.models import Q
+
+from insuree.schema import CommonQueryType
 from location.apps import LocationConfig
 from core.schema import OrderedDjangoFilterConnectionField, signal_mutation_module_validate
 from core.utils import append_validity_filter, filter_is_deleted
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderUser, \
     PolicyHolderContributionPlan, PolicyHolderMutation, PolicyHolderInsureeMutation, \
-    PolicyHolderContributionPlanMutation, PolicyHolderUserMutation, PolicyHolderExcption
+    PolicyHolderContributionPlanMutation, PolicyHolderUserMutation, PolicyHolderExcption, CategoryChange
 from policyholder.gql.gql_mutations.create_mutations import CreatePolicyHolderMutation, \
     CreatePolicyHolderInsureeMutation, CreatePolicyHolderUserMutation, CreatePolicyHolderContributionPlanMutation, \
-     CreatePolicyHolderExcption
+    CreatePolicyHolderExcption, CategoryChangeStatusChange, CreatePHPortalUserMutation
 from policyholder.gql.gql_mutations.delete_mutations import DeletePolicyHolderMutation, \
     DeletePolicyHolderInsureeMutation, DeletePolicyHolderUserMutation, DeletePolicyHolderContributionPlanMutation
 from policyholder.gql.gql_mutations.update_mutations import UpdatePolicyHolderMutation, \
     UpdatePolicyHolderInsureeMutation, UpdatePolicyHolderUserMutation, UpdatePolicyHolderContributionPlanMutation, \
-    UpdatePolicyHolderInsureeDesignation
+    UpdatePolicyHolderInsureeDesignation, PHApprovalMutation
 from policyholder.gql.gql_mutations.replace_mutation import ReplacePolicyHolderInsureeMutation, \
     ReplacePolicyHolderContributionPlanMutation, ReplacePolicyHolderUserMutation
 
@@ -24,12 +26,13 @@ from policyholder.apps import PolicyholderConfig
 from policyholder.services import assign_ph_exception_policy, PolicyHolder as PolicyHolderServices
 from policyholder.gql.gql_types import PolicyHolderUserGQLType, PolicyHolderGQLType, PolicyHolderInsureeGQLType, \
     PolicyHolderContributionPlanGQLType, PolicyHolderByFamilyGQLType, PolicyHolderByInureeGQLType, \
-    NotDeclaredPolicyHolderGQLType, PolicyHolderExcptionType
+    NotDeclaredPolicyHolderGQLType, PolicyHolderExcptionType, CategoryChangeGQLType
 
 from django.core.exceptions import PermissionDenied
 from django.utils.translation import gettext as _
 
 from payment.signals import signal_before_payment_query
+from .constants import  CC_WAITING_FOR_APPROVAL
 from .signals import append_policy_holder_filter
 
 from contract.models import Contract
@@ -50,6 +53,8 @@ class Query(graphene.ObjectType):
         dateValidFrom__Gte=graphene.DateTime(),
         dateValidTo__Lte=graphene.DateTime(),
         applyDefaultValidityFilter=graphene.Boolean(),
+        contactName=graphene.String(),
+        shortName=graphene.String(),
     )
 
     policy_holder_by_family = OrderedDjangoFilterConnectionField(
@@ -175,6 +180,14 @@ class Query(graphene.ObjectType):
             ph_exception.save()
             return ApprovePolicyholderExceptionType(success=True, message="Exception Approved!")
         return ApprovePolicyholderExceptionType(success=False, message="Exception Not Found!")
+    
+    category_change_requests = OrderedDjangoFilterConnectionField(
+        CategoryChangeGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+    )
+    
+    def resolve_category_change_requests(self, info, **kwargs):
+        return gql_optimizer.query(CategoryChange.objects.all(), info)
 
     def resolve_validate_policy_holder_code(self, info, **kwargs):
         if not info.context.user.has_perms(PolicyholderConfig.gql_query_policyholder_perms):
@@ -211,6 +224,9 @@ class Query(graphene.ObjectType):
                 raise PermissionError("Unauthorized, user has neither policyholder perms nor policyholder portal perms")
         # if there is a filter it means that there is restricted permission found by a signal
 
+        contact_name = kwargs.pop("contactName") if "contactName" in kwargs else None
+        short_name = kwargs.pop("shortName") if "shortName" in kwargs else None
+        
         filters += append_validity_filter(**kwargs)
         parent_location = kwargs.get('parent_location')
         if parent_location is not None:
@@ -222,7 +238,15 @@ class Query(graphene.ObjectType):
                 f = "parent__" + f
             f = "locations__" + f
             filters += [Q(**{f: parent_location})]
-        return gql_optimizer.query(PolicyHolder.objects.filter(*filters).all(), info)
+        # return gql_optimizer.query(PolicyHolder.objects.filter(*filters).all(), info)
+        
+        queryset = PolicyHolder.objects.filter(*filters).all()
+        
+        if contact_name:
+            queryset = queryset.filter(**{'contact_name__contactName__icontains': contact_name})
+        if short_name:
+            queryset = queryset.filter(**{'json_ext__jsonExt__shortName__icontains': short_name})
+        return gql_optimizer.query(queryset, info)
 
     def resolve_policy_holder_insuree(self, info, **kwargs):
         if not info.context.user.has_perms(PolicyholderConfig.gql_query_policyholderinsuree_perms):
@@ -234,9 +258,9 @@ class Query(graphene.ObjectType):
         return gql_optimizer.query(query.filter(*filters).all(), info)
 
     def resolve_policy_holder_user(self, info, **kwargs):
-        if not info.context.user.has_perms(PolicyholderConfig.gql_query_policyholderuser_perms):
-            if not info.context.user.has_perms(PolicyholderConfig.gql_query_policyholderuser_portal_perms):
-                raise PermissionError("Unauthorized")
+        # if not info.context.user.has_perms(PolicyholderConfig.gql_query_policyholderuser_perms):
+        #     if not info.context.user.has_perms(PolicyholderConfig.gql_query_policyholderuser_portal_perms):
+        #         raise PermissionError("Unauthorized")
 
         filters = append_validity_filter(**kwargs)
         query = PolicyHolderUser.objects
@@ -248,12 +272,34 @@ class Query(graphene.ObjectType):
                 raise PermissionError("Unauthorized")
 
         filters = append_validity_filter(**kwargs)
-        query = PolicyHolderContributionPlan.objects
+        # query = PolicyHolderContributionPlan.objects
+        query = PolicyHolderContributionPlan.objects.filter(date_valid_to__isnull=True, is_deleted=False)
         return gql_optimizer.query(query.filter(*filters).all(), info)
 
     all_policyholder_exceptions = OrderedDjangoFilterConnectionField(PolicyHolderExcptionType)
+
     def resolve_all_policyholder_exceptions(self, info, **kwargs):
         return gql_optimizer.query(PolicyHolderExcption.objects.all(), info)
+
+    category_change_doc_upload = graphene.Field(
+        CommonQueryType,
+        code=graphene.String(required=True),
+        document_provided=graphene.Boolean(required=True)
+    )
+
+    def resolve_category_change_doc_upload(self, info, **kwargs):
+        code = kwargs.get("code")
+        document_provided = kwargs.get("document_provided")
+        cc_object = CategoryChange.objects.filter(code=code).first()
+        if cc_object:
+            if document_provided:
+                cc_object.status = CC_WAITING_FOR_APPROVAL
+                cc_object.save()
+                return CommonQueryType(success=True, message="Request Updated successfully!")
+            else:
+                return CommonQueryType(success=False, message="Documents Not Provided!")
+        else:
+            return CommonQueryType(success=False, message="Request Not Found!")
 
 
 class Mutation(graphene.ObjectType):
@@ -277,6 +323,9 @@ class Mutation(graphene.ObjectType):
     replace_policy_holder_contribution_plan_bundle = ReplacePolicyHolderContributionPlanMutation.Field()
     update_designation = UpdatePolicyHolderInsureeDesignation.Field()
     create_policy_holder_exception = CreatePolicyHolderExcption.Field()
+    category_change_status_change = CategoryChangeStatusChange.Field()
+    create_ph_portal_user = CreatePHPortalUserMutation.Field()
+    policyholder_approval = PHApprovalMutation.Field()
 
 
 def on_policy_holder_mutation(sender, **kwargs):
