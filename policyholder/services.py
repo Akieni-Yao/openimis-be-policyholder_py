@@ -1,6 +1,8 @@
 import core
 import json
 import logging
+import pytz
+import datetime
 
 from django.core.serializers.json import DjangoJSONEncoder
 from django.core.exceptions import PermissionDenied
@@ -13,10 +15,12 @@ from policyholder.apps import PolicyholderConfig
 from policyholder.models import PolicyHolder as PolicyHolderModel, PolicyHolderUser as PolicyHolderUserModel, \
     PolicyHolderContributionPlan as PolicyHolderContributionPlanModel, PolicyHolderInsuree as PolicyHolderInsureeModel
 from policyholder.validation import PolicyHolderValidation
+from policyholder.constants import *
 from policy.models import Policy
 from insuree.models import Insuree, InsureePolicy, Family
 from payment.models import PaymentDetail
 from contract.models import ContractDetails, ContractContributionPlanDetails
+from django.db import connection
 
 logger = logging.getLogger("openimis." + __name__)
 
@@ -174,6 +178,9 @@ class PolicyHolder(object):
             updated_phm = PolicyHolderModel.objects.filter(id=policy_holder['id']).first()
             [setattr(updated_phm, key, policy_holder[key]) for key in policy_holder]
             updated_phm.save(username=self.user.username)
+            if updated_phm.is_submit and not updated_phm.is_approved:
+                updated_phm.status = PH_STATUS_PENDING
+                updated_phm.save(username=self.user.username)
             uuid_string = str(updated_phm.id)
             dict_representation = model_to_dict(updated_phm)
             dict_representation["id"], dict_representation["uuid"] = (str(uuid_string), str(uuid_string))
@@ -456,3 +463,22 @@ def _output_result_success(dict_representation):
 
 def assign_ph_exception_policy(ph_exception):
     return True
+
+
+def generate_camu_registration_number(code):
+        congo_timezone = pytz.timezone('Africa/Kinshasa')
+        # Get the current time in Congo Time
+        congo_time = datetime.datetime.now(congo_timezone)
+        series1 = "CAMU"  # Define the fixed components of the number
+        series2 = str(code)  # You mentioned "construction" as the sector of activity
+        series3 = congo_time.strftime("%H")  # Registration time (hour)
+        series4 = congo_time.strftime("%m").zfill(2)  # Month of registration with leading zero
+        series5 = congo_time.strftime("%d").zfill(2)  # Day of registration with leading zero
+        series6 = congo_time.strftime("%y")  # Year of registration
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT nextval('public.camu_code_seq')")
+            sequence_value = cursor.fetchone()[0]
+        series7 = str(sequence_value).zfill(3)  # Order of recording
+        # Concatenate the series to generate the final number
+        generated_number = f"{series1}{series2}{series3}{series4}{series5}{series6}{series7}"
+        return generated_number

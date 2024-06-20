@@ -29,10 +29,10 @@ from insuree.dms_utils import create_openKm_folder_for_bulkupload, send_mail_to_
 from insuree.gql_mutations import temp_generate_employee_camu_registration_number
 from insuree.models import Insuree, Gender, Family
 from location.models import Location
-from policyholder.apps import PolicyholderConfig
-from policyholder.constants import  CC_WAITING_FOR_DOCUMENT
-from policyholder.dms_utils import create_folder_for_cat_chnage_req
-from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, CategoryChange
+from policyholder.apps import *
+from policyholder.constants import CC_WAITING_FOR_DOCUMENT, PH_STATUS_CREATED
+from policyholder.dms_utils import create_folder_for_cat_chnage_req, validate_enrolment_type, send_notification_to_head
+from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, CategoryChange, PolicyHolderUser
 from contribution_plan.models import ContributionPlanBundleDetails
 from workflow.workflow_stage import insuree_add_to_workflow
 from insuree.abis_api import create_abis_insuree
@@ -158,6 +158,7 @@ def get_or_create_family_from_line(line, village: Location, audit_user_id: int, 
             location=village,
             audit_user_id=audit_user_id,
             status="PRE_REGISTERED",
+            address=line[HEADER_ADDRESS],
             json_ext={"enrolmentType": map_enrolment_type_to_category(enrolment_type)}
         )
         created = True
@@ -463,10 +464,12 @@ def import_phi(request, policy_holder_code):
             logger.error(f"Error occurred while retrieving Contribution Plan Bundle: {e}")
             enrolment_type = None
 
-        # insuree = validating_insuree_on_name_dob(line)
-        # if insuree:
-        #     pass
-        #     continue
+        is_valid_enrolment = validate_enrolment_type(line, enrolment_type)
+        if not is_valid_enrolment:
+            row_data = line.tolist()
+            row_data.extend(["Failed", "Enrolment Type should be other than 'Student'."])
+            processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
+            continue
 
         is_cc_request = check_for_category_change_request(request.user, line, policy_holder, enrolment_type)
         if is_cc_request:
@@ -1068,9 +1071,6 @@ def check_for_category_change_request(user, line, policy_holder, enrolment_type)
             if code:
                 if insuree.family:
                     if insuree.head:
-                        if old_category != "students":
-                            if new_category == "students":
-                                return False
                         if new_category != old_category:
                             create_dependent_category_change(user, code, insuree, old_category, new_category,
                                                              policy_holder,
@@ -1083,6 +1083,8 @@ def check_for_category_change_request(user, line, policy_holder, enrolment_type)
                         create_dependent_category_change(user, code, insuree, old_category, new_category, policy_holder,
                                                          'DEPENDENT_REQ',
                                                          CC_WAITING_FOR_DOCUMENT, income, employer_number)
+                        if new_category == 'students':
+                            send_notification_to_head(insuree)
                         return True
                 else:
                     create_dependent_category_change(user, code, insuree, old_category, new_category, policy_holder,
@@ -1131,7 +1133,7 @@ def verify_email(request, uidb64, token, e_timestamp):
         timestamp = force_text(urlsafe_base64_decode(e_timestamp))
     except (TypeError, ValueError, OverflowError, InteractiveUser.DoesNotExist) as e:
         logger.error(f"Error occurred while decoding parameters: {e}")
-        return redirect('https://www.fb.com')
+        return redirect(settings.PORTAL_FRONTEND)
 
     # Check if the token is valid and not expired
     if default_token_generator.check_token(user, token):
@@ -1147,14 +1149,61 @@ def verify_email(request, uidb64, token, e_timestamp):
                 user.is_verified = True
                 user.save()
                 logger.info("User verification successful.")
-                return redirect('http://dev-dms.devopsdemo.live:9002/signupsuccess')  # open page after verified successfully
+                return redirect(settings.PORTAL_FRONTEND + '/portal/signupsuccess')  # open page after verified successfully
             else:
                 logger.info("User already verified.")
-                return redirect('http://dev-dms.devopsdemo.live:9002/signupfailed')  # open page after already verified
+                return redirect(settings.PORTAL_FRONTEND + '/portal/signupfailed')  # open page after already verified
         else:
             logger.info("Token has expired.")
             user.delete_history()
-            return redirect('http://dev-dms.devopsdemo.live:9002/signupfailed')  # open page when token has expired
+            return redirect(settings.PORTAL_FRONTEND + '/portal/signupfailed')  # open page when token has expired
     else:
         logger.info("Invalid token.")
-        return redirect('http://dev-dms.devopsdemo.live:9002/signupfailed')  # open page when token is invalid
+        return redirect(settings.PORTAL_FRONTEND + '/portal/signupfailed')  # open page when token is invalid
+
+
+@authentication_classes([])
+@permission_classes([AllowAny])
+def portal_reset(request, uidb64, token, e_timestamp):
+    try:
+        uid = force_text(urlsafe_base64_decode(uidb64))
+        user = InteractiveUser.objects.get(pk=uid)
+        timestamp = force_text(urlsafe_base64_decode(e_timestamp))
+    except (TypeError, ValueError, OverflowError, InteractiveUser.DoesNotExist) as e:
+        logger.error(f"Error occurred while decoding parameters: {e}")
+        return redirect(settings.PORTAL_FRONTEND)
+
+    if default_token_generator.check_token(user, token):
+        timestamp = int(timestamp)
+        logger.info("Timestamp decoded successfully.")
+        expiration_time = datetime.fromtimestamp(timestamp) + timedelta(hours=24)
+        logger.info(f"Expiration time calculated: {expiration_time}")
+        current_time = datetime.now()
+        logger.info(f"Current time: {current_time}")
+
+        if current_time <= expiration_time:
+            return redirect(settings.PORTAL_FRONTEND + '/portal/set_password')  # open page after verified successfully
+        else:
+            logger.info("Token has expired.")
+            return redirect(settings.PORTAL_FRONTEND + '/portal/resetFailure')  # open page when token has expired
+    else:
+        logger.info("Invalid token.")
+        return redirect(settings.PORTAL_FRONTEND)  # open page when token is invalid
+
+@authentication_classes([])
+@permission_classes([AllowAny])
+def deactivate_not_submitted_request(request):
+    logger.info("deactivate_not_submitted_request : Start")
+    thirty_days_ago = timezone.now() - timedelta(days=30)
+    logger.info(f"deactivate_not_submitted_request : thirty_days_ago : {thirty_days_ago}")
+    not_submitted_ph_ids = PolicyHolder.objects.filter(
+        form_ph_portal=True, is_submit=False, 
+        status=PH_STATUS_CREATED, date_updated__lte=thirty_days_ago).values_list('id', flat=True)
+    logger.info(f"deactivate_not_submitted_request : not_submitted_ph_ids : {not_submitted_ph_ids}")
+    ph_user_ids = PolicyHolderUser.objects.filter(policy_holder__id__in=not_submitted_ph_ids).values_list('user__i_user__id', flat=True)
+    logger.info(f"deactivate_not_submitted_request : ph_user_ids : {ph_user_ids}")
+    InteractiveUser.objects.filter(id__in=ph_user_ids).update(validity_to=timezone.now())
+    PolicyHolderUser.objects.filter(policy_holder__id__in=not_submitted_ph_ids).update(is_deleted=True)
+    PolicyHolder.objects.filter(id__in=not_submitted_ph_ids).update(is_deleted=True)
+    logger.info("deactivate_not_submitted_request : End")
+    return Response({"message": "Script Successfully Run."})

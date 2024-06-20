@@ -6,6 +6,8 @@ from django.conf import settings
 from django.db import models
 from core import models as core_models, fields
 from graphql import ResolveInfo
+
+from core.models import User
 from location.models import Location, UserDistrict
 from insuree.models import Insuree
 from policy.models import Policy
@@ -38,6 +40,14 @@ class PolicyHolder(core_models.HistoryBusinessModel):
     is_review = models.BooleanField(db_column="IsReview", default=False)
     is_submit = models.BooleanField(db_column="IsSubmit", default=False)
     request_number = models.CharField(db_column='RequestNumber', max_length=255, null=True)
+    form_ims = models.BooleanField(db_column="FormIMS", default=False)
+    form_ph_portal = models.BooleanField(db_column="FormPhPortal", default=False)
+    status = models.CharField(db_column='Status', max_length=255, blank=True, null=True)
+    is_rejected = models.BooleanField(db_column="IsRejected", default=False)
+    rejected_reason = models.CharField(db_column='RejectedReason', max_length=255, blank=True, null=True)
+    is_rework = models.BooleanField(db_column="IsRework", default=False)
+    rework_option = models.CharField(db_column='ReworkOption', max_length=255, blank=True, null=True)
+    rework_comment = models.CharField(db_column='ReworkComment', max_length=255, blank=True, null=True)
 
     objects = PolicyHolderManager()
 
@@ -75,6 +85,7 @@ class PolicyHolderInsuree(core_models.HistoryBusinessModel):
                                 on_delete=models.deletion.DO_NOTHING)
     contribution_plan_bundle = models.ForeignKey(ContributionPlanBundle, db_column='ContributionPlanBundleId',
                                                  on_delete=models.deletion.DO_NOTHING, blank=True, null=True)
+    user = models.ForeignKey(User, db_column='PortalUser', on_delete=models.deletion.DO_NOTHING, blank=True, null=True)
     last_policy = models.ForeignKey(Policy, db_column='LastPolicyId', on_delete=models.deletion.DO_NOTHING, blank=True, null=True)
     is_payment_done_by_policy_holder = models.BooleanField(db_column='IsPaymentDoneByPolicyHolder', default=False)
     is_rights_enable_for_insuree = models.BooleanField(db_column='IsRightsEnableForInsuree', default=False)
