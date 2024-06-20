@@ -7,7 +7,7 @@ from graphene_django import DjangoObjectType
 from core import ExtendedConnection
 from core.gql.gql_mutations.base_mutation import BaseMutation, BaseHistoryModelCreateMutationMixin
 from core.schema import OpenIMISMutation, update_or_create_user
-from core.models import Role, User
+from core.models import Role, User, InteractiveUser
 from insuree.models import Family
 from policyholder.apps import PolicyholderConfig
 from policyholder.constants import *
@@ -144,6 +144,22 @@ class CreatePolicyHolderContributionPlanMutation(BaseHistoryModelCreateMutationM
                                             PolicyholderConfig.gql_mutation_create_policyholdercontributionplan_perms)
 
 
+def add_core_user_portal_permission(ph_user):
+    logger.info("Updating is_portal_user for user: %s", ph_user.user)
+    core_user = User.objects.filter(id=ph_user.user.id).first()
+    core_user.is_portal_user = True
+    core_user.save()
+    add_i_user_permission(core_user)
+    logger.info("is_portal_user updated for user: %s", core_user)
+
+
+def add_i_user_permission(core_user):
+    i_user = InteractiveUser.objects.filter(id=core_user.i_user.id).first()
+    logger.info("i_user user: %s", i_user)
+    i_user.is_verified = True
+    i_user.save()
+
+
 class CreatePolicyHolderUserMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
     _mutation_class = "PolicyHolderUserMutation"
     _mutation_module = "policyholder"
@@ -156,7 +172,10 @@ class CreatePolicyHolderUserMutation(BaseHistoryModelCreateMutationMixin, BaseMu
             data.pop('client_mutation_id')
         if "client_mutation_label" in data:
             data.pop('client_mutation_label')
-        cls.create_policy_holder_user(user=user, object_data=data)
+        ph_user = cls.create_policy_holder_user(user=user, object_data=data)
+        logger.info("Successfully ph_user created.")
+        if ph_user:
+            add_core_user_portal_permission(ph_user)
 
     @classmethod
     def create_policy_holder_user(cls, user, object_data):
@@ -394,16 +413,15 @@ class CreatePHPortalUserMutation(graphene.Mutation):
             ph_obj.save(username=core_user.username)
             logger.info(f"CreatePHPortalUserMutation : ph_obj : {ph_obj}")
             create_policyholder_openkmfolder({"request_number": ph_obj.request_number})
-            
+
             phu_obj = PolicyHolderUser()
             phu_obj.user = core_user
             phu_obj.policy_holder = ph_obj
             phu_obj.save(username=core_user.username)
             logger.info(f"CreatePHPortalUserMutation : phu_obj : {phu_obj}")
-            
+
             send_verification_email(core_user.i_user)
 
             return CreatePHPortalUserMutation(success=True, message="Successful!")
         except Exception as exc:
             return CreatePHPortalUserMutation(success=False, message=str(exc))
-
