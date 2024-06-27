@@ -364,24 +364,24 @@ def import_phi(request, policy_holder_code):
 
                 if dob is None:
                     # If none of the formats match, handle the error
-                    errors.append(f"Error line {total_lines} - Invalid date format for date of birth: {dob_value}")
-                    logger.debug(f"Error line {total_lines} - Invalid date format for date of birth: {dob_value}")
+                    errors.append(f"Error line {total_lines} - Format de date invalide pour la date de naissance : {dob_value}")
+                    logger.debug(f"Error line {total_lines} - Format de date invalide pour la date de naissance : {dob_value}")
                     total_validation_errors += 1
                     # Adding error in output excel
                     row_data = line.tolist()
-                    row_data.extend(["Failed", f"Invalid date format for date of birth: {dob_value}"])
+                    row_data.extend(["Échec", f"Format de date invalide pour la date de naissance : {dob_value}"])
                     processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
                     continue
 
             age = (datetime.now().date() - dob.date()) // timedelta(days=365.25)  # Calculate age in years
             if age < MINIMUM_AGE_LIMIT:
                 errors.append(
-                    f"Error line {total_lines} - Head insuree must be at least {MINIMUM_AGE_LIMIT} years old.")
-                logger.debug(f"Error line {total_lines} - Head insuree be at least {MINIMUM_AGE_LIMIT} years old.")
+                    f"Error line {total_lines} - L'assuré doit être âgé d'au moins {MINIMUM_AGE_LIMIT} ans.")
+                logger.debug(f"Error line {total_lines} - L'assuré doit être âgé d'au moins {MINIMUM_AGE_LIMIT} ans.")
                 total_validation_errors += 1
                 # Adding error in output excel
                 row_data = line.tolist()
-                row_data.extend(["Failed", f"Insuree must be at least {MINIMUM_AGE_LIMIT} years old."])
+                row_data.extend(["Échec", f"L'assuré doit être âgé d'au moins {MINIMUM_AGE_LIMIT} ans."])
                 processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
                 continue
             force_value = str(line.get('Force', '')).strip().lower()
@@ -391,25 +391,25 @@ def import_phi(request, policy_holder_code):
                 if insuree:
                     # Generate an error message instructing to add insuree forcibly
                     errors.append(
-                        f"Error line {total_lines} - Insuree with same name and dob already exists. If you want to add, please add forcibly by adding a new column named 'Force' with the value 'YES'.")
+                        f"Error line {total_lines} - Un assuré ayant le même nom et la même date de naissance existe déjà. Si vous voulez l'ajouter, veuillez le faire de force en ajoutant une nouvelle colonne nommée 'Force' avec la valeur 'YES'.")
                     logger.debug(
-                        f"Error line {total_lines} - Insuree with same name and dob already exists. If you want to add, please add forcibly by adding a new column named 'Force' with the value 'YES'.")
+                        f"Error line {total_lines} - Un assuré ayant le même nom et la même date de naissance existe déjà. Si vous voulez l'ajouter, veuillez le faire de force en ajoutant une nouvelle colonne nommée 'Force' avec la valeur 'YES'.")
 
                     # Adding error in output excel
                     row_data = line.tolist()
-                    row_data.extend(["Failed",
-                                     "Insuree with same name and dob already exists. If you want to add, please add forcibly by adding a new column named 'Force' with the value 'YES'."])
+                    row_data.extend(["Échec",
+                                     "Un assuré ayant le même nom et la même date de naissance existe déjà. Si vous voulez l'ajouter, veuillez le faire de force en ajoutant une nouvelle colonne nommée 'Force' avec la valeur 'YES'."])
                     processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
                     continue
         validation_errors = validate_line(line)
         if validation_errors:
-            errors.append(f"Error line {total_lines} - validation issues ({validation_errors})")
-            logger.debug(f"Error line {total_lines} - validation issues ({validation_errors})")
+            errors.append(f"Error line {total_lines} - Problèmes de validation  ({validation_errors})")
+            logger.debug(f"Error line {total_lines} - Problèmes de validation  ({validation_errors})")
             total_validation_errors += 1
 
             # Adding error in output excel
             row_data = line.tolist()
-            row_data.extend(["Failed", validation_errors])
+            row_data.extend(["Échec", validation_errors])
             processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
             continue
 
@@ -420,13 +420,13 @@ def import_phi(request, policy_holder_code):
 
         village = get_village_from_line(line)
         if not village:
-            errors.append(f"Error line {total_lines} - unknown village ({line[HEADER_FAMILY_LOCATION_CODE]})")
-            logger.debug(f"Error line {total_lines} - unknown village ({line[HEADER_FAMILY_LOCATION_CODE]})")
+            errors.append(f"Error line {total_lines} - Village inconnu ({line[HEADER_FAMILY_LOCATION_CODE]})")
+            logger.debug(f"Error line {total_lines} -Village inconnu ({line[HEADER_FAMILY_LOCATION_CODE]})")
             total_locations_not_found += 1
 
             # Adding error in output excel
             row_data = line.tolist()
-            row_data.extend(["Failed", f"unknown village - {line[HEADER_FAMILY_LOCATION_CODE]}"])
+            row_data.extend(["Échec", f"Village inconnu - {line[HEADER_FAMILY_LOCATION_CODE]}"])
             processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
             continue
 
@@ -434,28 +434,28 @@ def import_phi(request, policy_holder_code):
             ph_cpb = PolicyHolderContributionPlan.objects.filter(policy_holder=policy_holder, is_deleted=False).first()
             if not ph_cpb:
                 errors.append(
-                    f"Error line {total_lines} - No contribution plan bundle with ({policy_holder.trade_name})")
+                    f"Error line {total_lines} - Pas de plans de cotisation avec ({policy_holder.trade_name})")
                 logger.debug(
-                    f"Error line {total_lines} - No contribution plan bundle with ({policy_holder.trade_name})")
+                    f"Error line {total_lines} - Pas de plans de cotisation avec ({policy_holder.trade_name})")
                 total_contribution_plan_not_found += 1
 
                 # Adding error in output excel
                 row_data = line.tolist()
-                row_data.extend(["Failed", f"No contribution plan bundle with - {policy_holder.trade_name}"])
+                row_data.extend(["Échec", f"Pas de plans de cotisation avec - {policy_holder.trade_name}"])
                 processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
                 continue
 
             cpb = ph_cpb.contribution_plan_bundle
             if not cpb:
                 errors.append(
-                    f"Error line {total_lines} - unknown contribution plan bundle ({ph_cpb.contribution_plan_bundle})")
+                    f"Error line {total_lines} - Contribution plan inconnu ({ph_cpb.contribution_plan_bundle})")
                 logger.debug(
-                    f"Error line {total_lines} - unknown contribution plan bundle ({ph_cpb.contribution_plan_bundle})")
+                    f"Error line {total_lines} - Contribution plan inconnu ({ph_cpb.contribution_plan_bundle})")
                 total_locations_not_found += 1
 
                 # Adding error in output excel
                 row_data = line.tolist()
-                row_data.extend(["Failed", f"unknown contribution plan bundle - {ph_cpb.contribution_plan_bundle}"])
+                row_data.extend(["Échec", f"Contribution plan inconnu - {ph_cpb.contribution_plan_bundle}"])
                 processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
                 continue
 
@@ -467,14 +467,14 @@ def import_phi(request, policy_holder_code):
         is_valid_enrolment = validate_enrolment_type(line, enrolment_type)
         if not is_valid_enrolment:
             row_data = line.tolist()
-            row_data.extend(["Failed", "Enrolment Type should be other than 'Student'."])
+            row_data.extend(["Échec", "Le type d'enrôlement doit être différent de 'étudiant'."])
             processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
             continue
 
         is_cc_request = check_for_category_change_request(request.user, line, policy_holder, enrolment_type)
         if is_cc_request:
             row_data = line.tolist()
-            row_data.extend(["Success", "Category Change Request Created."])
+            row_data.extend(["Réussite", "Demande de changement de catégorie Créé."])
             processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
             # continue
 
@@ -485,7 +485,7 @@ def import_phi(request, policy_holder_code):
         elif not family_created and family is None:
             # Adding error in output excel
             row_data = line.tolist()
-            row_data.extend(["Failed", "unknown Family Head ID."])
+            row_data.extend(["Échec", "ID du chef de famille inconnu."])
             processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
             continue
 
@@ -521,20 +521,20 @@ def import_phi(request, policy_holder_code):
                 line[HEADER_INSUREE_DOB] = timezone.make_aware(datetime_obj).date()
 
             if insuree.other_names != line[HEADER_INSUREE_OTHER_NAMES]:
-                reason = "Insuree First Name does not match."
+                reason = "Le prénom de l'assuré ne correspond pas."
             elif insuree.last_name != line[HEADER_INSUREE_LAST_NAME]:
-                reason = "Insuree Last Name does not match."
+                reason = "Le nom de famille de l'assuré ne correspond pas."
             elif insuree.dob != line[HEADER_INSUREE_DOB]:
-                reason = "Insuree DOB does not match."
+                reason = "La date de naissance de l'assuré ne correspond pas."
             elif insuree.gender != GENDERS[line[HEADER_INSUREE_GENDER]]:
-                reason = "Insuree Gender does not match."
+                reason = "Le sexe de l'assuré ne correspond pas."
             elif insuree.marital != mapping_marital_status(line[HEADER_CIVILITY]):
-                reason = "Insuree Marital does not match."
+                reason = "L'état civil de l'assuré ne correspond pas."
 
             if reason:
                 # Adding error in output excel
                 row_data = line.tolist()
-                row_data.extend(["Failed", reason])
+                row_data.extend(["Échec", reason])
                 processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
                 continue
 
@@ -573,7 +573,7 @@ def import_phi(request, policy_holder_code):
 
         # Adding success entry in output Excel
         row_data = line.tolist()
-        row_data.extend(["Success", ""])
+        row_data.extend(["Réussite", ""])
         processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
 
         try:
