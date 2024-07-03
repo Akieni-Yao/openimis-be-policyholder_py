@@ -54,7 +54,7 @@ def get_value_from_mapping(obj, field_path):
     return obj
 
 def erp_create_update_policyholder(phcp):
-    logger.info(" ======    erp_create_update_policyholder - start    =======")
+    logger.debug(" ======    erp_create_update_policyholder - start    =======")
     policyholder_data = {}
     
     for key, field_path in mapping_dict.items():
@@ -64,24 +64,24 @@ def erp_create_update_policyholder(phcp):
     
     if phcp.policy_holder.erp_partner_access_id:
         #TODO: call update partner api
-        logger.info(" ======    erp_create_update_policyholder - update    =======")
-        logger.info(f" ======    erp_create_update_policyholder : policyholder_data : {policyholder_data}    =======")
+        logger.debug(" ======    erp_create_update_policyholder - update    =======")
+        logger.debug(f" ======    erp_create_update_policyholder : policyholder_data : {policyholder_data}    =======")
         print(policyholder_data)
     else:
-        logger.info(" ======    erp_create_update_policyholder - create    =======")
+        logger.debug(" ======    erp_create_update_policyholder - create    =======")
         #TODO: call update partner api
         url = '{}/create/partner'.format(erp_url)
-        logger.info(f" ======    erp_create_update_policyholder : url : {url}    =======")
-        logger.info(f" ======    erp_create_update_policyholder : policyholder_data : {policyholder_data}    =======")
+        logger.debug(f" ======    erp_create_update_policyholder : url : {url}    =======")
+        logger.debug(f" ======    erp_create_update_policyholder : policyholder_data : {policyholder_data}    =======")
         print(policyholder_data)
         response = requests.post(url, headers=headers, json=policyholder_data, verify=False)
-        logger.info(f" ======    erp_create_update_policyholder : response.status_code : {response.status_code}    =======")
-        logger.info(f" ======    erp_create_update_policyholder : response.json : {response.json()}    =======")
-    logger.info(" ======    erp_create_update_policyholder - end    =======")
+        logger.debug(f" ======    erp_create_update_policyholder : response.status_code : {response.status_code}    =======")
+        logger.debug(f" ======    erp_create_update_policyholder : response.json : {response.json()}    =======")
+    logger.debug(" ======    erp_create_update_policyholder - end    =======")
     return True
 
 def erp_create_update_fosa():
-    logger.info(" ======    erp_create_update_fosa - start    =======")
+    logger.debug(" ======    erp_create_update_fosa - start    =======")
     policyholder_data = {}
     
     policyholder_obj = None
@@ -92,5 +92,5 @@ def erp_create_update_fosa():
     policyholder_data.update(static_values_fosa)
     
     print(policyholder_data)
-    logger.info(" ======    erp_create_update_fosa - end    =======")
+    logger.debug(" ======    erp_create_update_fosa - end    =======")
     return True
