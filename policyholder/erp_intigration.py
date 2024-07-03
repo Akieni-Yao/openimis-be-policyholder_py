@@ -1,6 +1,7 @@
 import json
 import requests
 import logging
+from policyholder.models import PolicyHolderContributionPlan
 
 logger = logging.getLogger(__name__)
 
@@ -72,9 +73,14 @@ def erp_mapping_data(phcp, is_vendor, account_payable_id=None):
     }
     return mapping_dict
 
-def erp_create_update_policyholder(phcp):
+def erp_create_update_policyholder(ph_id, cpb_id):
     logger.debug(" ======    erp_create_update_policyholder - start    =======")
-    logger.debug(f" ======    erp_create_update_policyholder : phcp : {phcp}    =======")
+    logger.debug(f" ======    erp_create_update_policyholder : ph_id : {ph_id}    =======")
+    logger.debug(f" ======    erp_create_update_policyholder : cpb_id : {cpb_id}    =======")
+    
+    phcp = PolicyHolderContributionPlan.objects.filter(
+        policy_holder__id=ph_id, contribution_plan_bundle__id=cpb_id, is_deleted=False).first()
+    
     policyholder_data = erp_mapping_data(phcp, False)
     
     # for key, field_path in mapping_dict.items():

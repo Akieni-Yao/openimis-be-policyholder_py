@@ -299,8 +299,8 @@ class PolicyHolderContributionPlan(object):
             phcp = PolicyHolderContributionPlanModel(**policy_holder_contribution_plan)
             phcp.save(username=self.user.username)
             # TODO: call erp integration and pass this object
-            print("========>  phcp  :  ", phcp)
-            erp_create_update_policyholder(phcp)
+            # print("========>  phcp  :  ", phcp)
+            # erp_create_update_policyholder(phcp)
             uuid_string = str(phcp.id)
             dict_representation = model_to_dict(phcp)
             dict_representation["id"], dict_representation["uuid"] = (str(uuid_string), str(uuid_string))
