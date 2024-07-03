@@ -44,7 +44,6 @@ def erp_create_update_policyholder(ph_id, cpb_id):
         policy_holder__id=ph_id, contribution_plan_bundle__id=cpb_id, is_deleted=False).first()
     
     policyholder_data = erp_mapping_data(phcp, False)
-    
     policyholder_data = filter_null_values(policyholder_data)
     
     if phcp.policy_holder.erp_partner_access_id:
@@ -64,31 +63,35 @@ def erp_create_update_policyholder(ph_id, cpb_id):
     except TypeError as e:
         logger.error(f"Error serializing JSON: {e}")
     
-    response = requests.post(url, headers=headers, json=json_data, verify=False)
+    response = requests.post(url, headers=headers, json=policyholder_data, verify=False)
     logger.debug(f" ======    erp_create_update_policyholder : response.status_code : {response.status_code}    =======")
-    logger.debug(f" ======    erp_create_update_policyholder : response.json : {response.json()}    =======")
-    response_json = response.json()
-    PolicyHolder.objects.filter(id=ph_id).update(
-        erp_partner_id=response_json.get("id"), erp_partner_access_id=response_json.get("partner_access_id"))
+    logger.debug(f" ======    erp_create_update_policyholder : response.text : {response.text}    =======")
     
+    try:
+        response_json = response.json()
+        logger.debug(f" ======    erp_create_update_policyholder : response.json : {response_json}    =======")
+        
+        # Update the PolicyHolder with the IDs from the response
+        PolicyHolder.objects.filter(id=ph_id).update(
+            erp_partner_id=response_json.get("id"), erp_partner_access_id=response_json.get("partner_access_id"))
+    except json.JSONDecodeError:
+        logger.error("Failed to decode JSON response")
+
     logger.debug(" ======    erp_create_update_policyholder - end    =======")
     return True
 
 def erp_create_update_fosa(policyholder_code, account_receivable_id):
     logger.debug(" ======    erp_create_update_fosa - start    =======")
     logger.debug(f" ======    erp_create_update_fosa : policyholder_code : {policyholder_code}    =======")
-    logger.debug(f" ======    erp_create_update_fosa : fosa_category_code : {fosa_category_code}    =======")
     
     policy_holder = PolicyHolder.objects.filter(code=policyholder_code, is_deleted=False).first()
     phcp = PolicyHolderContributionPlan.objects.filter(policy_holder=policy_holder, is_deleted=False).first()
         
     policyholder_data = erp_mapping_data(phcp, True, account_receivable_id)
-    
     policyholder_data = filter_null_values(policyholder_data)
     
     url = '{}/update/partner/{}'.format(erp_url, phcp.policy_holder.erp_partner_access_id)
     logger.debug(f" ======    erp_create_update_fosa : url : {url}    =======")
-    
     logger.debug(f" ======    erp_create_update_fosa : policyholder_data : {policyholder_data}    =======")
     
     try:
@@ -97,9 +100,15 @@ def erp_create_update_fosa(policyholder_code, account_receivable_id):
     except TypeError as e:
         logger.error(f"Error serializing JSON: {e}")
     
-    response = requests.post(url, headers=headers, json=json_data, verify=False)
+    response = requests.post(url, headers=headers, json=policyholder_data, verify=False)
     logger.debug(f" ======    erp_create_update_fosa : response.status_code : {response.status_code}    =======")
-    logger.debug(f" ======    erp_create_update_fosa : response.json : {response.json()}    =======")
+    logger.debug(f" ======    erp_create_update_fosa : response.text : {response.text}    =======")
+    
+    try:
+        response_json = response.json()
+        logger.debug(f" ======    erp_create_update_fosa : response.json : {response_json}    =======")
+    except json.JSONDecodeError:
+        logger.error("Failed to decode JSON response")
     
     logger.debug(" ======    erp_create_update_fosa - end    =======")
     return True
