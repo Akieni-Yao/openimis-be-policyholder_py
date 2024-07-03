@@ -8,53 +8,12 @@ logger = logging.getLogger(__name__)
 # erp_url = os.environ.get('ERP_HOST')
 erp_url = "https://camu-staging-13483170.dev.odoo.com"
 
-mapping_dict = {
-    "name": "policy_holder.trade_name",
-    "partner_type": "contribution_plan_bundle.partner_type",
-    "email": "policy_holder.email",
-    "phone": "policy_holder.phone",
-    "mobile": "policy_holder.phone",
-    "address": "policy_holder.address.address",
-    "city": None,
-    "zip": None,
-    "state_id": None,
-    "account_receivable_id": "contribution_plan_bundle.account_receivable_id",
-}
-# "json_field_value": "json_data.key_in_json"  # JSON field access
-
-fosa_mapping_dict = {
-    "account_payable_id": "hf_category.account_payable_id"
-}
-
-static_values_policyholder = {
-    "is_customer": True,
-    "is_vendor": False,
-    "country_id": 2
-}
-
-static_values_fosa = {
-    "is_customer": True,
-    "is_vendor": True,
-    "country_id": 2
-}
-
 headers = {
     'Content-Type': 'application/json',
     'Tmr-Api-Key': 'test'
 }
 
-def get_value_from_mapping(obj, field_path):
-    parts = field_path.split('.')
-    for part in parts:
-        if isinstance(obj, dict):
-            obj = obj.get(part)
-        else:
-            obj = getattr(obj, part, None)
-        if obj is None:
-            return None
-    return obj
-
-def erp_mapping_data(phcp, is_vendor):
+def erp_mapping_data(phcp, is_vendor, account_payable_id=None):
     mapping_dict = {
         "name": phcp.policy_holder.trade_name,
         "partner_type": phcp.contribution_plan_bundle.partner_type,
@@ -62,16 +21,19 @@ def erp_mapping_data(phcp, is_vendor):
         "phone": phcp.policy_holder.phone,
         "mobile": phcp.policy_holder.phone,
         "address": phcp.policy_holder.address["address"],
-        # "city": None,
-        # "zip": None,
-        # "state_id": None,
+        "city": None,
+        "zip": None,
+        "state_id": None,
         "is_customer": True,
         "is_vendor": is_vendor,
         "country_id": 2,
         "account_receivable_id": phcp.contribution_plan_bundle.account_receivable_id,
-        # "account_payable_id": account_payable_id,
+        "account_payable_id": account_payable_id,
     }
     return mapping_dict
+
+def filter_null_values(data):
+    return {k: v for k, v in data.items() if v is not None}
 
 def erp_create_update_policyholder(ph_id, cpb_id):
     logger.debug(" ======    erp_create_update_policyholder - start    =======")
@@ -83,24 +45,26 @@ def erp_create_update_policyholder(ph_id, cpb_id):
     
     policyholder_data = erp_mapping_data(phcp, False)
     
-    # for key, field_path in mapping_dict.items():
-    #     policyholder_data[key] = get_value_from_mapping(phcp, field_path)
-        
-    # policyholder_data.update(static_values_policyholder)
+    policyholder_data = filter_null_values(policyholder_data)
     
     if phcp.policy_holder.erp_partner_access_id:
-        #TODO: call update partner api
         logger.debug(" ======    erp_create_update_policyholder - update    =======")
         url = '{}/update/partner/{}'.format(erp_url, phcp.policy_holder.erp_partner_access_id)
         logger.debug(f" ======    erp_create_update_policyholder : url : {url}    =======")
     else:
         logger.debug(" ======    erp_create_update_policyholder - create    =======")
-        #TODO: call update partner api
         url = '{}/create/partner'.format(erp_url)
         logger.debug(f" ======    erp_create_update_policyholder : url : {url}    =======")
+        
     logger.debug(f" ======    erp_create_update_policyholder : policyholder_data : {policyholder_data}    =======")
-    print(policyholder_data)
-    response = requests.post(url, headers=headers, json=policyholder_data, verify=False)
+    
+    try:
+        json_data = json.dumps(policyholder_data)
+        logger.debug(f" ======    erp_create_update_policyholder : json_data : {json_data}    =======")
+    except TypeError as e:
+        logger.error(f"Error serializing JSON: {e}")
+    
+    response = requests.post(url, headers=headers, json=json_data, verify=False)
     logger.debug(f" ======    erp_create_update_policyholder : response.status_code : {response.status_code}    =======")
     logger.debug(f" ======    erp_create_update_policyholder : response.json : {response.json()}    =======")
     logger.debug(" ======    erp_create_update_policyholder - end    =======")
