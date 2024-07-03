@@ -33,6 +33,7 @@ from django.apps import apps
 
 from policyholder.views import manuall_check_for_category_change_request
 from workflow.constants import *
+from policyholder.erp_intigration import erp_create_update_policyholder
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +143,20 @@ class CreatePolicyHolderContributionPlanMutation(BaseHistoryModelCreateMutationM
         super()._validate_mutation(user, **data)
         PermissionValidation.validate_perms(user,
                                             PolicyholderConfig.gql_mutation_create_policyholdercontributionplan_perms)
+        
+    @classmethod
+    def async_mutate(cls, user, **data):
+        try:
+            cls._validate_mutation(user, **data)
+            mutation_result = cls._mutate(user, **data)
+            logger.debug(f"===> CreatePolicyHolderContributionPlanMutation : data : {data}")
+            logger.debug(f"===> CreatePolicyHolderContributionPlanMutation : mutation_result : {mutation_result}")
+            erp_create_update_policyholder(**data)
+            return mutation_result
+        except Exception as exc:
+            return [{
+                'message': "Failed to process {} mutation".format(cls._mutation_class),
+                'detail': str(exc)}]
 
 
 def add_core_user_portal_permission(ph_user):

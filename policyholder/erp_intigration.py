@@ -74,6 +74,7 @@ def erp_mapping_data(phcp, is_vendor, account_payable_id=None):
 
 def erp_create_update_policyholder(phcp):
     logger.debug(" ======    erp_create_update_policyholder - start    =======")
+    logger.debug(f" ======    erp_create_update_policyholder : phcp : {phcp}    =======")
     policyholder_data = erp_mapping_data(phcp, False)
     
     # for key, field_path in mapping_dict.items():
