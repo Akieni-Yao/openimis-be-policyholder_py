@@ -54,7 +54,7 @@ def get_value_from_mapping(obj, field_path):
             return None
     return obj
 
-def erp_mapping_data(phcp, is_vendor, account_payable_id=None):
+def erp_mapping_data(phcp, is_vendor):
     mapping_dict = {
         "name": phcp.policy_holder.trade_name,
         "partner_type": phcp.contribution_plan_bundle.partner_type,
@@ -62,14 +62,14 @@ def erp_mapping_data(phcp, is_vendor, account_payable_id=None):
         "phone": phcp.policy_holder.phone,
         "mobile": phcp.policy_holder.phone,
         "address": phcp.policy_holder.address["address"],
-        "city": None,
-        "zip": None,
-        "state_id": None,
+        # "city": None,
+        # "zip": None,
+        # "state_id": None,
         "is_customer": True,
         "is_vendor": is_vendor,
         "country_id": 2,
         "account_receivable_id": phcp.contribution_plan_bundle.account_receivable_id,
-        "account_payable_id": account_payable_id,
+        # "account_payable_id": account_payable_id,
     }
     return mapping_dict
 
