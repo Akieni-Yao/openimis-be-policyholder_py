@@ -1,7 +1,7 @@
 import json
 import requests
 import logging
-from policyholder.models import PolicyHolderContributionPlan
+from policyholder.models import PolicyHolderContributionPlan, PolicyHolder
 
 logger = logging.getLogger(__name__)
 
@@ -67,20 +67,39 @@ def erp_create_update_policyholder(ph_id, cpb_id):
     response = requests.post(url, headers=headers, json=json_data, verify=False)
     logger.debug(f" ======    erp_create_update_policyholder : response.status_code : {response.status_code}    =======")
     logger.debug(f" ======    erp_create_update_policyholder : response.json : {response.json()}    =======")
+    response_json = response.json()
+    PolicyHolder.objects.filter(id=ph_id).update(
+        erp_partner_id=response_json.get("id"), erp_partner_access_id=response_json.get("partner_access_id"))
+    
     logger.debug(" ======    erp_create_update_policyholder - end    =======")
     return True
 
-def erp_create_update_fosa():
+def erp_create_update_fosa(policyholder_code, account_receivable_id):
     logger.debug(" ======    erp_create_update_fosa - start    =======")
-    policyholder_data = {}
+    logger.debug(f" ======    erp_create_update_fosa : policyholder_code : {policyholder_code}    =======")
+    logger.debug(f" ======    erp_create_update_fosa : fosa_category_code : {fosa_category_code}    =======")
     
-    policyholder_obj = None
-    
-    for key, field_path in mapping_dict.items():
-        policyholder_data[key] = get_value_from_mapping(policyholder_obj, field_path)
+    policy_holder = PolicyHolder.objects.filter(code=policyholder_code, is_deleted=False).first()
+    phcp = PolicyHolderContributionPlan.objects.filter(policy_holder=policy_holder, is_deleted=False).first()
         
-    policyholder_data.update(static_values_fosa)
+    policyholder_data = erp_mapping_data(phcp, True, account_receivable_id)
     
-    print(policyholder_data)
+    policyholder_data = filter_null_values(policyholder_data)
+    
+    url = '{}/update/partner/{}'.format(erp_url, phcp.policy_holder.erp_partner_access_id)
+    logger.debug(f" ======    erp_create_update_fosa : url : {url}    =======")
+    
+    logger.debug(f" ======    erp_create_update_fosa : policyholder_data : {policyholder_data}    =======")
+    
+    try:
+        json_data = json.dumps(policyholder_data)
+        logger.debug(f" ======    erp_create_update_fosa : json_data : {json_data}    =======")
+    except TypeError as e:
+        logger.error(f"Error serializing JSON: {e}")
+    
+    response = requests.post(url, headers=headers, json=json_data, verify=False)
+    logger.debug(f" ======    erp_create_update_fosa : response.status_code : {response.status_code}    =======")
+    logger.debug(f" ======    erp_create_update_fosa : response.json : {response.json()}    =======")
+    
     logger.debug(" ======    erp_create_update_fosa - end    =======")
     return True
