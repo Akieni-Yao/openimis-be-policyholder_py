@@ -89,7 +89,7 @@ def erp_create_update_fosa():
     for key, field_path in mapping_dict.items():
         policyholder_data[key] = get_value_from_mapping(policyholder_obj, field_path)
         
-    policyholder_data.update(static_values)
+    policyholder_data.update(static_values_fosa)
     
     print(policyholder_data)
     logger.info(" ======    erp_create_update_fosa - end    =======")
