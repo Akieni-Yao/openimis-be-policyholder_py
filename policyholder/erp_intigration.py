@@ -1,12 +1,14 @@
 import json
 import requests
 import logging
+
+from policyholder.constants import BANK_ACCOUNT_ID
 from policyholder.models import PolicyHolderContributionPlan, PolicyHolder
 from rest_framework.decorators import permission_classes, api_view, authentication_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from location.models import HealthFacility, HealthFacilityCategory
-from core.constants import BANK_ACCOUNT_ID
+
 
 logger = logging.getLogger(__name__)
 
