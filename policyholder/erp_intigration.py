@@ -6,7 +6,7 @@ from rest_framework.decorators import permission_classes, api_view, authenticati
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from location.models import HealthFacility, HealthFacilityCategory
-from core.constants import BANK_ACCOUNT_ID
+from policyholder.constants import BANK_ACCOUNT_ID
 
 logger = logging.getLogger(__name__)
 
