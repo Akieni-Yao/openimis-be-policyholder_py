@@ -58,7 +58,8 @@ def erp_create_update_policyholder(ph_id, cpb_id):
 
         if account_no:
             bank = bank_account.get("bank")
-            bank_id = BANK_ACCOUNT_ID.get(bank)
+            #bank_id = BANK_ACCOUNT_ID.get(bank)
+            bank_id = 2  # just for test purpose
             bank_accounts=[]
             bank_account_details = {
                 "account_number": account_no,
