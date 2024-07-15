@@ -1,6 +1,7 @@
 import graphene
 import graphene_django_optimizer as gql_optimizer
 import calendar
+import logging
 
 from django.db.models import Q
 
@@ -39,6 +40,7 @@ from contract.models import Contract
 from datetime import datetime, timedelta
 from graphql import GraphQLError
 
+logger = logging.getLogger("openimis." + __name__)
 
 class ApprovePolicyholderExceptionType(graphene.ObjectType):
     success = graphene.Boolean()
@@ -342,6 +344,8 @@ def on_policy_holder_mutation(sender, **kwargs):
             policy_holder_insuree=impacted_policy_holder_insuree, mutation_id=kwargs['mutation_log_id'])
     if "PolicyHolderContributionPlan" in str(sender._mutation_class):
         impacted_policy_holder_contribution_plan = PolicyHolderContributionPlan.objects.get(id=uuid)
+        logger.info(f"===> impacted_policy_holder_contribution_plan : {impacted_policy_holder_contribution_plan}")
+        print("=====>  impacted_policy_holder_contribution_plan  :  ", impacted_policy_holder_contribution_plan)
         PolicyHolderContributionPlanMutation.objects.create(
             policy_holder_contribution_plan=impacted_policy_holder_contribution_plan, mutation_id=kwargs['mutation_log_id'])
     if "PolicyHolderUser" in str(sender._mutation_class):

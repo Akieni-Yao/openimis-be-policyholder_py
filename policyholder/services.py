@@ -21,6 +21,7 @@ from insuree.models import Insuree, InsureePolicy, Family
 from payment.models import PaymentDetail
 from contract.models import ContractDetails, ContractContributionPlanDetails
 from django.db import connection
+from policyholder.erp_intigration import erp_create_update_policyholder
 
 logger = logging.getLogger("openimis." + __name__)
 
@@ -291,11 +292,15 @@ class PolicyHolderContributionPlan(object):
             return _output_exception(model_name="PolicyHolderContributionPlan", method="get", exception=exc)
         return _output_result_success(dict_representation=dict_representation)
 
-    @check_authentication
+    # @check_authentication
     def create(self, policy_holder_contribution_plan):
         try:
+            logger.info("======== PolicyHolderContributionPlan : create : start ========")
             phcp = PolicyHolderContributionPlanModel(**policy_holder_contribution_plan)
             phcp.save(username=self.user.username)
+            # TODO: call erp integration and pass this object
+            # print("========>  phcp  :  ", phcp)
+            # erp_create_update_policyholder(phcp)
             uuid_string = str(phcp.id)
             dict_representation = model_to_dict(phcp)
             dict_representation["id"], dict_representation["uuid"] = (str(uuid_string), str(uuid_string))
@@ -303,7 +308,7 @@ class PolicyHolderContributionPlan(object):
             return _output_exception(model_name="PolicyHolderContributionPlan", method="create", exception=exc)
         return _output_result_success(dict_representation=dict_representation)
 
-    @check_authentication
+    # @check_authentication
     def update(self, policy_holder_contribution_plan):
         try:
             updated_phcp = PolicyHolderContributionPlanModel.objects.filter(
@@ -332,7 +337,7 @@ class PolicyHolderContributionPlan(object):
         except Exception as exc:
             return _output_exception(model_name="PolicyHolderContributionPlan", method="delete", exception=exc)
 
-    @check_authentication
+    # @check_authentication
     def replace_policy_holder_contribution_plan_bundle(self, policy_holder_contribution_plan):
         try:
             phcp_to_replace = PolicyHolderContributionPlanModel.objects.filter(

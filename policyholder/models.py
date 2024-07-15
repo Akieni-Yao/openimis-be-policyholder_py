@@ -48,6 +48,8 @@ class PolicyHolder(core_models.HistoryBusinessModel):
     is_rework = models.BooleanField(db_column="IsRework", default=False)
     rework_option = models.CharField(db_column='ReworkOption', max_length=255, blank=True, null=True)
     rework_comment = models.CharField(db_column='ReworkComment', max_length=255, blank=True, null=True)
+    erp_partner_id = models.IntegerField(db_column='ErpPartnerID', blank=True, null=True)
+    erp_partner_access_id = models.CharField(db_column='ErpPartnerAccessID', max_length=255, blank=True, null=True)
 
     objects = PolicyHolderManager()
 
