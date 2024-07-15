@@ -21,7 +21,7 @@ from insuree.models import Insuree, InsureePolicy, Family
 from payment.models import PaymentDetail
 from contract.models import ContractDetails, ContractContributionPlanDetails
 from django.db import connection
-from policyholder.erp_intigration import erp_create_update_policyholder
+# from policyholder.erp_intigration import erp_create_update_policyholder
 
 logger = logging.getLogger("openimis." + __name__)
 
