@@ -33,7 +33,7 @@ from django.apps import apps
 
 from policyholder.views import manuall_check_for_category_change_request
 from workflow.constants import *
-from policyholder.erp_intigration import erp_create_update_policyholder
+# from policyholder.erp_intigration import erp_create_update_policyholder
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +151,7 @@ class CreatePolicyHolderContributionPlanMutation(BaseHistoryModelCreateMutationM
             mutation_result = cls._mutate(user, **data)
             logger.debug(f"===> CreatePolicyHolderContributionPlanMutation : data : {data}")
             logger.debug(f"===> CreatePolicyHolderContributionPlanMutation : mutation_result : {mutation_result}")
-            erp_create_update_policyholder(data['policy_holder_id'], data['contribution_plan_bundle_id'])
+            # erp_create_update_policyholder(data['policy_holder_id'], data['contribution_plan_bundle_id'])
             return mutation_result
         except Exception as exc:
             return [{
