@@ -36,7 +36,7 @@ from payment.signals import signal_before_payment_query
 from .constants import  CC_WAITING_FOR_APPROVAL
 from .signals import append_policy_holder_filter
 
-from contract.models import Contract
+from contract.models import Contract, ContractDetails
 from datetime import datetime, timedelta
 from graphql import GraphQLError
 
@@ -100,7 +100,8 @@ class Query(graphene.ObjectType):
         orderBy=graphene.List(of_type=graphene.String),
         dateValidFrom__Gte=graphene.DateTime(),
         dateValidTo__Lte=graphene.DateTime(),
-        applyDefaultValidityFilter=graphene.Boolean()
+        applyDefaultValidityFilter=graphene.Boolean(),
+        contract_id=graphene.UUID(required=False)
     )
 
     policy_holder_user = OrderedDjangoFilterConnectionField(
@@ -254,9 +255,17 @@ class Query(graphene.ObjectType):
         if not info.context.user.has_perms(PolicyholderConfig.gql_query_policyholderinsuree_perms):
             if not info.context.user.has_perms(PolicyholderConfig.gql_query_policyholderinsuree_portal_perms):
                 raise PermissionError("Unauthorized")
-
+        
+        contract_id = kwargs.pop('contract_id', None)
+        
         filters = append_validity_filter(**kwargs)
         query = PolicyHolderInsuree.objects
+        
+        if contract_id:
+            insuree_ids = ContractDetails.objects.filter(contract__id=contract_id).values_list('insuree_id', flat=True)
+            if insuree_ids:
+                query = query.exclude(insuree_id__in=insuree_ids)
+            
         return gql_optimizer.query(query.filter(*filters).all(), info)
 
     def resolve_policy_holder_user(self, info, **kwargs):
