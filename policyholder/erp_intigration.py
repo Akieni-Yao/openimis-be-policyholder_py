@@ -59,10 +59,10 @@ def erp_create_update_policyholder(ph_id, cpb_id, user):
         account_no = bank_account.get("accountNb")
 
         if account_no:
-            #bank = bank_account.get("bank")
-            #bank_id = BANK_ACCOUNT_ID.get(bank)
+            # bank = bank_account.get("bank")
+            # bank_id = BANK_ACCOUNT_ID.get(bank)
             bank_id = 2  # just for test purpose
-            bank_accounts=[]
+            bank_accounts = []
             bank_account_details = {
                 "account_number": account_no,
                 "bank_id": bank_id,
@@ -131,7 +131,24 @@ def erp_create_update_fosa(policyholder_code, account_receivable_id, user):
     policy_holder = PolicyHolder.objects.filter(code=policyholder_code, is_deleted=False).first()
     phcp = PolicyHolderContributionPlan.objects.filter(policy_holder=policy_holder, is_deleted=False).first()
 
-    policyholder_data = erp_mapping_data(phcp, True, account_receivable_id)
+    bank_accounts = None
+    if phcp and phcp.policy_holder.bank_account:
+        bank_account = phcp.policy_holder.bank_account.get("bankAccount", {})
+        account_no = bank_account.get("accountNb")
+
+        if account_no:
+            # bank = bank_account.get("bank")
+            # bank_id = BANK_ACCOUNT_ID.get(bank)
+            bank_id = 2  # just for test purpose
+            bank_accounts = []
+            bank_account_details = {
+                "account_number": account_no,
+                "bank_id": bank_id,
+                "account_holder_name": phcp.policy_holder.trade_name
+            }
+            bank_accounts.append(bank_account_details)
+
+    policyholder_data = erp_mapping_data(phcp, bank_accounts, True, account_receivable_id)
     policyholder_data = filter_null_values(policyholder_data)
 
     url = '{}/update/partner/{}'.format(erp_url, phcp.policy_holder.erp_partner_access_id)
@@ -151,7 +168,7 @@ def erp_create_update_fosa(policyholder_code, account_receivable_id, user):
     if response.status_code != 200:
         failed_data = {
             "module": MODULE_NAME,
-            "action": "FOSA Creation",
+            "action": "Fosa Creation",
             "response_status_code": response.status_code,
             "response_json": response.json(),
             "request_url": url,
@@ -163,6 +180,7 @@ def erp_create_update_fosa(policyholder_code, account_receivable_id, user):
         logs_response = ErpApiFailedLogs.objects.create(**failed_data)
         if logs_response.response_status_code == 200:
             logger.debug("ERP API Failed log saved successfully")
+
     try:
         response_json = response.json()
         logger.debug(f" ======    erp_create_update_fosa : response.json : {response_json}    =======")
