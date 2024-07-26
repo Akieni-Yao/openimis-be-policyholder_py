@@ -8,6 +8,8 @@ from rest_framework.decorators import permission_classes, api_view, authenticati
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from location.models import HealthFacility, HealthFacilityCategory
+from medical.apps import MODULE_NAME
+from core.models import ErpApiFailedLogs
 
 
 logger = logging.getLogger(__name__)
@@ -43,7 +45,7 @@ def erp_mapping_data(phcp, bank_accounts, is_vendor, account_payable_id=None):
 def filter_null_values(data):
     return {k: v for k, v in data.items() if v is not None}
 
-def erp_create_update_policyholder(ph_id, cpb_id):
+def erp_create_update_policyholder(ph_id, cpb_id, user):
     logger.debug(" ======    erp_create_update_policyholder - start    =======")
     logger.debug(f" ======    erp_create_update_policyholder : ph_id : {ph_id}    =======")
     logger.debug(f" ======    erp_create_update_policyholder : cpb_id : {cpb_id}    =======")
@@ -57,10 +59,10 @@ def erp_create_update_policyholder(ph_id, cpb_id):
         account_no = bank_account.get("accountNb")
 
         if account_no:
-            # bank = bank_account.get("bank")
-            # bank_id = BANK_ACCOUNT_ID.get(bank)
+            bank = bank_account.get("bank")
+            #bank_id = BANK_ACCOUNT_ID.get(bank)
             bank_id = 2  # just for test purpose
-            bank_accounts = []
+            bank_accounts=[]
             bank_account_details = {
                 "account_number": account_no,
                 "bank_id": bank_id,
@@ -73,10 +75,12 @@ def erp_create_update_policyholder(ph_id, cpb_id):
 
     if phcp.policy_holder.erp_partner_access_id:
         logger.debug(" ======    erp_create_update_policyholder - update    =======")
+        action = "Create Policyholder"
         url = '{}/update/partner/{}'.format(erp_url, phcp.policy_holder.erp_partner_access_id)
         logger.debug(f" ======    erp_create_update_policyholder : url : {url}    =======")
     else:
         logger.debug(" ======    erp_create_update_policyholder - create    =======")
+        action = "Update Policyholder"
         url = '{}/create/partner'.format(erp_url)
         logger.debug(f" ======    erp_create_update_policyholder : url : {url}    =======")
 
@@ -92,6 +96,21 @@ def erp_create_update_policyholder(ph_id, cpb_id):
     logger.debug(f" ======    erp_create_update_policyholder : response.status_code : {response.status_code}    =======")
     logger.debug(f" ======    erp_create_update_policyholder : response.text : {response.text}    =======")
 
+    if response.status_code != 200:
+        failed_data = {
+            "module": MODULE_NAME,
+            "action": action,
+            "response_status_code": response.status_code,
+            "response_json": response.json(),
+            "request_url": url,
+            "message": response.text,
+            "request_data": policyholder_data,
+            "resync_status": 0,
+            "created_by": user
+        }
+        logs_response = ErpApiFailedLogs.objects.create(**failed_data)
+        if logs_response.response_status_code == 200:
+            logger.debug("ERP API Failed log saved successfully")
     try:
         response_json = response.json()
         logger.debug(f" ======    erp_create_update_policyholder : response.json : {response_json}    =======")
@@ -105,31 +124,14 @@ def erp_create_update_policyholder(ph_id, cpb_id):
     logger.debug(" ======    erp_create_update_policyholder - end    =======")
     return True
 
-def erp_create_update_fosa(policyholder_code, account_receivable_id):
+def erp_create_update_fosa(policyholder_code, account_receivable_id, user):
     logger.debug(" ======    erp_create_update_fosa - start    =======")
     logger.debug(f" ======    erp_create_update_fosa : policyholder_code : {policyholder_code}    =======")
 
     policy_holder = PolicyHolder.objects.filter(code=policyholder_code, is_deleted=False).first()
     phcp = PolicyHolderContributionPlan.objects.filter(policy_holder=policy_holder, is_deleted=False).first()
 
-    bank_accounts = None
-    if phcp and phcp.policy_holder.bank_account:
-        bank_account = phcp.policy_holder.bank_account.get("bankAccount", {})
-        account_no = bank_account.get("accountNb")
-
-        if account_no:
-            # bank = bank_account.get("bank")
-            # bank_id = BANK_ACCOUNT_ID.get(bank)
-            bank_id = 2  # just for test purpose
-            bank_accounts = []
-            bank_account_details = {
-                "account_number": account_no,
-                "bank_id": bank_id,
-                "account_holder_name": phcp.policy_holder.trade_name
-            }
-            bank_accounts.append(bank_account_details)
-
-    policyholder_data = erp_mapping_data(phcp, bank_accounts, True, account_receivable_id)
+    policyholder_data = erp_mapping_data(phcp, True, account_receivable_id)
     policyholder_data = filter_null_values(policyholder_data)
 
     url = '{}/update/partner/{}'.format(erp_url, phcp.policy_holder.erp_partner_access_id)
@@ -146,6 +148,21 @@ def erp_create_update_fosa(policyholder_code, account_receivable_id):
     logger.debug(f" ======    erp_create_update_fosa : response.status_code : {response.status_code}    =======")
     logger.debug(f" ======    erp_create_update_fosa : response.text : {response.text}    =======")
 
+    if response.status_code != 200:
+        failed_data = {
+            "module": MODULE_NAME,
+            "action": "FOSA Creation",
+            "response_status_code": response.status_code,
+            "response_json": response.json(),
+            "request_url": url,
+            "message": response.text,
+            "request_data": policyholder_data,
+            "resync_status": 0,
+            "created_by": user
+        }
+        logs_response = ErpApiFailedLogs.objects.create(**failed_data)
+        if logs_response.response_status_code == 200:
+            logger.debug("ERP API Failed log saved successfully")
     try:
         response_json = response.json()
         logger.debug(f" ======    erp_create_update_fosa : response.json : {response_json}    =======")
