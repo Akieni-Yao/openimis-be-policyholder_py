@@ -190,7 +190,11 @@ class Query(graphene.ObjectType):
     )
     
     def resolve_category_change_requests(self, info, **kwargs):
-        return gql_optimizer.query(CategoryChange.objects.all(), info)
+        order_by = kwargs.get('orderBy')
+        query = CategoryChange.objects.all()
+        if order_by:
+            query = query.order_by(*order_by)
+        return gql_optimizer.query(query, info)
 
     def resolve_validate_policy_holder_code(self, info, **kwargs):
         if not info.context.user.has_perms(PolicyholderConfig.gql_query_policyholder_perms):
