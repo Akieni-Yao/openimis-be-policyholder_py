@@ -291,10 +291,17 @@ class Query(graphene.ObjectType):
         query = PolicyHolderContributionPlan.objects.filter(date_valid_to__isnull=True, is_deleted=False)
         return gql_optimizer.query(query.filter(*filters).all(), info)
 
-    all_policyholder_exceptions = OrderedDjangoFilterConnectionField(PolicyHolderExcptionType)
+    all_policyholder_exceptions = OrderedDjangoFilterConnectionField(
+        PolicyHolderExcptionType,
+        orderBy=graphene.List(of_type=graphene.String),
+    )
 
     def resolve_all_policyholder_exceptions(self, info, **kwargs):
-        return gql_optimizer.query(PolicyHolderExcption.objects.all(), info)
+        order_by = kwargs.get('orderBy')
+        query = PolicyHolderExcption.objects.all()
+        if order_by:
+            query = query.order_by(*order_by)
+        return gql_optimizer.query(query, info)
 
     category_change_doc_upload = graphene.Field(
         CommonQueryType,
