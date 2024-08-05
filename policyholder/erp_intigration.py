@@ -99,6 +99,7 @@ def erp_create_update_policyholder(ph_id, cpb_id, user):
     if response.status_code != 200:
         failed_data = {
             "module": MODULE_NAME,
+            "policy_holder": ph_id,
             "action": action,
             "response_status_code": response.status_code,
             "response_json": response.json(),
@@ -168,6 +169,7 @@ def erp_create_update_fosa(policyholder_code, account_receivable_id, user):
     if response.status_code != 200:
         failed_data = {
             "module": MODULE_NAME,
+            "health_facility": policyholder_code,
             "action": "Fosa Creation",
             "response_status_code": response.status_code,
             "response_json": response.json(),
