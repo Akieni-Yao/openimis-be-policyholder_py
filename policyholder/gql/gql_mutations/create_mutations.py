@@ -151,7 +151,11 @@ class CreatePolicyHolderContributionPlanMutation(BaseHistoryModelCreateMutationM
             mutation_result = cls._mutate(user, **data)
             logger.debug(f"===> CreatePolicyHolderContributionPlanMutation : data : {data}")
             logger.debug(f"===> CreatePolicyHolderContributionPlanMutation : mutation_result : {mutation_result}")
-            erp_create_update_policyholder(data['policy_holder_id'], data['contribution_plan_bundle_id'], user)
+            try:
+                erp_create_update_policyholder(data['policy_holder_id'], data['contribution_plan_bundle_id'], user)
+                logger.info("ERP policyholder update/create was successful.")
+            except Exception as e:
+                logger.error(f"Failed to update/create ERP policyholder: {e}")
             return mutation_result
         except Exception as exc:
             return [{

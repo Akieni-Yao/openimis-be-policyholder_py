@@ -8,7 +8,7 @@ from rest_framework.decorators import permission_classes, api_view, authenticati
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from location.models import HealthFacility, HealthFacilityCategory
-from medical.apps import MODULE_NAME
+from policyholder.apps import MODULE_NAME
 from core.models import ErpApiFailedLogs
 
 
@@ -99,7 +99,7 @@ def erp_create_update_policyholder(ph_id, cpb_id, user):
     if response.status_code != 200:
         failed_data = {
             "module": MODULE_NAME,
-            "policy_holder": ph_id,
+            "policy_holder": phcp.policy_holder,
             "action": action,
             "response_status_code": response.status_code,
             "response_json": response.json(),
@@ -109,9 +109,11 @@ def erp_create_update_policyholder(ph_id, cpb_id, user):
             "resync_status": 0,
             "created_by": user
         }
-        logs_response = ErpApiFailedLogs.objects.create(**failed_data)
-        if logs_response.response_status_code == 200:
-            logger.debug("ERP API Failed log saved successfully")
+        try:
+            ErpApiFailedLogs.objects.create(**failed_data)
+            logger.info("ERP API Failed log saved successfully")
+        except Exception as e:
+            logger.error(f"Failed to save ERP API Failed log: {e}")
     try:
         response_json = response.json()
         logger.debug(f" ======    erp_create_update_policyholder : response.json : {response_json}    =======")
@@ -179,9 +181,11 @@ def erp_create_update_fosa(policyholder_code, account_receivable_id, user):
             "resync_status": 0,
             "created_by": user
         }
-        logs_response = ErpApiFailedLogs.objects.create(**failed_data)
-        if logs_response.response_status_code == 200:
-            logger.debug("ERP API Failed log saved successfully")
+        try:
+            ErpApiFailedLogs.objects.create(**failed_data)
+            logger.info("ERP API Failed log saved successfully")
+        except Exception as e:
+            logger.error(f"Failed to save ERP API Failed log: {e}")
 
     try:
         response_json = response.json()
