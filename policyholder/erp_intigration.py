@@ -111,9 +111,9 @@ def erp_create_update_policyholder(ph_id, cpb_id, user):
         }
         try:
             ErpApiFailedLogs.objects.create(**failed_data)
-            print("ERP API Failed log saved successfully")
+            logger.info("ERP API Failed log saved successfully")
         except Exception as e:
-            print(f"Failed to save ERP API Failed log: {e}")
+            logger.error(f"Failed to save ERP API Failed log: {e}")
     try:
         response_json = response.json()
         logger.debug(f" ======    erp_create_update_policyholder : response.json : {response_json}    =======")
@@ -183,9 +183,9 @@ def erp_create_update_fosa(policyholder_code, account_receivable_id, user):
         }
         try:
             ErpApiFailedLogs.objects.create(**failed_data)
-            print("ERP API Failed log saved successfully")
+            logger.info("ERP API Failed log saved successfully")
         except Exception as e:
-            print(f"Failed to save ERP API Failed log: {e}")
+            logger.error(f"Failed to save ERP API Failed log: {e}")
 
     try:
         response_json = response.json()
