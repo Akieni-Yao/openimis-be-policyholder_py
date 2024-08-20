@@ -5,7 +5,9 @@ import uuid
 from graphene_django import DjangoObjectType
 
 from core import ExtendedConnection
+from core.constants import POLICYHOLDER_CREATION_NT
 from core.gql.gql_mutations.base_mutation import BaseMutation, BaseHistoryModelCreateMutationMixin
+from core.notification_service import create_camu_notification
 from core.schema import OpenIMISMutation, update_or_create_user
 from core.models import Role, User, InteractiveUser
 from insuree.models import Family
@@ -79,6 +81,7 @@ class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutati
         #             send_mail_to_policyholder_with_pdf(created_object, 'registration_application')
         # except Exception as exc:
         #     logger.exception("failed to send message", str(exc))
+        create_camu_notification(POLICYHOLDER_CREATION_NT, created_object)
         model_class = apps.get_model(cls._mutation_module, cls._mutation_class)
         if model_class and hasattr(model_class, "object_mutated") and client_mutation_id is not None:
             model_class.object_mutated(user, client_mutation_id=client_mutation_id,
@@ -151,7 +154,11 @@ class CreatePolicyHolderContributionPlanMutation(BaseHistoryModelCreateMutationM
             mutation_result = cls._mutate(user, **data)
             logger.debug(f"===> CreatePolicyHolderContributionPlanMutation : data : {data}")
             logger.debug(f"===> CreatePolicyHolderContributionPlanMutation : mutation_result : {mutation_result}")
-            erp_create_update_policyholder(data['policy_holder_id'], data['contribution_plan_bundle_id'])
+            try:
+                erp_create_update_policyholder(data['policy_holder_id'], data['contribution_plan_bundle_id'], user)
+                logger.info("ERP policyholder update/create was successful.")
+            except Exception as e:
+                logger.error(f"Failed to update/create ERP policyholder: {e}")
             return mutation_result
         except Exception as exc:
             return [{

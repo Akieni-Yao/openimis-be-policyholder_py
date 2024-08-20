@@ -8,6 +8,8 @@ from rest_framework.decorators import permission_classes, api_view, authenticati
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from location.models import HealthFacility, HealthFacilityCategory
+from policyholder.apps import MODULE_NAME
+from core.models import ErpApiFailedLogs
 
 
 logger = logging.getLogger(__name__)
@@ -43,7 +45,7 @@ def erp_mapping_data(phcp, bank_accounts, is_vendor, account_payable_id=None):
 def filter_null_values(data):
     return {k: v for k, v in data.items() if v is not None}
 
-def erp_create_update_policyholder(ph_id, cpb_id):
+def erp_create_update_policyholder(ph_id, cpb_id, user):
     logger.debug(" ======    erp_create_update_policyholder - start    =======")
     logger.debug(f" ======    erp_create_update_policyholder : ph_id : {ph_id}    =======")
     logger.debug(f" ======    erp_create_update_policyholder : cpb_id : {cpb_id}    =======")
@@ -73,10 +75,12 @@ def erp_create_update_policyholder(ph_id, cpb_id):
 
     if phcp.policy_holder.erp_partner_access_id:
         logger.debug(" ======    erp_create_update_policyholder - update    =======")
+        action = "Create Policyholder"
         url = '{}/update/partner/{}'.format(erp_url, phcp.policy_holder.erp_partner_access_id)
         logger.debug(f" ======    erp_create_update_policyholder : url : {url}    =======")
     else:
         logger.debug(" ======    erp_create_update_policyholder - create    =======")
+        action = "Update Policyholder"
         url = '{}/create/partner'.format(erp_url)
         logger.debug(f" ======    erp_create_update_policyholder : url : {url}    =======")
 
@@ -92,6 +96,24 @@ def erp_create_update_policyholder(ph_id, cpb_id):
     logger.debug(f" ======    erp_create_update_policyholder : response.status_code : {response.status_code}    =======")
     logger.debug(f" ======    erp_create_update_policyholder : response.text : {response.text}    =======")
 
+    if response.status_code != 200:
+        failed_data = {
+            "module": MODULE_NAME,
+            "policy_holder": phcp.policy_holder,
+            "action": action,
+            "response_status_code": response.status_code,
+            "response_json": response.json(),
+            "request_url": url,
+            "message": response.text,
+            "request_data": policyholder_data,
+            "resync_status": 0,
+            "created_by": user
+        }
+        try:
+            ErpApiFailedLogs.objects.create(**failed_data)
+            logger.info("ERP API Failed log saved successfully")
+        except Exception as e:
+            logger.error(f"Failed to save ERP API Failed log: {e}")
     try:
         response_json = response.json()
         logger.debug(f" ======    erp_create_update_policyholder : response.json : {response_json}    =======")
@@ -105,7 +127,7 @@ def erp_create_update_policyholder(ph_id, cpb_id):
     logger.debug(" ======    erp_create_update_policyholder - end    =======")
     return True
 
-def erp_create_update_fosa(policyholder_code, account_receivable_id):
+def erp_create_update_fosa(policyholder_code, account_receivable_id, user):
     logger.debug(" ======    erp_create_update_fosa - start    =======")
     logger.debug(f" ======    erp_create_update_fosa : policyholder_code : {policyholder_code}    =======")
 
@@ -145,6 +167,25 @@ def erp_create_update_fosa(policyholder_code, account_receivable_id):
     response = requests.post(url, headers=headers, json=policyholder_data, verify=False)
     logger.debug(f" ======    erp_create_update_fosa : response.status_code : {response.status_code}    =======")
     logger.debug(f" ======    erp_create_update_fosa : response.text : {response.text}    =======")
+
+    if response.status_code != 200:
+        failed_data = {
+            "module": MODULE_NAME,
+            "health_facility": policyholder_code,
+            "action": "Fosa Creation",
+            "response_status_code": response.status_code,
+            "response_json": response.json(),
+            "request_url": url,
+            "message": response.text,
+            "request_data": policyholder_data,
+            "resync_status": 0,
+            "created_by": user
+        }
+        try:
+            ErpApiFailedLogs.objects.create(**failed_data)
+            logger.info("ERP API Failed log saved successfully")
+        except Exception as e:
+            logger.error(f"Failed to save ERP API Failed log: {e}")
 
     try:
         response_json = response.json()
