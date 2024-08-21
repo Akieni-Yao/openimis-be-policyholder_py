@@ -266,7 +266,7 @@ class Query(graphene.ObjectType):
         query = PolicyHolderInsuree.objects
         
         if contract_id:
-            insuree_ids = ContractDetails.objects.filter(contract__id=contract_id).values_list('insuree_id', flat=True)
+            insuree_ids = ContractDetails.objects.filter(contract__id=contract_id, is_deleted=False).values_list('insuree_id', flat=True)
             if insuree_ids:
                 query = query.exclude(insuree_id__in=insuree_ids)
             
