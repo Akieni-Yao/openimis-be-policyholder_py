@@ -73,6 +73,11 @@ class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutati
             client_mutation_id = data.pop('client_mutation_id')
         if "client_mutation_label" in data:
             data.pop('client_mutation_label')
+        try:
+            create_camu_notification(POLICYHOLDER_CREATION_NT, data)
+            logger.info("Sent Notification.")
+        except Exception as e:
+            logger.error(f"Failed to call send notification: {e}")
         created_object = cls.create_object(user=user, object_data=data)
         # try:
         #     # if email having inside the policyholder then it is executed
