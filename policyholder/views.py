@@ -23,8 +23,9 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 
 from contract.models import Contract
+from core.constants import *
 from core.models import Role, InteractiveUser
-from core.schema import set_user_deleted
+from core.notification_service import create_camu_notification
 from insuree.dms_utils import create_openKm_folder_for_bulkupload, send_mail_to_temp_insuree_with_pdf
 from insuree.gql_mutations import temp_generate_employee_camu_registration_number
 from insuree.models import Insuree, Gender, Family
@@ -570,7 +571,11 @@ def import_phi(request, policy_holder_code):
             )
             total_phi_created += 1
             phi.save(username=request.user.username)
-
+        try:
+            create_camu_notification(INS_ADDED_NT, phi)
+            logger.info("Successfully created CAMU notification with INS_ADDED_NT and phi.")
+        except Exception as e:
+            logger.error(f"Failed to create CAMU notification with with INS_ADDED_NT : {e}")
         # Adding success entry in output Excel
         row_data = line.tolist()
         row_data.extend(["Réussite", ""])

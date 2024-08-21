@@ -81,7 +81,11 @@ class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutati
         #             send_mail_to_policyholder_with_pdf(created_object, 'registration_application')
         # except Exception as exc:
         #     logger.exception("failed to send message", str(exc))
-        create_camu_notification(POLICYHOLDER_CREATION_NT, created_object)
+        try:
+            create_camu_notification(POLICYHOLDER_CREATION_NT, created_object)
+            logger.info("Successfully created CAMU notification with POLICYHOLDER_CREATION_NT.")
+        except Exception as e:
+            logger.error(f"Failed to create CAMU notification: {e}")
         model_class = apps.get_model(cls._mutation_module, cls._mutation_class)
         if model_class and hasattr(model_class, "object_mutated") and client_mutation_id is not None:
             model_class.object_mutated(user, client_mutation_id=client_mutation_id,
