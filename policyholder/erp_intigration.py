@@ -68,7 +68,7 @@ def erp_create_update_policyholder(ph_id, cpb_id, user):
                 "bank_id": bank_id,
                 "account_holder_name": phcp.policy_holder.trade_name
             }
-            bank_accounts.append(bank_account_details)
+            bank_accounts.append(filter_null_values(bank_account_details))
 
     policyholder_data = erp_mapping_data(phcp, bank_accounts, False)
     policyholder_data = filter_null_values(policyholder_data)
@@ -134,6 +134,7 @@ def erp_create_update_fosa(policyholder_code, account_receivable_id, user):
     policy_holder = PolicyHolder.objects.filter(code=policyholder_code, is_deleted=False).first()
     phcp = PolicyHolderContributionPlan.objects.filter(policy_holder=policy_holder, is_deleted=False).first()
 
+    health_facility = HealthFacility.objects.filter(legacy_id__isnull=True, validity_to__isnull=True, json_ext__camuCode=policyholder_code).first()
     bank_accounts = None
     if phcp and phcp.policy_holder.bank_account:
         bank_account = phcp.policy_holder.bank_account.get("bankAccount", {})
@@ -149,7 +150,7 @@ def erp_create_update_fosa(policyholder_code, account_receivable_id, user):
                 "bank_id": bank_id,
                 "account_holder_name": phcp.policy_holder.trade_name
             }
-            bank_accounts.append(bank_account_details)
+            bank_accounts.append(filter_null_values(bank_account_details))
 
     policyholder_data = erp_mapping_data(phcp, bank_accounts, True, account_receivable_id)
     policyholder_data = filter_null_values(policyholder_data)
@@ -170,8 +171,8 @@ def erp_create_update_fosa(policyholder_code, account_receivable_id, user):
 
     if response.status_code != 200:
         failed_data = {
-            "module": MODULE_NAME,
-            "health_facility": policyholder_code,
+            "module": 'fosa',
+            "health_facility": health_facility,
             "action": "Fosa Creation",
             "response_status_code": response.status_code,
             "response_json": response.json(),
