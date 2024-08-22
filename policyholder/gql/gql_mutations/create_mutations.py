@@ -73,11 +73,6 @@ class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutati
             client_mutation_id = data.pop('client_mutation_id')
         if "client_mutation_label" in data:
             data.pop('client_mutation_label')
-        try:
-            create_camu_notification(POLICYHOLDER_CREATION_NT, data)
-            logger.info("Sent Notification.")
-        except Exception as e:
-            logger.error(f"Failed to call send notification: {e}")
         created_object = cls.create_object(user=user, object_data=data)
         # try:
         #     # if email having inside the policyholder then it is executed
@@ -444,7 +439,11 @@ class CreatePHPortalUserMutation(graphene.Mutation):
             ph_obj.save(username=core_user.username)
             logger.info(f"CreatePHPortalUserMutation : ph_obj : {ph_obj}")
             create_policyholder_openkmfolder({"request_number": ph_obj.request_number})
-
+            try:
+                create_camu_notification(POLICYHOLDER_CREATION_NT, ph_obj)
+                logger.info("Successfully created CAMU notification with POLICYHOLDER_CREATION_NT.")
+            except Exception as e:
+                logger.error(f"Failed to create CAMU notification: {e}")
             phu_obj = PolicyHolderUser()
             phu_obj.user = core_user
             phu_obj.policy_holder = ph_obj
