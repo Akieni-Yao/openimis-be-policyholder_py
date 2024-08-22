@@ -127,7 +127,7 @@ def erp_create_update_policyholder(ph_id, cpb_id, user):
     logger.debug(" ======    erp_create_update_policyholder - end    =======")
     return True
 
-def erp_create_update_fosa(policyholder_code, account_receivable_id, user):
+def erp_create_update_fosa(policyholder_code, account_payable_id, user):
     logger.debug(" ======    erp_create_update_fosa - start    =======")
     logger.debug(f" ======    erp_create_update_fosa : policyholder_code : {policyholder_code}    =======")
 
@@ -152,7 +152,7 @@ def erp_create_update_fosa(policyholder_code, account_receivable_id, user):
             }
             bank_accounts.append(filter_null_values(bank_account_details))
 
-    policyholder_data = erp_mapping_data(phcp, bank_accounts, True, account_receivable_id)
+    policyholder_data = erp_mapping_data(phcp, bank_accounts, True, account_payable_id)
     policyholder_data = filter_null_values(policyholder_data)
 
     url = '{}/update/partner/{}'.format(erp_url, phcp.policy_holder.erp_partner_access_id)
@@ -255,15 +255,15 @@ def create_existing_fosa_in_erp():
         hf_cat = HealthFacilityCategory.objects.filter(code=updated_object.json_ext['category_fosa'], is_deleted=False).first()
         logger.debug(f" ======    create_existing_fosa_in_erp : policyholder_code : {policyholder_code}    =======")
         logger.debug(f" ======    create_existing_fosa_in_erp : category_fosa : {category_fosa}    =======")
-        if policy_holder and hf_cat and hf_cat.account_receivable_id:
+        if policy_holder and hf_cat and hf_cat.account_payable_id:
             logger.debug(f" ======    create_existing_fosa_in_erp : policy_holder.id : {policy_holder.id}    =======")
             logger.debug(f" ======    create_existing_fosa_in_erp : policy_holder.code : {policy_holder.code}    =======")
             logger.debug(f" ======    create_existing_fosa_in_erp : hf_cat.id : {hf_cat.id}    =======")
-            logger.debug(f" ======    create_existing_fosa_in_erp : hf_cat.account_receivable_id : {hf_cat.account_receivable_id}    =======")
+            logger.debug(f" ======    create_existing_fosa_in_erp : hf_cat.account_payable_id : {hf_cat.account_payable_id}    =======")
             phcp = PolicyHolderContributionPlan.objects.filter(policy_holder=policy_holder, is_deleted=False).first()
             logger.debug(f" ======    create_existing_fosa_in_erp : phcp.id : {phcp.id}    =======")
             if phcp:
-                policyholder_data = erp_mapping_data(phcp, True, hf_cat.account_receivable_id)
+                policyholder_data = erp_mapping_data(phcp, True, hf_cat.account_payable_id)
                 policyholder_data = filter_null_values(policyholder_data)
 
                 url = '{}/update/partner/{}'.format(erp_url, phcp.policy_holder.erp_partner_access_id)
