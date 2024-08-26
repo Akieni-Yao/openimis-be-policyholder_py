@@ -14,6 +14,7 @@ from django.utils import timezone
 
 import pandas as pd
 from django.http import JsonResponse, FileResponse, HttpResponse
+from django.utils.dateparse import parse_date
 from django.utils.encoding import force_text
 from django.utils.http import urlsafe_base64_decode
 from graphql import GraphQLError
@@ -27,12 +28,14 @@ from core.models import Role, InteractiveUser
 from core.schema import set_user_deleted
 from insuree.dms_utils import create_openKm_folder_for_bulkupload, send_mail_to_temp_insuree_with_pdf
 from insuree.gql_mutations import temp_generate_employee_camu_registration_number
-from insuree.models import Insuree, Gender, Family
+from insuree.models import Insuree, Gender, Family, InsureePolicy
 from location.models import Location
+from policy.models import Policy
 from policyholder.apps import *
 from policyholder.constants import CC_WAITING_FOR_DOCUMENT, PH_STATUS_CREATED
 from policyholder.dms_utils import create_folder_for_cat_chnage_req, validate_enrolment_type, send_notification_to_head
-from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, CategoryChange, PolicyHolderUser
+from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, CategoryChange, \
+    PolicyHolderUser
 from contribution_plan.models import ContributionPlanBundleDetails
 from workflow.workflow_stage import insuree_add_to_workflow
 from insuree.abis_api import create_abis_insuree
@@ -364,8 +367,10 @@ def import_phi(request, policy_holder_code):
 
                 if dob is None:
                     # If none of the formats match, handle the error
-                    errors.append(f"Error line {total_lines} - Format de date invalide pour la date de naissance : {dob_value}")
-                    logger.debug(f"Error line {total_lines} - Format de date invalide pour la date de naissance : {dob_value}")
+                    errors.append(
+                        f"Error line {total_lines} - Format de date invalide pour la date de naissance : {dob_value}")
+                    logger.debug(
+                        f"Error line {total_lines} - Format de date invalide pour la date de naissance : {dob_value}")
                     total_validation_errors += 1
                     # Adding error in output excel
                     row_data = line.tolist()
@@ -1149,7 +1154,8 @@ def verify_email(request, uidb64, token, e_timestamp):
                 user.is_verified = True
                 user.save()
                 logger.info("User verification successful.")
-                return redirect(settings.PORTAL_FRONTEND + '/portal/signupsuccess')  # open page after verified successfully
+                return redirect(
+                    settings.PORTAL_FRONTEND + '/portal/signupsuccess')  # open page after verified successfully
             else:
                 logger.info("User already verified.")
                 return redirect(settings.PORTAL_FRONTEND + '/portal/signupfailed')  # open page after already verified
@@ -1190,6 +1196,7 @@ def portal_reset(request, uidb64, token, e_timestamp):
         logger.info("Invalid token.")
         return redirect(settings.PORTAL_FRONTEND)  # open page when token is invalid
 
+
 @authentication_classes([])
 @permission_classes([AllowAny])
 def deactivate_not_submitted_request(request):
@@ -1197,13 +1204,73 @@ def deactivate_not_submitted_request(request):
     thirty_days_ago = timezone.now() - timedelta(days=30)
     logger.info(f"deactivate_not_submitted_request : thirty_days_ago : {thirty_days_ago}")
     not_submitted_ph_ids = PolicyHolder.objects.filter(
-        form_ph_portal=True, is_submit=False, 
+        form_ph_portal=True, is_submit=False,
         status=PH_STATUS_CREATED, date_updated__lte=thirty_days_ago).values_list('id', flat=True)
     logger.info(f"deactivate_not_submitted_request : not_submitted_ph_ids : {not_submitted_ph_ids}")
-    ph_user_ids = PolicyHolderUser.objects.filter(policy_holder__id__in=not_submitted_ph_ids).values_list('user__i_user__id', flat=True)
+    ph_user_ids = PolicyHolderUser.objects.filter(policy_holder__id__in=not_submitted_ph_ids).values_list(
+        'user__i_user__id', flat=True)
     logger.info(f"deactivate_not_submitted_request : ph_user_ids : {ph_user_ids}")
     InteractiveUser.objects.filter(id__in=ph_user_ids).update(validity_to=timezone.now())
     PolicyHolderUser.objects.filter(policy_holder__id__in=not_submitted_ph_ids).update(is_deleted=True)
     PolicyHolder.objects.filter(id__in=not_submitted_ph_ids).update(is_deleted=True)
     logger.info("deactivate_not_submitted_request : End")
     return Response({"message": "Script Successfully Run."})
+
+
+@authentication_classes([])
+@permission_classes([AllowAny])
+def custom_policyholder_policies_expire(request):
+    logger.info("====  expire_policies_manual_job  ====  start  ====")
+
+    custom_date_str = request.GET.get('custom_date')
+    policy_holder_code = request.GET.get('policy_holder_code')
+
+    if not custom_date_str:
+        return JsonResponse({'error': 'custom_date parameter is required'}, status=400)
+
+    try:
+        custom_date = parse_date(custom_date_str)
+        if not custom_date:
+            raise ValueError("Invalid date format")
+    except ValueError as e:
+        logger.error(f"Invalid date format: {e}")
+        return JsonResponse({'error': 'Invalid date format. Use YYYY-MM-DD.'}, status=400)
+
+    if not policy_holder_code:
+        return JsonResponse({'error': 'policy_holder_code parameter is required'}, status=400)
+
+    policy_holder = PolicyHolder.objects.filter(code=policy_holder_code, is_deleted=False).first()
+
+    if not policy_holder:
+        return JsonResponse({'error': 'Policy holder not found.'}, status=404)
+
+    insuree_ids = PolicyHolderInsuree.objects.filter(
+        policy_holder=policy_holder,
+        policy_holder__date_valid_to__isnull=True,
+        policy_holder__is_deleted=False,
+        date_valid_to__isnull=True,
+        is_deleted=False
+    ).values_list('insuree_id', flat=True).distinct()
+
+    ips = InsureePolicy.objects.filter(
+        insuree_id__in=insuree_ids,
+        legacy_id__isnull=True,
+        validity_to__isnull=True
+    )
+
+    policy_ids = ips.values_list('policy_id', flat=True)
+
+    policies_to_expire = Policy.objects.filter(
+        id__in=policy_ids,
+        expiry_date__lt=custom_date,
+        status=Policy.STATUS_ACTIVE
+    )
+
+    expired_count = policies_to_expire.update(status=Policy.STATUS_EXPIRED)
+
+    logger.info(f"====  expire_policies_manual_job  ====  {expired_count} policies expired before {custom_date} ====")
+
+    data = {'message': 'Success!', 'expired_count': expired_count}
+    logger.info("====  expire_policies_manual_job  ====  end  ====")
+
+    return JsonResponse(data)
