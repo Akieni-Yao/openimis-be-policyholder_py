@@ -96,7 +96,7 @@ def erp_create_update_policyholder(ph_id, cpb_id, user):
     logger.debug(f" ======    erp_create_update_policyholder : response.status_code : {response.status_code}    =======")
     logger.debug(f" ======    erp_create_update_policyholder : response.text : {response.text}    =======")
 
-    if response.status_code != 200:
+    if response.status_code not in [200, 201]:
         failed_data = {
             "module": MODULE_NAME,
             "policy_holder": phcp.policy_holder,
@@ -169,7 +169,7 @@ def erp_create_update_fosa(policyholder_code, account_receivable_id, user):
     logger.debug(f" ======    erp_create_update_fosa : response.status_code : {response.status_code}    =======")
     logger.debug(f" ======    erp_create_update_fosa : response.text : {response.text}    =======")
 
-    if response.status_code != 200:
+    if response.status_code not in [200, 201]:
         failed_data = {
             "module": 'fosa',
             "health_facility": health_facility,
