@@ -1,6 +1,7 @@
 import json
 import requests
 import logging
+import os
 
 from policyholder.constants import BANK_ACCOUNT_ID
 from policyholder.models import PolicyHolderContributionPlan, PolicyHolder
@@ -9,13 +10,13 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from location.models import HealthFacility, HealthFacilityCategory
 from policyholder.apps import MODULE_NAME
-from core.models import ErpApiFailedLogs
-
+from core.models import ErpApiFailedLogs, Banks
 
 logger = logging.getLogger(__name__)
 
 # erp_url = os.environ.get('ERP_HOST')
-erp_url = "https://camu-staging-13483170.dev.odoo.com"
+erp_url = os.environ.get('ERP_HOST', "https://camu-staging-13483170.dev.odoo.com")
+erp_country_code = os.environ.get('ERP_COUNTRY_CODE', 2)
 
 headers = {
     'Content-Type': 'application/json',
@@ -35,7 +36,7 @@ def erp_mapping_data(phcp, bank_accounts, is_vendor, account_payable_id=None):
         "state_id": None,
         "is_customer": True,
         "is_vendor": is_vendor,
-        "country_id": 2,
+        "country_id": erp_country_code,
         "account_receivable_id": phcp.contribution_plan_bundle.account_receivable_id,
         "account_payable_id": account_payable_id,
         "bank_accounts" : bank_accounts
@@ -61,7 +62,10 @@ def erp_create_update_policyholder(ph_id, cpb_id, user):
         if account_no:
             # bank = bank_account.get("bank")
             # bank_id = BANK_ACCOUNT_ID.get(bank)
-            bank_id = 2  # just for test purpose
+            # bank_id = 2  # just for test purpose
+            bank_code = phcp.policy_holder.bank_account.bank
+            bank_details = Banks.objects.filter(code=bank_code, is_deleted=False).first()
+            bank_id = bank_details.erp_id
             bank_accounts = []
             bank_account_details = {
                 "account_number": account_no,
@@ -143,7 +147,10 @@ def erp_create_update_fosa(policyholder_code, account_payable_id, user):
         if account_no:
             # bank = bank_account.get("bank")
             # bank_id = BANK_ACCOUNT_ID.get(bank)
-            bank_id = 2  # just for test purpose
+            bank_code = policy_holder.bank_account.bank
+            bank_details = Banks.objects.filter(code=bank_code, is_deleted=False).first()
+            bank_id = bank_details.erp_id
+            # bank_id = 2  # just for test purpose
             bank_accounts = []
             bank_account_details = {
                 "account_number": account_no,
