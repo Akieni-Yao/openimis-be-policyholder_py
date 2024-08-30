@@ -10,8 +10,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from location.models import HealthFacility, HealthFacilityCategory
 from policyholder.apps import MODULE_NAME
-from core.models import ErpApiFailedLogs
-
+from core.models import ErpApiFailedLogs, Banks
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +62,10 @@ def erp_create_update_policyholder(ph_id, cpb_id, user):
         if account_no:
             # bank = bank_account.get("bank")
             # bank_id = BANK_ACCOUNT_ID.get(bank)
-            bank_id = 2  # just for test purpose
+            # bank_id = 2  # just for test purpose
+            bank_code = phcp.policy_holder.bank_account.bank
+            bank_details = Banks.objects.filter(code=bank_code, is_deleted=False).first()
+            bank_id = bank_details.erp_id
             bank_accounts = []
             bank_account_details = {
                 "account_number": account_no,
@@ -145,7 +147,10 @@ def erp_create_update_fosa(policyholder_code, account_payable_id, user):
         if account_no:
             # bank = bank_account.get("bank")
             # bank_id = BANK_ACCOUNT_ID.get(bank)
-            bank_id = 2  # just for test purpose
+            bank_code = policy_holder.bank_account.bank
+            bank_details = Banks.objects.filter(code=bank_code, is_deleted=False).first()
+            bank_id = bank_details.erp_id
+            # bank_id = 2  # just for test purpose
             bank_accounts = []
             bank_account_details = {
                 "account_number": account_no,
