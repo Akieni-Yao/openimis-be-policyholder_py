@@ -39,7 +39,7 @@ def erp_mapping_data(phcp, bank_accounts, is_vendor, account_payable_id=None):
         "country_id": erp_country_code,
         "account_receivable_id": phcp.contribution_plan_bundle.account_receivable_id,
         "account_payable_id": account_payable_id,
-        "bank_accounts" : bank_accounts
+        "bank_accounts": bank_accounts
     }
     return mapping_dict
 
@@ -57,13 +57,13 @@ def erp_create_update_policyholder(ph_id, cpb_id, user):
     bank_accounts = None
     if phcp and phcp.policy_holder.bank_account:
         bank_account = phcp.policy_holder.bank_account.get("bankAccount", {})
-        account_no = bank_account.get("accountNb")
+        account_no = bank_account.get("accountNb", {})
 
         if account_no:
             # bank = bank_account.get("bank")
             # bank_id = BANK_ACCOUNT_ID.get(bank)
             # bank_id = 2  # just for test purpose
-            bank_code = phcp.policy_holder.bank_account.bank
+            bank_code = bank_account.get("bank", {})
             bank_details = Banks.objects.filter(code=bank_code, is_deleted=False).first()
             bank_id = bank_details.erp_id
             bank_accounts = []
