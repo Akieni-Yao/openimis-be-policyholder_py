@@ -142,12 +142,12 @@ def erp_create_update_fosa(policyholder_code, account_payable_id, user):
     bank_accounts = None
     if phcp and phcp.policy_holder.bank_account:
         bank_account = phcp.policy_holder.bank_account.get("bankAccount", {})
-        account_no = bank_account.get("accountNb")
+        account_no = bank_account.get("accountNb", {})
 
         if account_no:
             # bank = bank_account.get("bank")
             # bank_id = BANK_ACCOUNT_ID.get(bank)
-            bank_code = policy_holder.bank_account.bank
+            bank_code = bank_account.get("bank", {})
             bank_details = Banks.objects.filter(code=bank_code, is_deleted=False).first()
             bank_id = bank_details.erp_id
             # bank_id = 2  # just for test purpose
