@@ -15,6 +15,7 @@ PH_STATUS_PENDING = 'Pending'
 PH_STATUS_APPROVED = 'Approved'
 PH_STATUS_REJECTED = 'Rejected'
 PH_STATUS_REWORK = 'Rework'
+PH_STATUS_LOCKED = 'Locked'
 BANK_ACCOUNT_ID = {
     30005: 5,
     30008: 2,
