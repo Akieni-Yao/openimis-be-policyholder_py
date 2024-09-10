@@ -8,7 +8,9 @@ from django.db.models import Q
 from insuree.schema import CommonQueryType
 from location.apps import LocationConfig
 from core.schema import OrderedDjangoFilterConnectionField, signal_mutation_module_validate
-from core.utils import append_validity_filter, filter_is_deleted
+from core.utils import append_validity_filter
+from payment.gql_queries import PaymentPenaltyAndSanctionType, PaymentGQLType
+from payment.models import PaymentPenaltyAndSanction, Payment
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderUser, \
     PolicyHolderContributionPlan, PolicyHolderMutation, PolicyHolderInsureeMutation, \
     PolicyHolderContributionPlanMutation, PolicyHolderUserMutation, PolicyHolderExcption, CategoryChange
@@ -19,7 +21,7 @@ from policyholder.gql.gql_mutations.delete_mutations import DeletePolicyHolderMu
     DeletePolicyHolderInsureeMutation, DeletePolicyHolderUserMutation, DeletePolicyHolderContributionPlanMutation
 from policyholder.gql.gql_mutations.update_mutations import UpdatePolicyHolderMutation, \
     UpdatePolicyHolderInsureeMutation, UpdatePolicyHolderUserMutation, UpdatePolicyHolderContributionPlanMutation, \
-    UpdatePolicyHolderInsureeDesignation, PHApprovalMutation
+    UpdatePolicyHolderInsureeDesignation, PHApprovalMutation, UnlockPolicyHolderMutation
 from policyholder.gql.gql_mutations.replace_mutation import ReplacePolicyHolderInsureeMutation, \
     ReplacePolicyHolderContributionPlanMutation, ReplacePolicyHolderUserMutation
 
@@ -45,6 +47,13 @@ logger = logging.getLogger("openimis." + __name__)
 class ApprovePolicyholderExceptionType(graphene.ObjectType):
     success = graphene.Boolean()
     message = graphene.String()
+
+
+class UnlockPolicyholderQueryType(graphene.ObjectType):
+    contract = graphene.List(graphene.String)
+    success = graphene.Boolean()
+    message = graphene.String()
+
 
 class Query(graphene.ObjectType):
     policy_holder = OrderedDjangoFilterConnectionField(
@@ -323,6 +332,31 @@ class Query(graphene.ObjectType):
         else:
             return CommonQueryType(success=False, message="Request Not Found!")
 
+    unpaid_declaration_by_policyholder = graphene.List(  # Change to graphene.List to handle multiple contracts
+        PaymentGQLType,
+        policy_holder_id=graphene.String(required=True)
+    )
+
+    def resolve_unpaid_declaration_by_policyholder(self, info, **kwargs):
+        # Check user permissions
+        user = info.context.user
+        if not user.has_perms(PolicyholderConfig.gql_query_policyholdercontributionplanbundle_perms):
+            if not user.has_perms(PolicyholderConfig.gql_query_policyholdercontributionplanbundle_portal_perms):
+                raise PermissionError("Unauthorized")
+
+        # Extract policy_holder_id from arguments
+        policy_holder_id = kwargs.get("policy_holder_id")
+        if not policy_holder_id:
+            raise ValueError("policy_holder_id is required.")
+
+        # Query payments with related penalties for the specified policyholder
+        payments_with_penalty = Payment.objects.filter(
+            Q(contract__policy_holder__status='Locked') &
+            Q(contract__policy_holder_id=policy_holder_id)
+        ).order_by('-id')[:3]
+
+        return gql_optimizer.query(payments_with_penalty, info)
+
 
 class Mutation(graphene.ObjectType):
     create_policy_holder = CreatePolicyHolderMutation.Field()
@@ -348,6 +382,7 @@ class Mutation(graphene.ObjectType):
     category_change_status_change = CategoryChangeStatusChange.Field()
     create_ph_portal_user = CreatePHPortalUserMutation.Field()
     policyholder_approval = PHApprovalMutation.Field()
+    unlock_policyholder = UnlockPolicyHolderMutation.Field()
 
 
 def on_policy_holder_mutation(sender, **kwargs):
