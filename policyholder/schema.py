@@ -21,7 +21,7 @@ from policyholder.gql.gql_mutations.delete_mutations import DeletePolicyHolderMu
     DeletePolicyHolderInsureeMutation, DeletePolicyHolderUserMutation, DeletePolicyHolderContributionPlanMutation
 from policyholder.gql.gql_mutations.update_mutations import UpdatePolicyHolderMutation, \
     UpdatePolicyHolderInsureeMutation, UpdatePolicyHolderUserMutation, UpdatePolicyHolderContributionPlanMutation, \
-    UpdatePolicyHolderInsureeDesignation, PHApprovalMutation, UnlockPolicyHolderMutation
+    UpdatePolicyHolderInsureeDesignation, PHApprovalMutation
 from policyholder.gql.gql_mutations.replace_mutation import ReplacePolicyHolderInsureeMutation, \
     ReplacePolicyHolderContributionPlanMutation, ReplacePolicyHolderUserMutation
 
