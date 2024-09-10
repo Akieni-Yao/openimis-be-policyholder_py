@@ -44,13 +44,8 @@ from graphql import GraphQLError
 
 logger = logging.getLogger("openimis." + __name__)
 
+
 class ApprovePolicyholderExceptionType(graphene.ObjectType):
-    success = graphene.Boolean()
-    message = graphene.String()
-
-
-class UnlockPolicyholderQueryType(graphene.ObjectType):
-    contract = graphene.List(graphene.String)
     success = graphene.Boolean()
     message = graphene.String()
 
@@ -353,7 +348,7 @@ class Query(graphene.ObjectType):
         payments_with_penalty = Payment.objects.filter(
             Q(contract__policy_holder__status='Locked') &
             Q(contract__policy_holder_id=policy_holder_id)
-        ).order_by('-id')[:3]
+        ).order_by('-contract__date_valid_from')[:3]
 
         return gql_optimizer.query(payments_with_penalty, info)
 
