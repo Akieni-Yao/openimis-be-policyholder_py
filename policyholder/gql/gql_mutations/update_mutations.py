@@ -1,11 +1,13 @@
 import logging
 
 import graphene
+from django.db.models import Q
 
 from core.constants import POLICYHOLDER_UPDATE_NT
 from core.gql.gql_mutations.base_mutation import BaseMutation, BaseHistoryModelUpdateMutationMixin
 from core.models import InteractiveUser
 from core.notification_service import create_camu_notification
+from payment.models import Payment, PaymentPenaltyAndSanction
 from policyholder.apps import PolicyholderConfig
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, PolicyHolderUser
 from policyholder.gql.gql_mutations import PolicyHolderInsureeUpdateInputType, \
@@ -220,3 +222,48 @@ class PHApprovalMutation(graphene.Mutation):
             success = False
             message = str(e)
             return PHApprovalMutation(success=success, message=message)
+
+
+class UnlockPolicyHolderMutation(graphene.Mutation):
+    class Arguments:
+        policy_holder = graphene.String(required=True)
+
+    success = graphene.Boolean()
+    message = graphene.String()
+
+    def mutate(self, info, policy_holder):
+        # Fetch the policyholder
+        try:
+            policyholder = PolicyHolder.objects.get(id=policy_holder)
+        except PolicyHolder.DoesNotExist:
+            return UnlockPolicyHolderMutation(success=False, message="Policyholder does not exist.")
+
+        # Query all payments associated with the policyholder's contracts
+        payments = Payment.objects.filter(
+            Q(contract__policy_holder__id=policy_holder)
+        )
+
+        # Check if any payments exist for the policyholder
+        if not payments.exists():
+            return UnlockPolicyHolderMutation(success=False, message="No payments found for this policyholder.")
+
+        if payments.filter(status__ne=5).exists():  # Check if any payment is not fully paid
+            return UnlockPolicyHolderMutation(success=False, message="Not all payments are fully paid.")
+
+        # Check penalties of those payments: should have status 3 or 4, penalty_type 'Penalty', and is_approved=True
+        penalties = PaymentPenaltyAndSanction.objects.filter(
+            Q(payment__in=payments) &
+            ~Q(status__in=[3, 4])
+        )
+
+        # If penalties exist that are unresolved or not approved
+        if penalties.exists():
+            if not penalties.filter(is_approved=True).exists():
+                return UnlockPolicyHolderMutation(success=False, message="Penalties are not approved.")
+            return UnlockPolicyHolderMutation(success=False, message="Penalties are not fully resolved.")
+
+        # If all payments are fully paid, penalties are resolved and approved, unlock the policyholder
+        policyholder.status = 'Approved'
+        policyholder.save()
+
+        return UnlockPolicyHolderMutation(success=True, message="Policyholder unlocked successfully.")
