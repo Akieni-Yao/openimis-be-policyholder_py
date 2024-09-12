@@ -595,13 +595,25 @@ def import_phi(request, policy_holder_code):
         except Exception as e:
             logger.error(f"Fail to send auto mail : {e}")
 
+    # Set the appropriate status code based on the type of errors encountered
+    status_code = 200  # Default success status
+
+    if total_locations_not_found > 0:
+        status_code = 417  # Expectation Failed for unknown village
+    elif total_contribution_plan_not_found > 0:
+        status_code = 404  # Not Found for contribution plan issues
+    elif total_validation_errors > 0:
+        status_code = 422  # Unprocessable Entity for general validation errors
+
+    # Generate output Excel
     output_headers = list(org_columns) + ['Status', 'Reason']
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         processed_data.to_excel(writer, sheet_name='Processed Data', index=False, header=output_headers)
 
     output.seek(0)
     response = HttpResponse(output.getvalue(),
-                            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                            status=status_code)
     response['Content-Disposition'] = 'attachment; filename=import_results.xlsx'
     return response
 
