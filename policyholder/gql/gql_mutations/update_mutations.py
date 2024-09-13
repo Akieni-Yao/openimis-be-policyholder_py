@@ -1,10 +1,16 @@
+import logging
+
 import graphene
+
+from core.constants import POLICYHOLDER_UPDATE_NT
 from core.gql.gql_mutations.base_mutation import BaseMutation, BaseHistoryModelUpdateMutationMixin
 from core.models import InteractiveUser
+from core.notification_service import create_camu_notification
 from policyholder.apps import PolicyholderConfig
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, PolicyHolderUser
 from policyholder.gql.gql_mutations import PolicyHolderInsureeUpdateInputType, \
-    PolicyHolderContributionPlanUpdateInputType, PolicyHolderUserUpdateInputType, PolicyHolderUpdateInputType, PHApprovalInput
+    PolicyHolderContributionPlanUpdateInputType, PolicyHolderUserUpdateInputType, PolicyHolderUpdateInputType, \
+    PHApprovalInput
 from policyholder.validation import PolicyHolderValidation
 from policyholder.validation.permission_validation import PermissionValidation
 from policyholder.constants import *
@@ -14,6 +20,8 @@ from insuree.dms_utils import rename_folder_dms_and_openkm
 from django.core.mail import EmailMessage
 from django.conf import settings
 from django.utils import timezone
+
+logger = logging.getLogger(__name__)
 
 
 class UpdatePolicyHolderMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
@@ -56,7 +64,8 @@ class UpdatePolicyHolderContributionPlanMutation(BaseHistoryModelUpdateMutationM
     @classmethod
     def _validate_mutation(cls, user, **data):
         super()._validate_mutation(user, **data)
-        PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_update_policyholdercontributionplan_perms)
+        PermissionValidation.validate_perms(user,
+                                            PolicyholderConfig.gql_mutation_update_policyholdercontributionplan_perms)
 
 
 class UpdatePolicyHolderUserMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
@@ -162,20 +171,20 @@ class PHApprovalMutation(graphene.Mutation):
                     ph_obj.rejected_reason = input.rejected_reason
                     ph_obj.is_deleted = True
                     ph_obj.save(username=username)
-                    
-                    phu_obj = PolicyHolderUser.objects.filter(policy_holder=ph_obj).first() 
-                    phu_obj.is_deleted=True
+
+                    phu_obj = PolicyHolderUser.objects.filter(policy_holder=ph_obj).first()
+                    phu_obj.is_deleted = True
                     phu_obj.save(username=username)
-                    
+
                     InteractiveUser.objects.filter(id=phu_obj.user.i_user.id).update(validity_to=timezone.now())
-                    
+
                     message = "Policy Holder Request Rejected."
                     subject = "CAMU, Your Policyholder Application request has been rejected."
                     email_body = policyholder_reject.format(
                         request_number=ph_obj.request_number,
-                        contact_name=ph_obj.contact_name.get("contactName"), 
+                        contact_name=ph_obj.contact_name.get("contactName"),
                         rejection_reason=ph_obj.rejected_reason
-                        )
+                    )
                 elif is_rework:
                     ph_obj.is_rework = True
                     ph_obj.is_submit = False
@@ -186,17 +195,22 @@ class PHApprovalMutation(graphene.Mutation):
                     message = "Policy Holder Request Sent for Rework."
                     subject = "CAMU, Your Policyholder Application need some rework."
                     email_body = policyholder_rework.format(
-                        request_number=ph_obj.request_number, 
-                        contact_name=ph_obj.contact_name.get("contactName"), 
+                        request_number=ph_obj.request_number,
+                        contact_name=ph_obj.contact_name.get("contactName"),
                         rework_comment=ph_obj.rework_comment
-                        )
+                    )
                 else:
                     success = False
                     message = "Policy Holder request action is not valid."
-                
+
                 if ph_obj.email and subject and email_body:
                     email_message = EmailMessage(subject, email_body, settings.EMAIL_HOST_USER, [ph_obj.email])
                     email_message.send()
+            try:
+                create_camu_notification(POLICYHOLDER_UPDATE_NT, ph_obj)
+                logger.info("Successfully created CAMU notification with POLICYHOLDER_CREATION_NT.")
+            except Exception as e:
+                logger.error(f"Failed to create CAMU notification: {e}")
             else:
                 success = False
                 message = "Policy Holder Request not found"

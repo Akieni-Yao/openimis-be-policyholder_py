@@ -73,6 +73,11 @@ class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutati
             client_mutation_id = data.pop('client_mutation_id')
         if "client_mutation_label" in data:
             data.pop('client_mutation_label')
+        try:
+            create_camu_notification(POLICYHOLDER_CREATION_NT, data)
+            logger.info("Sent Notification.")
+        except Exception as e:
+            logger.error(f"Failed to call send notification: {e}")
         created_object = cls.create_object(user=user, object_data=data)
         # try:
         #     # if email having inside the policyholder then it is executed
@@ -81,7 +86,11 @@ class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutati
         #             send_mail_to_policyholder_with_pdf(created_object, 'registration_application')
         # except Exception as exc:
         #     logger.exception("failed to send message", str(exc))
-        create_camu_notification(POLICYHOLDER_CREATION_NT, created_object)
+        try:
+            create_camu_notification(POLICYHOLDER_CREATION_NT, created_object)
+            logger.info("Successfully created CAMU notification with POLICYHOLDER_CREATION_NT.")
+        except Exception as e:
+            logger.error(f"Failed to create CAMU notification: {e}")
         model_class = apps.get_model(cls._mutation_module, cls._mutation_class)
         if model_class and hasattr(model_class, "object_mutated") and client_mutation_id is not None:
             model_class.object_mutated(user, client_mutation_id=client_mutation_id,
@@ -435,7 +444,11 @@ class CreatePHPortalUserMutation(graphene.Mutation):
             ph_obj.save(username=core_user.username)
             logger.info(f"CreatePHPortalUserMutation : ph_obj : {ph_obj}")
             create_policyholder_openkmfolder({"request_number": ph_obj.request_number})
-
+            try:
+                create_camu_notification(POLICYHOLDER_CREATION_NT, ph_obj)
+                logger.info("Successfully created CAMU notification with POLICYHOLDER_CREATION_NT.")
+            except Exception as e:
+                logger.error(f"Failed to create CAMU notification: {e}")
             phu_obj = PolicyHolderUser()
             phu_obj.user = core_user
             phu_obj.policy_holder = ph_obj

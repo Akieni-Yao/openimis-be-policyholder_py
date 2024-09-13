@@ -1,6 +1,7 @@
 import json
 import requests
 import logging
+import os
 
 from policyholder.constants import BANK_ACCOUNT_ID
 from policyholder.models import PolicyHolderContributionPlan, PolicyHolder
@@ -9,13 +10,13 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from location.models import HealthFacility, HealthFacilityCategory
 from policyholder.apps import MODULE_NAME
-from core.models import ErpApiFailedLogs
-
+from core.models import ErpApiFailedLogs, Banks
 
 logger = logging.getLogger(__name__)
 
 # erp_url = os.environ.get('ERP_HOST')
-erp_url = "https://camu-staging-13483170.dev.odoo.com"
+erp_url = os.environ.get('ERP_HOST', "https://camu-staging-13483170.dev.odoo.com")
+erp_country_code = os.environ.get('ERP_COUNTRY_CODE', 2)
 
 headers = {
     'Content-Type': 'application/json',
@@ -35,10 +36,10 @@ def erp_mapping_data(phcp, bank_accounts, is_vendor, account_payable_id=None):
         "state_id": None,
         "is_customer": True,
         "is_vendor": is_vendor,
-        "country_id": 2,
+        "country_id": erp_country_code,
         "account_receivable_id": phcp.contribution_plan_bundle.account_receivable_id,
         "account_payable_id": account_payable_id,
-        "bank_accounts" : bank_accounts
+        "bank_accounts": bank_accounts
     }
     return mapping_dict
 
@@ -56,12 +57,15 @@ def erp_create_update_policyholder(ph_id, cpb_id, user):
     bank_accounts = None
     if phcp and phcp.policy_holder.bank_account:
         bank_account = phcp.policy_holder.bank_account.get("bankAccount", {})
-        account_no = bank_account.get("accountNb")
+        account_no = bank_account.get("accountNb", {})
 
         if account_no:
             # bank = bank_account.get("bank")
             # bank_id = BANK_ACCOUNT_ID.get(bank)
-            bank_id = 2  # just for test purpose
+            # bank_id = 2  # just for test purpose
+            bank_code = bank_account.get("bank", {})
+            bank_details = Banks.objects.filter(code=bank_code, is_deleted=False).first()
+            bank_id = bank_details.erp_id
             bank_accounts = []
             bank_account_details = {
                 "account_number": account_no,
@@ -96,7 +100,7 @@ def erp_create_update_policyholder(ph_id, cpb_id, user):
     logger.debug(f" ======    erp_create_update_policyholder : response.status_code : {response.status_code}    =======")
     logger.debug(f" ======    erp_create_update_policyholder : response.text : {response.text}    =======")
 
-    if response.status_code != 200:
+    if response.status_code not in [200, 201]:
         failed_data = {
             "module": MODULE_NAME,
             "policy_holder": phcp.policy_holder,
@@ -127,7 +131,7 @@ def erp_create_update_policyholder(ph_id, cpb_id, user):
     logger.debug(" ======    erp_create_update_policyholder - end    =======")
     return True
 
-def erp_create_update_fosa(policyholder_code, account_receivable_id, user):
+def erp_create_update_fosa(policyholder_code, account_payable_id, user):
     logger.debug(" ======    erp_create_update_fosa - start    =======")
     logger.debug(f" ======    erp_create_update_fosa : policyholder_code : {policyholder_code}    =======")
 
@@ -138,12 +142,15 @@ def erp_create_update_fosa(policyholder_code, account_receivable_id, user):
     bank_accounts = None
     if phcp and phcp.policy_holder.bank_account:
         bank_account = phcp.policy_holder.bank_account.get("bankAccount", {})
-        account_no = bank_account.get("accountNb")
+        account_no = bank_account.get("accountNb", {})
 
         if account_no:
             # bank = bank_account.get("bank")
             # bank_id = BANK_ACCOUNT_ID.get(bank)
-            bank_id = 2  # just for test purpose
+            bank_code = bank_account.get("bank", {})
+            bank_details = Banks.objects.filter(code=bank_code, is_deleted=False).first()
+            bank_id = bank_details.erp_id
+            # bank_id = 2  # just for test purpose
             bank_accounts = []
             bank_account_details = {
                 "account_number": account_no,
@@ -152,7 +159,7 @@ def erp_create_update_fosa(policyholder_code, account_receivable_id, user):
             }
             bank_accounts.append(filter_null_values(bank_account_details))
 
-    policyholder_data = erp_mapping_data(phcp, bank_accounts, True, account_receivable_id)
+    policyholder_data = erp_mapping_data(phcp, bank_accounts, True, account_payable_id)
     policyholder_data = filter_null_values(policyholder_data)
 
     url = '{}/update/partner/{}'.format(erp_url, phcp.policy_holder.erp_partner_access_id)
@@ -169,7 +176,7 @@ def erp_create_update_fosa(policyholder_code, account_receivable_id, user):
     logger.debug(f" ======    erp_create_update_fosa : response.status_code : {response.status_code}    =======")
     logger.debug(f" ======    erp_create_update_fosa : response.text : {response.text}    =======")
 
-    if response.status_code != 200:
+    if response.status_code not in [200, 201]:
         failed_data = {
             "module": 'fosa',
             "health_facility": health_facility,
@@ -255,15 +262,15 @@ def create_existing_fosa_in_erp():
         hf_cat = HealthFacilityCategory.objects.filter(code=updated_object.json_ext['category_fosa'], is_deleted=False).first()
         logger.debug(f" ======    create_existing_fosa_in_erp : policyholder_code : {policyholder_code}    =======")
         logger.debug(f" ======    create_existing_fosa_in_erp : category_fosa : {category_fosa}    =======")
-        if policy_holder and hf_cat and hf_cat.account_receivable_id:
+        if policy_holder and hf_cat and hf_cat.account_payable_id:
             logger.debug(f" ======    create_existing_fosa_in_erp : policy_holder.id : {policy_holder.id}    =======")
             logger.debug(f" ======    create_existing_fosa_in_erp : policy_holder.code : {policy_holder.code}    =======")
             logger.debug(f" ======    create_existing_fosa_in_erp : hf_cat.id : {hf_cat.id}    =======")
-            logger.debug(f" ======    create_existing_fosa_in_erp : hf_cat.account_receivable_id : {hf_cat.account_receivable_id}    =======")
+            logger.debug(f" ======    create_existing_fosa_in_erp : hf_cat.account_payable_id : {hf_cat.account_payable_id}    =======")
             phcp = PolicyHolderContributionPlan.objects.filter(policy_holder=policy_holder, is_deleted=False).first()
             logger.debug(f" ======    create_existing_fosa_in_erp : phcp.id : {phcp.id}    =======")
             if phcp:
-                policyholder_data = erp_mapping_data(phcp, True, hf_cat.account_receivable_id)
+                policyholder_data = erp_mapping_data(phcp, True, hf_cat.account_payable_id)
                 policyholder_data = filter_null_values(policyholder_data)
 
                 url = '{}/update/partner/{}'.format(erp_url, phcp.policy_holder.erp_partner_access_id)

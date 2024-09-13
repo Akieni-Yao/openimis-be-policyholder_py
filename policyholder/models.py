@@ -50,6 +50,7 @@ class PolicyHolder(core_models.HistoryBusinessModel):
     rework_comment = models.CharField(db_column='ReworkComment', max_length=255, blank=True, null=True)
     erp_partner_id = models.IntegerField(db_column='ErpPartnerID', blank=True, null=True)
     erp_partner_access_id = models.CharField(db_column='ErpPartnerAccessID', max_length=255, blank=True, null=True)
+    is_blocked = models.BooleanField(db_column="IsBlocked", default=False)
 
     objects = PolicyHolderManager()
 

@@ -1,4 +1,6 @@
 import graphene
+from django_filters import CharFilter, FilterSet
+
 from contribution_plan.gql import ContributionPlanBundleGQLType
 from core import prefix_filterset, ExtendedConnection
 from core.gql_queries import UserGQLType
@@ -103,11 +105,12 @@ class PolicyHolderByInureeGQLType(DjangoObjectType):
         return PolicyHolder.get_queryset(queryset, info)
 
 
-class PolicyHolderInsureeGQLType(DjangoObjectType):
+class PolicyHolderInsureeFilter(FilterSet):
+    json_ext_contains = CharFilter(method='filter_json_ext_contains')
+
     class Meta:
         model = PolicyHolderInsuree
-        interfaces = (graphene.relay.Node,)
-        filter_fields = {
+        fields = {
             "id": ["exact"],
             "version": ["exact"],
             **prefix_filterset("policy_holder__", PolicyHolderGQLType._meta.filter_fields),
@@ -121,6 +124,16 @@ class PolicyHolderInsureeGQLType(DjangoObjectType):
             "employer_number": ["exact", "istartswith", "icontains", "iexact"],
         }
 
+    def filter_json_ext_contains(self, queryset, name, value):
+        # Here `name` will be `json_ext_contains`, and `value` will be what you want to filter by
+        return queryset.filter(json_ext__icontains=value)
+
+
+class PolicyHolderInsureeGQLType(DjangoObjectType):
+    class Meta:
+        model = PolicyHolderInsuree
+        interfaces = (graphene.relay.Node,)
+        filterset_class = PolicyHolderInsureeFilter
         connection_class = ExtendedConnection
 
     @classmethod

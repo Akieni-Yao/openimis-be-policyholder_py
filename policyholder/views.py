@@ -24,8 +24,9 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 
 from contract.models import Contract
+from core.constants import *
 from core.models import Role, InteractiveUser
-from core.schema import set_user_deleted
+from core.notification_service import create_camu_notification
 from insuree.dms_utils import create_openKm_folder_for_bulkupload, send_mail_to_temp_insuree_with_pdf
 from insuree.gql_mutations import temp_generate_employee_camu_registration_number
 from insuree.models import Insuree, Gender, Family, InsureePolicy
@@ -575,7 +576,11 @@ def import_phi(request, policy_holder_code):
             )
             total_phi_created += 1
             phi.save(username=request.user.username)
-
+        try:
+            create_camu_notification(INS_ADDED_NT, phi)
+            logger.info("Successfully created CAMU notification with INS_ADDED_NT and phi.")
+        except Exception as e:
+            logger.error(f"Failed to create CAMU notification with with INS_ADDED_NT : {e}")
         # Adding success entry in output Excel
         row_data = line.tolist()
         row_data.extend(["Réussite", ""])
@@ -590,13 +595,25 @@ def import_phi(request, policy_holder_code):
         except Exception as e:
             logger.error(f"Fail to send auto mail : {e}")
 
+    # Set the appropriate status code based on the type of errors encountered
+    status_code = 200  # Default success status
+
+    if total_locations_not_found > 0:
+        status_code = 417  # Expectation Failed for unknown village
+    elif total_contribution_plan_not_found > 0:
+        status_code = 404  # Not Found for contribution plan issues
+    elif total_validation_errors > 0:
+        status_code = 422  # Unprocessable Entity for general validation errors
+
+    # Generate output Excel
     output_headers = list(org_columns) + ['Status', 'Reason']
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         processed_data.to_excel(writer, sheet_name='Processed Data', index=False, header=output_headers)
 
     output.seek(0)
     response = HttpResponse(output.getvalue(),
-                            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                            status=status_code)
     response['Content-Disposition'] = 'attachment; filename=import_results.xlsx'
     return response
 
