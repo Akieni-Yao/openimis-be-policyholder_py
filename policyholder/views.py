@@ -8,7 +8,9 @@ from datetime import datetime, timedelta
 
 from django.conf import settings
 from django.contrib.auth.tokens import default_token_generator
+from django.core.exceptions import ObjectDoesNotExist
 from django.core.mail import EmailMessage
+from django.db.models import Q, Sum
 from django.shortcuts import redirect
 from django.utils import timezone
 
@@ -31,6 +33,7 @@ from insuree.dms_utils import create_openKm_folder_for_bulkupload, send_mail_to_
 from insuree.gql_mutations import temp_generate_employee_camu_registration_number
 from insuree.models import Insuree, Gender, Family, InsureePolicy
 from location.models import Location
+from payment.models import Payment, PaymentPenaltyAndSanction
 from policy.models import Policy
 from policyholder.apps import *
 from policyholder.constants import CC_WAITING_FOR_DOCUMENT, PH_STATUS_CREATED
@@ -1291,3 +1294,145 @@ def custom_policyholder_policies_expire(request):
     logger.info("====  expire_policies_manual_job  ====  end  ====")
 
     return JsonResponse(data)
+
+
+def get_declaration_details(requests, policy_holder_code):
+    data = {}
+    policy_holder = get_policy_holder_from_code(policy_holder_code)
+
+    if not policy_holder:
+        return JsonResponse({"errors": f"Unknown policy holder ({policy_holder_code})"})
+
+    # Get all executable contracts
+    contracts = Contract.objects.filter(
+        state=Contract.STATE_EXECUTABLE,
+        policy_holder=policy_holder,
+        is_deleted=False
+    ).order_by('date_valid_from')
+
+    if not contracts:
+        return JsonResponse({"errors": "No executable contracts found for this policy holder"})
+
+    # Prepare list to store contract and payment data
+    contract_data = []
+
+    # To store the earliest payment and contract
+    earliest_payment = None
+    earliest_contract = None
+
+    for contract in contracts:
+        # Get the first non-approved payment for each contract
+        payment = Payment.objects.filter(
+            contract=contract,
+            legacy_id__isnull=True,
+            validity_to__isnull=True,
+            status=Payment.STATUS_CREATED  # Exclude approved payments
+        ).order_by('payment_date').first()
+
+        if payment:
+            # Check if this payment is earlier than the previously found payment
+            if earliest_payment is None or payment.payment_date < earliest_payment.payment_date:
+                earliest_payment = payment
+                earliest_contract = contract
+
+    if earliest_payment and earliest_contract:
+        # Get associated penalties for the earliest payment
+        penalties = PaymentPenaltyAndSanction.objects.filter(outstanding_payment__isnull=True, payment=earliest_payment,
+                                                             is_deleted=False)
+        total_penalty_amount = penalties.aggregate(Sum('amount'))['amount__sum'] or 0
+
+        # Collect the earliest contract and payment details
+        contract_data.append({
+            'contract_code': earliest_contract.code,
+            'payment_code': earliest_payment.payment_code,
+            'payment_amount': earliest_payment.expected_amount,
+            'penalty_amount': total_penalty_amount,
+            'total_amount': total_penalty_amount + earliest_payment.expected_amount
+        })
+
+    if not contract_data:
+        return JsonResponse({"message": "No due payment found with this policy holder code"})
+
+    data['contracts'] = contract_data
+    data['policy_holder'] = policy_holder_code
+
+    return JsonResponse(data)
+
+
+import logging
+from decimal import Decimal, InvalidOperation
+from django.http import JsonResponse
+
+# Set up logging
+logger = logging.getLogger(__name__)
+
+
+def paid_contract_payment(requests, contract_code, payment_amount):
+    # Validate inputs
+    if not contract_code:
+        logger.error("Contract code is missing.")
+        return JsonResponse({"errors": "Contract code is required."})
+
+    # Convert string input to Decimal
+    try:
+        payment_amount = Decimal(payment_amount)
+    except (InvalidOperation, TypeError):
+        logger.error(f"Invalid payment amount input: {payment_amount}")
+        return JsonResponse({"errors": "Invalid payment amount."})
+
+    if payment_amount <= 0:
+        logger.error(f"Payment amount must be positive: {payment_amount}")
+        return JsonResponse({"errors": "Payment amount must be greater than zero."})
+
+    # Fetch the contract
+    contract = Contract.objects.filter(code=contract_code, is_deleted=False).first()
+    if not contract:
+        logger.error(f"No executable contract found for code: {contract_code}")
+        return JsonResponse({"errors": "No executable contract found."})
+
+    logger.info(f"Found contract: {contract_code}")
+
+    # Get the first non-approved payment for the contract
+    payment = Payment.objects.filter(
+        contract=contract,
+        legacy_id__isnull=True,
+        validity_to__isnull=True,
+        status=Payment.STATUS_CREATED
+    ).first()
+
+    if not payment:
+        logger.error(f"No valid payment found for contract: {contract_code}")
+        return JsonResponse({"errors": "No executable payment found."})
+
+    logger.info(f"Found payment for contract: {contract_code}, Payment ID: {payment.id}")
+
+    # Check if there's a penalty
+    penalty = PaymentPenaltyAndSanction.objects.filter(
+        outstanding_payment__isnull=True,
+        payment=payment,
+        is_deleted=False
+    ).first()
+
+    total_expected_amount = payment.expected_amount
+    if penalty:
+        total_expected_amount += penalty.amount
+        logger.info(f"Penalty found : {penalty.code} for payment: {payment.id}, Penalty amount: {penalty.amount}")
+
+    # Validate that the entered amount is correct
+    if payment_amount != total_expected_amount:
+        logger.error(f"Wrong amount entered: {payment_amount}. Expected: {total_expected_amount}")
+        return JsonResponse({"errors": f"Wrong amount entered. Expected sum: {total_expected_amount}."})
+
+    # Update penalty and payment if the amount matches
+    if penalty:
+        penalty.received_amount = penalty.amount
+        penalty.status = PaymentPenaltyAndSanction.PENALTY_APPROVED
+        penalty.save(username="Admin")
+        logger.info(f"Updated penalty status for payment: {payment.id}")
+    payment.received_amount = payment.expected_amount
+    payment.status = Payment.STATUS_APPROVED
+    payment.save()
+    logger.info(f"Payment updated for contract: {contract_code}, Amount: {payment.expected_amount}")
+    return JsonResponse({"success": "Payment and penalty updated successfully."})
+
+
