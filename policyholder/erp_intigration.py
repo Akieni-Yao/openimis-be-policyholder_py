@@ -3,6 +3,7 @@ import requests
 import logging
 import os
 
+from payment.models import Payment
 from policyholder.constants import BANK_ACCOUNT_ID
 from policyholder.models import PolicyHolderContributionPlan, PolicyHolder
 from rest_framework.decorators import permission_classes, api_view, authentication_classes
@@ -53,19 +54,15 @@ def erp_create_update_policyholder(ph_id, cpb_id, user):
 
     phcp = PolicyHolderContributionPlan.objects.filter(
         policy_holder__id=ph_id, contribution_plan_bundle__id=cpb_id, is_deleted=False).first()
+    payment = Payment.objects.filter(contract__policy_holder__id=ph_id).first()
 
     bank_accounts = None
     if phcp and phcp.policy_holder.bank_account:
         bank_account = phcp.policy_holder.bank_account.get("bankAccount", {})
         account_no = bank_account.get("accountNb", {})
+        bank_id = payment.received_amount_transaction.get("bank", {})
 
         if account_no:
-            # bank = bank_account.get("bank")
-            # bank_id = BANK_ACCOUNT_ID.get(bank)
-            # bank_id = 2  # just for test purpose
-            bank_code = bank_account.get("bank", {})
-            bank_details = Banks.objects.filter(code=bank_code, is_deleted=False).first()
-            bank_id = bank_details.erp_id
             bank_accounts = []
             bank_account_details = {
                 "account_number": account_no,
@@ -79,12 +76,12 @@ def erp_create_update_policyholder(ph_id, cpb_id, user):
 
     if phcp.policy_holder.erp_partner_access_id:
         logger.debug(" ======    erp_create_update_policyholder - update    =======")
-        action = "Create Policyholder"
+        action = "Update Policyholder"
         url = '{}/update/partner/{}'.format(erp_url, phcp.policy_holder.erp_partner_access_id)
         logger.debug(f" ======    erp_create_update_policyholder : url : {url}    =======")
     else:
         logger.debug(" ======    erp_create_update_policyholder - create    =======")
-        action = "Update Policyholder"
+        action = "Create Policyholder"
         url = '{}/create/partner'.format(erp_url)
         logger.debug(f" ======    erp_create_update_policyholder : url : {url}    =======")
 
@@ -137,20 +134,16 @@ def erp_create_update_fosa(policyholder_code, account_payable_id, user):
 
     policy_holder = PolicyHolder.objects.filter(code=policyholder_code, is_deleted=False).first()
     phcp = PolicyHolderContributionPlan.objects.filter(policy_holder=policy_holder, is_deleted=False).first()
+    payment = Payment.objects.filter(contract__policy_holder__code=policyholder_code).first()
 
     health_facility = HealthFacility.objects.filter(legacy_id__isnull=True, validity_to__isnull=True, json_ext__camuCode=policyholder_code).first()
     bank_accounts = None
     if phcp and phcp.policy_holder.bank_account:
         bank_account = phcp.policy_holder.bank_account.get("bankAccount", {})
         account_no = bank_account.get("accountNb", {})
+        bank_id = payment.received_amount_transaction.get("bank", {})
 
         if account_no:
-            # bank = bank_account.get("bank")
-            # bank_id = BANK_ACCOUNT_ID.get(bank)
-            bank_code = bank_account.get("bank", {})
-            bank_details = Banks.objects.filter(code=bank_code, is_deleted=False).first()
-            bank_id = bank_details.erp_id
-            # bank_id = 2  # just for test purpose
             bank_accounts = []
             bank_account_details = {
                 "account_number": account_no,
