@@ -1,6 +1,5 @@
 import json
 import logging
-import random
 import math
 import io
 import calendar
@@ -8,7 +7,6 @@ from datetime import datetime, timedelta
 
 from django.conf import settings
 from django.contrib.auth.tokens import default_token_generator
-from django.core.exceptions import ObjectDoesNotExist
 from django.core.mail import EmailMessage
 from django.db.models import Q, Sum
 from django.shortcuts import redirect
@@ -19,6 +17,7 @@ from django.http import JsonResponse, FileResponse, HttpResponse
 from django.utils.dateparse import parse_date
 from django.utils.encoding import force_text
 from django.utils.http import urlsafe_base64_decode
+from django.views.decorators.csrf import csrf_exempt
 from graphql import GraphQLError
 
 from rest_framework.decorators import permission_classes, api_view, authentication_classes
@@ -36,13 +35,14 @@ from location.models import Location
 from payment.models import Payment, PaymentPenaltyAndSanction
 from policy.models import Policy
 from policyholder.apps import *
-from policyholder.constants import CC_WAITING_FOR_DOCUMENT, PH_STATUS_CREATED
+from policyholder.constants import CC_WAITING_FOR_DOCUMENT, PH_STATUS_CREATED, PH_STATUS_LOCKED
 from policyholder.dms_utils import create_folder_for_cat_chnage_req, validate_enrolment_type, send_notification_to_head
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, CategoryChange, \
     PolicyHolderUser
 from contribution_plan.models import ContributionPlanBundleDetails
 from workflow.workflow_stage import insuree_add_to_workflow
 from insuree.abis_api import create_abis_insuree
+from decimal import Decimal, InvalidOperation
 
 logger = logging.getLogger(__name__)
 
@@ -1298,12 +1298,46 @@ def custom_policyholder_policies_expire(request):
 
 def get_declaration_details(requests, policy_holder_code):
     data = {}
-    policy_holder = get_policy_holder_from_code(policy_holder_code)
 
+    # Validate inputs
+    if not policy_holder_code:
+        logger.error("Policy holder code is missing.")
+        return JsonResponse({"errors": "Policy holder code is required."})
+
+    # Fetch the policy holder
+    policy_holder = get_policy_holder_from_code(policy_holder_code)
     if not policy_holder:
+        logger.error(f"Unknown policy holder ({policy_holder_code})")
         return JsonResponse({"errors": f"Unknown policy holder ({policy_holder_code})"})
 
-    # Get all executable contracts
+    logger.info(f"Policy holder found: {policy_holder_code}")
+
+    # Check if policy holder is locked
+    if policy_holder.status == PH_STATUS_LOCKED:
+        logger.error(f"Policy holder status Locked ({policy_holder_code})")
+        return JsonResponse({"errors": f"Policy holder status Locked ({policy_holder_code})"})
+
+    logger.info(f"Policy holder status is valid: {policy_holder_code}")
+
+    # Fetch policy holder insurees
+    ph_insuree_list = PolicyHolderInsuree.objects.filter(policy_holder=policy_holder, is_deleted=False)
+    ph_insuree = ph_insuree_list.first()
+
+    if not ph_insuree:
+        logger.error(f"No insuree found for policy holder ({policy_holder_code})")
+        return JsonResponse({"errors": "No insuree found for this policy holder."})
+
+    if ph_insuree.insuree.status != 'APPROVED':
+        logger.error(f"Insuree not approved for policy holder ({policy_holder_code})")
+        return JsonResponse({"errors": "Policy holder insuree not Approved."})
+
+    if ph_insuree_list.count() != 1:
+        logger.error(f"Multiple insurees attached to policy holder ({policy_holder_code})")
+        return JsonResponse({"errors": f"Multiple insurees attached to this policy holder ({policy_holder_code})"})
+
+    logger.info(f"Insuree validated for policy holder: {policy_holder_code}")
+
+    # Fetch executable contracts
     contracts = Contract.objects.filter(
         state=Contract.STATE_EXECUTABLE,
         policy_holder=policy_holder,
@@ -1311,17 +1345,18 @@ def get_declaration_details(requests, policy_holder_code):
     ).order_by('date_valid_from')
 
     if not contracts:
-        return JsonResponse({"errors": "No executable contracts found for this policy holder"})
+        logger.error(f"No executable contracts found for policy holder ({policy_holder_code})")
+        return JsonResponse({"errors": "No executable contracts found for this policy holder."})
 
-    # Prepare list to store contract and payment data
+    logger.info(f"Executable contracts found for policy holder: {policy_holder_code}")
+
+    # Prepare to store contract and payment data
     contract_data = []
-
-    # To store the earliest payment and contract
     earliest_payment = None
     earliest_contract = None
 
     for contract in contracts:
-        # Get the first non-approved payment for each contract
+        # Fetch the first non-approved payment for each contract
         payment = Payment.objects.filter(
             contract=contract,
             legacy_id__isnull=True,
@@ -1330,48 +1365,64 @@ def get_declaration_details(requests, policy_holder_code):
         ).order_by('payment_date').first()
 
         if payment:
-            # Check if this payment is earlier than the previously found payment
+            # Check for the earliest payment
             if earliest_payment is None or payment.payment_date < earliest_payment.payment_date:
                 earliest_payment = payment
                 earliest_contract = contract
 
     if earliest_payment and earliest_contract:
-        # Get associated penalties for the earliest payment
-        penalties = PaymentPenaltyAndSanction.objects.filter(outstanding_payment__isnull=True, payment=earliest_payment,
-                                                             is_deleted=False)
-        total_penalty_amount = penalties.aggregate(Sum('amount'))['amount__sum'] or 0
+        # Fetch penalties related to the earliest payment
+        penalties = PaymentPenaltyAndSanction.objects.filter(
+            outstanding_payment__isnull=True,
+            payment=earliest_payment,
+            is_deleted=False
+        )
 
-        # Collect the earliest contract and payment details
+        total_penalty_amount = penalties.aggregate(Sum('amount'))['amount__sum'] or Decimal(0)
+        total_amount = total_penalty_amount + earliest_payment.expected_amount
+
+        # Collect contract and payment details
         contract_data.append({
-            'contract_code': earliest_contract.code,
-            'payment_code': earliest_payment.payment_code,
-            'payment_amount': earliest_payment.expected_amount,
-            'penalty_amount': total_penalty_amount,
-            'total_amount': total_penalty_amount + earliest_payment.expected_amount
+            'policyholder': {'name': policy_holder.trade_name, 'code': policy_holder.code},
+            'contract': earliest_contract.code,
+            'total_amount': total_amount
         })
 
-    if not contract_data:
+        logger.info(f"Contract and payment details collected for policy holder: {policy_holder_code}")
+    else:
+        logger.error(f"No due payment found for policy holder ({policy_holder_code})")
         return JsonResponse({"message": "No due payment found with this policy holder code"})
 
-    data['contracts'] = contract_data
-    data['policy_holder'] = policy_holder_code
-
+    data['data'] = contract_data
     return JsonResponse(data)
 
 
-import logging
-from decimal import Decimal, InvalidOperation
-from django.http import JsonResponse
+@csrf_exempt
+def paid_contract_payment(request):
+    # Check if the request is POST
+    if request.method != 'POST':
+        logger.error("Invalid request method. Only POST requests are allowed.")
+        return JsonResponse({"errors": "Invalid request method. Only POST requests are allowed."}, status=405)
 
-# Set up logging
-logger = logging.getLogger(__name__)
+    # Get data from the request body
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        logger.error("Invalid JSON input.")
+        return JsonResponse({"errors": "Invalid JSON input."})
 
+    # Extract contract_code and payment_amount from the body
+    contract_code = data.get('contract_code')
+    payment_amount = data.get('payment_amount')
 
-def paid_contract_payment(requests, contract_code, payment_amount):
     # Validate inputs
     if not contract_code:
         logger.error("Contract code is missing.")
         return JsonResponse({"errors": "Contract code is required."})
+
+    if not payment_amount:
+        logger.error("Payment amount is missing.")
+        return JsonResponse({"errors": "Payment amount is required."})
 
     # Convert string input to Decimal
     try:
@@ -1416,7 +1467,7 @@ def paid_contract_payment(requests, contract_code, payment_amount):
     total_expected_amount = payment.expected_amount
     if penalty:
         total_expected_amount += penalty.amount
-        logger.info(f"Penalty found : {penalty.code} for payment: {payment.id}, Penalty amount: {penalty.amount}")
+        logger.info(f"Penalty found: {penalty.code} for payment: {payment.id}, Penalty amount: {penalty.amount}")
 
     # Validate that the entered amount is correct
     if payment_amount != total_expected_amount:
@@ -1429,10 +1480,10 @@ def paid_contract_payment(requests, contract_code, payment_amount):
         penalty.status = PaymentPenaltyAndSanction.PENALTY_APPROVED
         penalty.save(username="Admin")
         logger.info(f"Updated penalty status for payment: {payment.id}")
+
     payment.received_amount = payment.expected_amount
     payment.status = Payment.STATUS_APPROVED
     payment.save()
     logger.info(f"Payment updated for contract: {contract_code}, Amount: {payment.expected_amount}")
+
     return JsonResponse({"success": "Payment and penalty updated successfully."})
-
-
