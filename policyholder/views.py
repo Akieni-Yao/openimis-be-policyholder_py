@@ -1309,20 +1309,20 @@ def get_declaration_details(requests, policy_holder_code):
     # Validate inputs
     if not policy_holder_code:
         logger.error("Policy holder code is missing.")
-        return JsonResponse({"errors": "Policy holder code is required."})
+        return JsonResponse({"errors": "Policy holder code is required."}, status=400)
 
     # Fetch the policy holder
     policy_holder = get_policy_holder_from_code(policy_holder_code)
     if not policy_holder:
         logger.error(f"Unknown policy holder ({policy_holder_code})")
-        return JsonResponse({"errors": f"Unknown policy holder ({policy_holder_code})"})
+        return JsonResponse({"errors": f"Unknown policy holder ({policy_holder_code})"}, status=404)
 
     logger.info(f"Policy holder found: {policy_holder_code}")
 
     # Check if policy holder is locked
     if policy_holder.status == PH_STATUS_LOCKED:
         logger.error(f"Policy holder status Locked ({policy_holder_code})")
-        return JsonResponse({"errors": f"Policy holder status Locked ({policy_holder_code})"})
+        return JsonResponse({"errors": f"Policy holder status Locked ({policy_holder_code})"}, status=403)
 
     logger.info(f"Policy holder status is valid: {policy_holder_code}")
 
@@ -1332,23 +1332,25 @@ def get_declaration_details(requests, policy_holder_code):
 
     if not ph_insuree:
         logger.error(f"No insuree found for policy holder ({policy_holder_code})")
-        return JsonResponse({"errors": "No insuree found for this policy holder."})
+        return JsonResponse({"errors": "No insuree found for this policy holder."}, status=404)
 
     if ph_insuree_list.count() != 1:
         logger.error(f"Multiple insurees attached to policy holder ({policy_holder_code})")
-        return JsonResponse({"errors": f"Multiple insurees attached to this policy holder ({policy_holder_code})"})
+        return JsonResponse({"errors": f"Multiple insurees attached to this policy holder ({policy_holder_code})"}, status=400)
 
     if ph_insuree.insuree.status not in ['APPROVED', 'ACTIVE']:
         logger.error(f"Insuree not approved for policy holder ({policy_holder_code})")
-        return JsonResponse({"errors": "Policy holder insuree not Approved."})
+        return JsonResponse({"errors": "Policy holder insuree not Approved."}, status=403)
 
     logger.info(f"Insuree validated for policy holder: {policy_holder_code}")
+
     # Check insuree's active status
     is_active = has_active_policy(ph_insuree.insuree)
     if is_active:
         insuree_right_status = True  # Set to True if the insuree is active
     else:
-        return JsonResponse({"errors": "Insuree is not Active."})
+        return JsonResponse({"errors": "Insuree is not Active."}, status=403)
+
     # Fetch executable contracts
     contracts = Contract.objects.filter(
         state=Contract.STATE_EXECUTABLE,
@@ -1358,7 +1360,7 @@ def get_declaration_details(requests, policy_holder_code):
 
     if not contracts:
         logger.error(f"No executable contracts found for policy holder ({policy_holder_code})")
-        return JsonResponse({"errors": "No executable contracts found for this policy holder."})
+        return JsonResponse({"errors": "No executable contracts found for this policy holder."}, status=404)
 
     logger.info(f"Executable contracts found for policy holder: {policy_holder_code}")
 
@@ -1407,12 +1409,13 @@ def get_declaration_details(requests, policy_holder_code):
             'total_amount': total_amount or Decimal(0)  # Ensure this is always a Decimal
         })
         logger.info(f"Contract and payment details collected for policy holder: {policy_holder_code}")
-    else:  # TODO logic for expected next contract payment
+    else:
         logger.error(f"No due payment found for policy holder ({policy_holder_code})")
-        return JsonResponse({f"message": "No due payment found with this ({policy_holder_code})"})
+        return JsonResponse({"message": "No due payment found with this policy holder code."}, status=404)
 
     data['data'] = contract_data
-    return JsonResponse(data)
+    return JsonResponse(data, status=200)
+
 
 
 @csrf_exempt
@@ -1427,42 +1430,64 @@ def paid_contract_payment(request):
         data = json.loads(request.body)
     except json.JSONDecodeError:
         logger.error("Invalid JSON input.")
-        return JsonResponse({"errors": "Invalid JSON input."})
+        return JsonResponse({"errors": "Invalid JSON input."}, status=400)
 
-    # Extract policy_holder_code, payment_amount, and period (MM-YYYY) from the body
+    # Extract policy_holder_code, payment_amount, period (MM-YYYY), mmp_identifier, payment_date, and payment_reference
     policy_holder_code = data.get('policy_holder_code')
     payment_amount = data.get('payment_amount')
-    period = data.get('period')  # Expecting the period in MM-YYYY format
+    period = data.get('period')
+    mmp_identifier = data.get('mmp_identifier')
+    payment_date = data.get('payment_date')
+    payment_reference = data.get('payment_reference')
 
     # Validate inputs
     if not policy_holder_code:
         logger.error("Policy holder code is missing.")
-        return JsonResponse({"errors": "Policy holder code is required."})
+        return JsonResponse({"errors": "Policy holder code is required."}, status=400)
 
     if not payment_amount:
         logger.error("Payment amount is missing.")
-        return JsonResponse({"errors": "Payment amount is required."})
+        return JsonResponse({"errors": "Payment amount is required."}, status=400)
 
     if not period:
         logger.error("Period (MM-YYYY) is missing.")
-        return JsonResponse({"errors": "Period is required."})
+        return JsonResponse({"errors": "Period is required."}, status=400)
 
-    # Convert string input to Decimal
+    if not mmp_identifier:
+        logger.error("MMP Identifier is missing.")
+        return JsonResponse({"errors": "MMP Identifier is required."}, status=400)
+
+    if not payment_date:
+        logger.error("Payment date is missing.")
+        return JsonResponse({"errors": "Payment date is required."}, status=400)
+
+    if not payment_reference:
+        logger.error("Payment reference is missing.")
+        return JsonResponse({"errors": "Payment reference is required."}, status=400)
+
+    # Validate payment_date format (DD-MM-YYYY)
+    try:
+        payment_date = datetime.strptime(payment_date, '%d-%m-%Y').date()
+    except ValueError:
+        logger.error("Invalid payment date format. Expected format is DD-MM-YYYY.")
+        return JsonResponse({"errors": "Invalid payment date format. Expected DD-MM-YYYY."}, status=400)
+
+    # Convert string input to Decimal for payment_amount
     try:
         payment_amount = Decimal(payment_amount)
     except (InvalidOperation, TypeError):
         logger.error(f"Invalid payment amount input: {payment_amount}")
-        return JsonResponse({"errors": "Invalid payment amount."})
+        return JsonResponse({"errors": "Invalid payment amount."}, status=400)
 
     if payment_amount <= 0:
         logger.error(f"Payment amount must be positive: {payment_amount}")
-        return JsonResponse({"errors": "Payment amount must be greater than zero."})
+        return JsonResponse({"errors": "Payment amount must be greater than zero."}, status=400)
 
     # Fetch the policy holder using the policy_holder_code
     policy_holder = PolicyHolder.objects.filter(code=policy_holder_code, is_deleted=False).first()
     if not policy_holder:
         logger.error(f"No policy holder found for code: {policy_holder_code}")
-        return JsonResponse({"errors": "No policy holder found."})
+        return JsonResponse({"errors": "No policy holder found."}, status=404)
 
     logger.info(f"Policy holder found: {policy_holder_code}")
 
@@ -1471,7 +1496,7 @@ def paid_contract_payment(request):
         period_date = datetime.strptime(period, "%m-%Y")
     except ValueError:
         logger.error(f"Invalid period format: {period}. Expected format is MM-YYYY.")
-        return JsonResponse({"errors": "Invalid period format. Expected MM-YYYY."})
+        return JsonResponse({"errors": "Invalid period format. Expected MM-YYYY."}, status=400)
 
     # Fetch all executable contracts for the policy holder that match the period
     contracts = Contract.objects.filter(
@@ -1485,7 +1510,7 @@ def paid_contract_payment(request):
 
     if not matching_contracts:
         logger.error(f"No executable contracts found for policy holder ({policy_holder_code}) for the period {period}.")
-        return JsonResponse({"errors": f"No executable contracts found for the period {period}."})
+        return JsonResponse({"errors": f"No executable contracts found for the period {period}."}, status=404)
 
     logger.info(f"Executable contract(s) found for policy holder: {policy_holder_code} for period {period}")
 
@@ -1510,9 +1535,12 @@ def paid_contract_payment(request):
 
     if not earliest_payment or not earliest_contract:
         logger.error(f"No due payment found for policy holder ({policy_holder_code}) for the period {period}.")
-        return JsonResponse({"errors": f"No due payment found for policy holder ({policy_holder_code}) for the period {period}."})
+        return JsonResponse(
+            {"errors": f"No due payment found for policy holder ({policy_holder_code}) for the period {period}."},
+            status=404)
 
     logger.info(f"Found earliest payment for policy holder: {policy_holder_code}, Payment ID: {earliest_payment.id}")
+
     # Check if there's a penalty
     penalty = PaymentPenaltyAndSanction.objects.filter(
         outstanding_payment__isnull=True,
@@ -1523,12 +1551,13 @@ def paid_contract_payment(request):
     total_expected_amount = earliest_payment.expected_amount
     if penalty:
         total_expected_amount += penalty.amount
-        logger.info(f"Penalty found: {penalty.code} for payment: {earliest_payment.id}, Penalty amount: {penalty.amount}")
+        logger.info(
+            f"Penalty found: {penalty.code} for payment: {earliest_payment.id}, Penalty amount: {penalty.amount}")
 
     # Validate that the entered amount is correct
     if payment_amount != total_expected_amount:
         logger.error(f"Wrong amount entered: {payment_amount}. Expected: {total_expected_amount}")
-        return JsonResponse({"errors": f"Wrong amount entered. Expected sum: {total_expected_amount}."})
+        return JsonResponse({"errors": f"Wrong amount entered. Expected sum: {total_expected_amount}."}, status=400)
 
     # Update penalty and payment if the amount matches
     if penalty:
@@ -1536,9 +1565,21 @@ def paid_contract_payment(request):
         penalty.status = PaymentPenaltyAndSanction.PENALTY_APPROVED
         penalty.save(username="Admin")
         logger.info(f"Updated penalty status for payment: {earliest_payment.id}")
+
     earliest_payment.received_amount = earliest_payment.expected_amount
     earliest_payment.status = Payment.STATUS_APPROVED
+    # earliest_payment.mmp_identifier = mmp_identifier
+    earliest_payment.matched_date = payment_date
+    # earliest_payment.payment_reference = payment_reference
     earliest_payment.save()
+
     logger.info(f"Payment updated for contract: {earliest_contract.code}, Amount: {earliest_payment.expected_amount}")
-    return JsonResponse({"success": f"Payment and penalty updated successfully for period {period}."})
+
+    return JsonResponse({
+        "success": f"Payment and penalty updated successfully for period {period}.",
+        "payment_reference": payment_reference,
+        "mmp_identifier": mmp_identifier,
+        "payment_date": payment_date.strftime("%Y-%m-%d")
+    }, status=200)
+
 
