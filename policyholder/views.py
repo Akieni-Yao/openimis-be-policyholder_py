@@ -1296,6 +1296,13 @@ def custom_policyholder_policies_expire(request):
     return JsonResponse(data)
 
 
+def has_active_policy(insuree):
+    # Check if the insuree has any policy with active status
+    return Policy.objects.filter(
+        insuree_policies__insuree=insuree, status=Policy.STATUS_ACTIVE
+    ).exists()
+
+
 def get_declaration_details(requests, policy_holder_code):
     data = {}
 
@@ -1327,16 +1334,21 @@ def get_declaration_details(requests, policy_holder_code):
         logger.error(f"No insuree found for policy holder ({policy_holder_code})")
         return JsonResponse({"errors": "No insuree found for this policy holder."})
 
-    if ph_insuree.insuree.status != 'APPROVED':
-        logger.error(f"Insuree not approved for policy holder ({policy_holder_code})")
-        return JsonResponse({"errors": "Policy holder insuree not Approved."})
-
     if ph_insuree_list.count() != 1:
         logger.error(f"Multiple insurees attached to policy holder ({policy_holder_code})")
         return JsonResponse({"errors": f"Multiple insurees attached to this policy holder ({policy_holder_code})"})
 
-    logger.info(f"Insuree validated for policy holder: {policy_holder_code}")
+    if ph_insuree.insuree.status not in ['APPROVED', 'ACTIVE']:
+        logger.error(f"Insuree not approved for policy holder ({policy_holder_code})")
+        return JsonResponse({"errors": "Policy holder insuree not Approved."})
 
+    logger.info(f"Insuree validated for policy holder: {policy_holder_code}")
+    # Check insuree's active status
+    is_active = has_active_policy(ph_insuree.insuree)
+    if is_active:
+        insuree_right_status = True  # Set to True if the insuree is active
+    else:
+        return JsonResponse({"errors": "Insuree is not Active."})
     # Fetch executable contracts
     contracts = Contract.objects.filter(
         state=Contract.STATE_EXECUTABLE,
@@ -1383,15 +1395,21 @@ def get_declaration_details(requests, policy_holder_code):
 
         # Collect contract and payment details
         contract_data.append({
-            'policyholder': {'name': policy_holder.trade_name, 'code': policy_holder.code},
-            'contract': earliest_contract.code,
-            'total_amount': total_amount
+            'policy_holder': getattr(policy_holder, 'trade_name', None),
+            'policy_holder_code': getattr(policy_holder, 'code', None),
+            'policy_holder_status': getattr(policy_holder, 'status', None),
+            'insuree_status': getattr(ph_insuree.insuree, 'status',
+                                      None) if ph_insuree and ph_insuree.insuree else None,
+            'insuree_right_status': 'ACTIVE' if insuree_right_status else 'INACTIVE',
+            'contract_code': getattr(earliest_contract, 'code', None),
+            'period': getattr(earliest_contract, 'date_valid_from', None).strftime(
+                "%m-%Y") if earliest_contract and earliest_contract.date_valid_from else None,
+            'total_amount': total_amount or Decimal(0)  # Ensure this is always a Decimal
         })
-
         logger.info(f"Contract and payment details collected for policy holder: {policy_holder_code}")
-    else:
+    else:  # TODO logic for expected next contract payment
         logger.error(f"No due payment found for policy holder ({policy_holder_code})")
-        return JsonResponse({"message": "No due payment found with this policy holder code"})
+        return JsonResponse({f"message": "No due payment found with this ({policy_holder_code})"})
 
     data['data'] = contract_data
     return JsonResponse(data)
@@ -1399,10 +1417,10 @@ def get_declaration_details(requests, policy_holder_code):
 
 @csrf_exempt
 def paid_contract_payment(request):
-    # Check if the request is POST
-    if request.method != 'POST':
-        logger.error("Invalid request method. Only POST requests are allowed.")
-        return JsonResponse({"errors": "Invalid request method. Only POST requests are allowed."}, status=405)
+    # Check if the request is PUT
+    if request.method != 'PUT':
+        logger.error("Invalid request method. Only PUT requests are allowed.")
+        return JsonResponse({"errors": "Invalid request method. Only PUT requests are allowed."}, status=405)
 
     # Get data from the request body
     try:
@@ -1411,18 +1429,23 @@ def paid_contract_payment(request):
         logger.error("Invalid JSON input.")
         return JsonResponse({"errors": "Invalid JSON input."})
 
-    # Extract contract_code and payment_amount from the body
-    contract_code = data.get('contract_code')
+    # Extract policy_holder_code, payment_amount, and period (MM-YYYY) from the body
+    policy_holder_code = data.get('policy_holder_code')
     payment_amount = data.get('payment_amount')
+    period = data.get('period')  # Expecting the period in MM-YYYY format
 
     # Validate inputs
-    if not contract_code:
-        logger.error("Contract code is missing.")
-        return JsonResponse({"errors": "Contract code is required."})
+    if not policy_holder_code:
+        logger.error("Policy holder code is missing.")
+        return JsonResponse({"errors": "Policy holder code is required."})
 
     if not payment_amount:
         logger.error("Payment amount is missing.")
         return JsonResponse({"errors": "Payment amount is required."})
+
+    if not period:
+        logger.error("Period (MM-YYYY) is missing.")
+        return JsonResponse({"errors": "Period is required."})
 
     # Convert string input to Decimal
     try:
@@ -1435,39 +1458,72 @@ def paid_contract_payment(request):
         logger.error(f"Payment amount must be positive: {payment_amount}")
         return JsonResponse({"errors": "Payment amount must be greater than zero."})
 
-    # Fetch the contract
-    contract = Contract.objects.filter(code=contract_code, is_deleted=False).first()
-    if not contract:
-        logger.error(f"No executable contract found for code: {contract_code}")
-        return JsonResponse({"errors": "No executable contract found."})
+    # Fetch the policy holder using the policy_holder_code
+    policy_holder = PolicyHolder.objects.filter(code=policy_holder_code, is_deleted=False).first()
+    if not policy_holder:
+        logger.error(f"No policy holder found for code: {policy_holder_code}")
+        return JsonResponse({"errors": "No policy holder found."})
 
-    logger.info(f"Found contract: {contract_code}")
+    logger.info(f"Policy holder found: {policy_holder_code}")
 
-    # Get the first non-approved payment for the contract
-    payment = Payment.objects.filter(
-        contract=contract,
-        legacy_id__isnull=True,
-        validity_to__isnull=True,
-        status=Payment.STATUS_CREATED
-    ).first()
+    # Convert the period (MM-YYYY) into a datetime object for comparison
+    try:
+        period_date = datetime.strptime(period, "%m-%Y")
+    except ValueError:
+        logger.error(f"Invalid period format: {period}. Expected format is MM-YYYY.")
+        return JsonResponse({"errors": "Invalid period format. Expected MM-YYYY."})
 
-    if not payment:
-        logger.error(f"No valid payment found for contract: {contract_code}")
-        return JsonResponse({"errors": "No executable payment found."})
+    # Fetch all executable contracts for the policy holder that match the period
+    contracts = Contract.objects.filter(
+        policy_holder=policy_holder,
+        state=Contract.STATE_EXECUTABLE,
+        is_deleted=False
+    ).order_by('date_valid_from')
 
-    logger.info(f"Found payment for contract: {contract_code}, Payment ID: {payment.id}")
+    # Filter contracts by matching the period (MM-YYYY) with date_valid_from
+    matching_contracts = [contract for contract in contracts if contract.date_valid_from.strftime("%m-%Y") == period]
 
+    if not matching_contracts:
+        logger.error(f"No executable contracts found for policy holder ({policy_holder_code}) for the period {period}.")
+        return JsonResponse({"errors": f"No executable contracts found for the period {period}."})
+
+    logger.info(f"Executable contract(s) found for policy holder: {policy_holder_code} for period {period}")
+
+    # Iterate over the matching contracts to find the first non-approved payment
+    earliest_payment = None
+    earliest_contract = None
+
+    for contract in matching_contracts:
+        # Fetch the first non-approved payment for the contract
+        payment = Payment.objects.filter(
+            contract=contract,
+            legacy_id__isnull=True,
+            validity_to__isnull=True,
+            status=Payment.STATUS_CREATED  # Only non-approved payments
+        ).order_by('payment_date').first()
+
+        if payment:
+            # Track the earliest payment found
+            if earliest_payment is None or payment.payment_date < earliest_payment.payment_date:
+                earliest_payment = payment
+                earliest_contract = contract
+
+    if not earliest_payment or not earliest_contract:
+        logger.error(f"No due payment found for policy holder ({policy_holder_code}) for the period {period}.")
+        return JsonResponse({"errors": f"No due payment found for policy holder ({policy_holder_code}) for the period {period}."})
+
+    logger.info(f"Found earliest payment for policy holder: {policy_holder_code}, Payment ID: {earliest_payment.id}")
     # Check if there's a penalty
     penalty = PaymentPenaltyAndSanction.objects.filter(
         outstanding_payment__isnull=True,
-        payment=payment,
+        payment=earliest_payment,
         is_deleted=False
     ).first()
 
-    total_expected_amount = payment.expected_amount
+    total_expected_amount = earliest_payment.expected_amount
     if penalty:
         total_expected_amount += penalty.amount
-        logger.info(f"Penalty found: {penalty.code} for payment: {payment.id}, Penalty amount: {penalty.amount}")
+        logger.info(f"Penalty found: {penalty.code} for payment: {earliest_payment.id}, Penalty amount: {penalty.amount}")
 
     # Validate that the entered amount is correct
     if payment_amount != total_expected_amount:
@@ -1479,11 +1535,10 @@ def paid_contract_payment(request):
         penalty.received_amount = penalty.amount
         penalty.status = PaymentPenaltyAndSanction.PENALTY_APPROVED
         penalty.save(username="Admin")
-        logger.info(f"Updated penalty status for payment: {payment.id}")
+        logger.info(f"Updated penalty status for payment: {earliest_payment.id}")
+    earliest_payment.received_amount = earliest_payment.expected_amount
+    earliest_payment.status = Payment.STATUS_APPROVED
+    earliest_payment.save()
+    logger.info(f"Payment updated for contract: {earliest_contract.code}, Amount: {earliest_payment.expected_amount}")
+    return JsonResponse({"success": f"Payment and penalty updated successfully for period {period}."})
 
-    payment.received_amount = payment.expected_amount
-    payment.status = Payment.STATUS_APPROVED
-    payment.save()
-    logger.info(f"Payment updated for contract: {contract_code}, Amount: {payment.expected_amount}")
-
-    return JsonResponse({"success": "Payment and penalty updated successfully."})
