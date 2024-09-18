@@ -1303,6 +1303,15 @@ def has_active_policy(insuree):
     ).exists()
 
 
+@api_view(["GET"])
+@permission_classes(
+    [
+        # Change this right and create a specific one instead
+        check_user_with_rights(
+            PolicyholderConfig.gql_query_policyholder_perms,
+        )
+    ]
+)
 def get_declaration_details(requests, policy_holder_code):
     data = {}
 
@@ -1336,7 +1345,8 @@ def get_declaration_details(requests, policy_holder_code):
 
     if ph_insuree_list.count() != 1:
         logger.error(f"Multiple insurees attached to policy holder ({policy_holder_code})")
-        return JsonResponse({"errors": f"Multiple insurees attached to this policy holder ({policy_holder_code})"}, status=400)
+        return JsonResponse({"errors": f"Multiple insurees attached to this policy holder ({policy_holder_code})"},
+                            status=400)
 
     if ph_insuree.insuree.status not in ['APPROVED', 'ACTIVE']:
         logger.error(f"Insuree not approved for policy holder ({policy_holder_code})")
@@ -1417,8 +1427,15 @@ def get_declaration_details(requests, policy_holder_code):
     return JsonResponse(data, status=200)
 
 
-
-@csrf_exempt
+@api_view(["PUT"])
+@permission_classes(
+    [
+        # Change this right and create a specific one instead
+        check_user_with_rights(
+            PolicyholderConfig.gql_query_policyholder_perms,
+        )
+    ]
+)
 def paid_contract_payment(request):
     # Check if the request is PUT
     if request.method != 'PUT':
@@ -1581,5 +1598,3 @@ def paid_contract_payment(request):
         "mmp_identifier": mmp_identifier,
         "payment_date": payment_date.strftime("%Y-%m-%d")
     }, status=200)
-
-
