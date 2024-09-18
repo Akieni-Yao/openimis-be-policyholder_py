@@ -1328,12 +1328,13 @@ def get_declaration_details(requests, policy_holder_code):
 
     logger.info(f"Policy holder found: {policy_holder_code}")
 
-    # Check if policy holder is locked
+    # Check if policy holder is locked or unlocked
     if policy_holder.status == PH_STATUS_LOCKED:
-        logger.error(f"Policy holder status Locked ({policy_holder_code})")
-        return JsonResponse({"errors": f"Policy holder status Locked ({policy_holder_code})"}, status=403)
+        return JsonResponse({"errors": f"({policy_holder_code})Policy Holder is Locked."}, status=400)
+    else:
+        policy_holder_status = "Unlocked"
 
-    logger.info(f"Policy holder status is valid: {policy_holder_code}")
+    logger.info(f"Policy holder status: {policy_holder_status}")
 
     # Fetch policy holder insurees
     ph_insuree_list = PolicyHolderInsuree.objects.filter(policy_holder=policy_holder, is_deleted=False)
@@ -1345,19 +1346,21 @@ def get_declaration_details(requests, policy_holder_code):
 
     if ph_insuree_list.count() != 1:
         logger.error(f"Multiple insurees attached to policy holder ({policy_holder_code})")
-        return JsonResponse({"errors": f"Multiple insurees attached to this policy holder ({policy_holder_code})"},
+        return JsonResponse({"errors": f"Multiple insurees attached with this policy holder ({policy_holder_code})"},
                             status=400)
 
-    if ph_insuree.insuree.status not in ['APPROVED', 'ACTIVE']:
-        logger.error(f"Insuree not approved for policy holder ({policy_holder_code})")
-        return JsonResponse({"errors": "Policy holder insuree not Approved."}, status=403)
+    # Check and map insuree status
+    if ph_insuree.insuree.status in ['APPROVED', 'ACTIVE']:
+        insuree_status = "Registered"
+    else:
+        insuree_status = "Unregistered"
 
-    logger.info(f"Insuree validated for policy holder: {policy_holder_code}")
+    logger.info(f"Insuree status for policy holder {policy_holder_code}: {insuree_status}")
 
     # Check insuree's active status
     is_active = has_active_policy(ph_insuree.insuree)
     if is_active:
-        insuree_right_status = True  # Set to True if the insuree is active
+        insuree_right_status = 'Required'
     else:
         return JsonResponse({"errors": "Insuree is not Active."}, status=403)
 
@@ -1409,10 +1412,9 @@ def get_declaration_details(requests, policy_holder_code):
         contract_data.append({
             'policy_holder': getattr(policy_holder, 'trade_name', None),
             'policy_holder_code': getattr(policy_holder, 'code', None),
-            'policy_holder_status': getattr(policy_holder, 'status', None),
-            'insuree_status': getattr(ph_insuree.insuree, 'status',
-                                      None) if ph_insuree and ph_insuree.insuree else None,
-            'insuree_right_status': 'ACTIVE' if insuree_right_status else 'INACTIVE',
+            'policy_holder_status': policy_holder_status,  # Updated status here
+            'insuree_status': insuree_status,  # Updated insuree status here
+            'insuree_right_status': insuree_right_status,
             'contract_code': getattr(earliest_contract, 'code', None),
             'period': getattr(earliest_contract, 'date_valid_from', None).strftime(
                 "%m-%Y") if earliest_contract and earliest_contract.date_valid_from else None,
@@ -1425,6 +1427,7 @@ def get_declaration_details(requests, policy_holder_code):
 
     data['data'] = contract_data
     return JsonResponse(data, status=200)
+
 
 
 @api_view(["PUT"])
