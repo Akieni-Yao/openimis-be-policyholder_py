@@ -26,16 +26,17 @@ from rest_framework.response import Response
 
 from contract.models import Contract
 from core.constants import *
-from core.models import Role, InteractiveUser
-from core.notification_service import create_camu_notification
+from core.models import Role, InteractiveUser, Banks
+from core.notification_service import create_camu_notification, base64_encode
 from insuree.dms_utils import create_openKm_folder_for_bulkupload, send_mail_to_temp_insuree_with_pdf
 from insuree.gql_mutations import temp_generate_employee_camu_registration_number
 from insuree.models import Insuree, Gender, Family, InsureePolicy
 from location.models import Location
 from payment.models import Payment, PaymentPenaltyAndSanction
+from payment.views import get_payment_product_config
 from policy.models import Policy
 from policyholder.apps import *
-from policyholder.constants import CC_WAITING_FOR_DOCUMENT, PH_STATUS_CREATED, PH_STATUS_LOCKED
+from policyholder.constants import CC_WAITING_FOR_DOCUMENT, PH_STATUS_CREATED, PH_STATUS_LOCKED, TIPL_PAYMENT_METHOD_ID
 from policyholder.dms_utils import create_folder_for_cat_chnage_req, validate_enrolment_type, send_notification_to_head
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, CategoryChange, \
     PolicyHolderUser
@@ -1360,7 +1361,7 @@ def get_declaration_details(requests, policy_holder_code):
     # Check insuree's active status
     is_active = has_active_policy(ph_insuree.insuree)
     if is_active:
-        insuree_right_status = 'Required'
+        insuree_right_status = 'Active'
     else:
         return JsonResponse({"errors": "Insuree is not Active."}, status=403)
 
@@ -1399,205 +1400,243 @@ def get_declaration_details(requests, policy_holder_code):
 
     if earliest_payment and earliest_contract:
         # Fetch penalties related to the earliest payment
-        penalties = PaymentPenaltyAndSanction.objects.filter(
+        penalty = PaymentPenaltyAndSanction.objects.filter(
             outstanding_payment__isnull=True,
             payment=earliest_payment,
             is_deleted=False
-        )
+        ).first()
 
-        total_penalty_amount = penalties.aggregate(Sum('amount'))['amount__sum'] or Decimal(0)
+        penalty_rate = None
+        total_penalty_amount = Decimal(0)  # Default to 0 if no penalty
+
+        if penalty:
+            # Fetch penalty rate based on penalty level
+            product_config = get_payment_product_config(earliest_payment)
+            if product_config:
+                if penalty.penalty_level == "1st":
+                    penalty_rate = product_config.get("firstPenaltyRate", None)
+                elif penalty.penalty_level == "2nd":
+                    penalty_rate = product_config.get("secondPenaltyRate", None)
+
+            # Aggregate penalty amount
+            total_penalty_amount = PaymentPenaltyAndSanction.objects.filter(
+                payment=earliest_payment,
+                outstanding_payment__isnull=True,
+                is_deleted=False
+            ).aggregate(Sum('amount'))['amount__sum'] or Decimal(0)
         total_amount = total_penalty_amount + earliest_payment.expected_amount
 
         # Collect contract and payment details
         contract_data.append({
             'policy_holder': getattr(policy_holder, 'trade_name', None),
             'policy_holder_code': getattr(policy_holder, 'code', None),
-            'policy_holder_status': policy_holder_status,  # Updated status here
-            'insuree_status': insuree_status,  # Updated insuree status here
+            # 'policy_holder_status': policy_holder_status,  # Updated status here
+            # 'insuree_status': insuree_status,  # Updated insuree status here
             'insuree_right_status': insuree_right_status,
-            'contract_code': getattr(earliest_contract, 'code', None),
+            # 'contract_code': getattr(earliest_contract, 'code', None),
             'period': getattr(earliest_contract, 'date_valid_from', None).strftime(
                 "%m-%Y") if earliest_contract and earliest_contract.date_valid_from else None,
+            'label': f'declaration + {penalty_rate}% de penalité' if penalty_rate else 'declaration',
             'total_amount': total_amount or Decimal(0)  # Ensure this is always a Decimal
         })
         logger.info(f"Contract and payment details collected for policy holder: {policy_holder_code}")
     else:
         logger.error(f"No due payment found for policy holder ({policy_holder_code})")
-        return JsonResponse({"message": "No due payment found with this policy holder code."}, status=404)
+        return JsonResponse({"message": f"No due payment found with this policy holder code({policy_holder_code})."}, status=404)
 
     data['data'] = contract_data
     return JsonResponse(data, status=200)
 
 
-
 @api_view(["PUT"])
 @permission_classes(
     [
-        # Change this right and create a specific one instead
         check_user_with_rights(
             PolicyholderConfig.gql_query_policyholder_perms,
         )
     ]
 )
 def paid_contract_payment(request):
-    # Check if the request is PUT
-    if request.method != 'PUT':
-        logger.error("Invalid request method. Only PUT requests are allowed.")
-        return JsonResponse({"errors": "Invalid request method. Only PUT requests are allowed."}, status=405)
-
-    # Get data from the request body
     try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        logger.error("Invalid JSON input.")
-        return JsonResponse({"errors": "Invalid JSON input."}, status=400)
+        # Check if the request is PUT
+        if request.method != 'PUT':
+            logger.error("Invalid request method. Only PUT requests are allowed.")
+            return JsonResponse({"errors": "Invalid request method. Only PUT requests are allowed."}, status=405)
 
-    # Extract policy_holder_code, payment_amount, period (MM-YYYY), mmp_identifier, payment_date, and payment_reference
-    policy_holder_code = data.get('policy_holder_code')
-    payment_amount = data.get('payment_amount')
-    period = data.get('period')
-    mmp_identifier = data.get('mmp_identifier')
-    payment_date = data.get('payment_date')
-    payment_reference = data.get('payment_reference')
+        # Get data from the request body
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON input: {str(e)}")
+            return JsonResponse({"errors": "Invalid JSON input."}, status=400)
 
-    # Validate inputs
-    if not policy_holder_code:
-        logger.error("Policy holder code is missing.")
-        return JsonResponse({"errors": "Policy holder code is required."}, status=400)
+        # Extract required fields
+        required_fields = ['policy_holder_code', 'payment_amount', 'period', 'mmp_identifier', 'payment_date', 'payment_reference']
+        missing_fields = [field for field in required_fields if not data.get(field)]
+        if missing_fields:
+            logger.error(f"Required field(s) missing: {missing_fields}")
+            return JsonResponse({"errors": f"Missing fields: {', '.join(missing_fields)}"}, status=400)
 
-    if not payment_amount:
-        logger.error("Payment amount is missing.")
-        return JsonResponse({"errors": "Payment amount is required."}, status=400)
+        policy_holder_code = data.get('policy_holder_code')
+        payment_amount = data.get('payment_amount')
+        period = data.get('period')
+        mmp_identifier = data.get('mmp_identifier')
+        payment_date = data.get('payment_date')
+        payment_reference = data.get('payment_reference')
 
-    if not period:
-        logger.error("Period (MM-YYYY) is missing.")
-        return JsonResponse({"errors": "Period is required."}, status=400)
+        # Validate payment_date format (DD-MM-YYYY)
+        try:
+            payment_date = datetime.strptime(payment_date, '%d-%m-%Y').date()
+        except ValueError as e:
+            logger.error(f"Invalid payment date format: {str(e)}")
+            return JsonResponse({"errors": "Invalid payment date format. Expected DD-MM-YYYY."}, status=400)
 
-    if not mmp_identifier:
-        logger.error("MMP Identifier is missing.")
-        return JsonResponse({"errors": "MMP Identifier is required."}, status=400)
+        # Convert payment_amount to Decimal
+        try:
+            payment_amount = Decimal(payment_amount)
+            if payment_amount <= 0:
+                raise ValueError("Payment amount must be greater than zero.")
+        except (InvalidOperation, ValueError, TypeError) as e:
+            logger.error(f"Invalid payment amount: {str(e)}")
+            return JsonResponse({"errors": "Invalid payment amount."}, status=400)
 
-    if not payment_date:
-        logger.error("Payment date is missing.")
-        return JsonResponse({"errors": "Payment date is required."}, status=400)
+        # Fetch the policy holder
+        try:
+            policy_holder = PolicyHolder.objects.filter(code=policy_holder_code, is_deleted=False).first()
+            if not policy_holder:
+                logger.error(f"No policy holder found for code: {policy_holder_code}")
+                return JsonResponse({"errors": "No policy holder found."}, status=404)
+        except Exception as e:
+            logger.error(f"Database error while fetching policy holder: {str(e)}")
+            return JsonResponse({"errors": "Internal server error while fetching policy holder."}, status=500)
 
-    if not payment_reference:
-        logger.error("Payment reference is missing.")
-        return JsonResponse({"errors": "Payment reference is required."}, status=400)
+        # Convert the period (MM-YYYY) into a datetime object for comparison
+        try:
+            period_date = datetime.strptime(period, "%m-%Y")
+        except ValueError as e:
+            logger.error(f"Invalid period format: {str(e)}")
+            return JsonResponse({"errors": "Invalid period format. Expected MM-YYYY."}, status=400)
 
-    # Validate payment_date format (DD-MM-YYYY)
-    try:
-        payment_date = datetime.strptime(payment_date, '%d-%m-%Y').date()
-    except ValueError:
-        logger.error("Invalid payment date format. Expected format is DD-MM-YYYY.")
-        return JsonResponse({"errors": "Invalid payment date format. Expected DD-MM-YYYY."}, status=400)
+        # Fetch all executable contracts for the policy holder that match the period
+        try:
+            contracts = Contract.objects.filter(
+                policy_holder=policy_holder,
+                state=Contract.STATE_EXECUTABLE,
+                is_deleted=False,
+            ).order_by('date_valid_from')
 
-    # Convert string input to Decimal for payment_amount
-    try:
-        payment_amount = Decimal(payment_amount)
-    except (InvalidOperation, TypeError):
-        logger.error(f"Invalid payment amount input: {payment_amount}")
-        return JsonResponse({"errors": "Invalid payment amount."}, status=400)
+            matching_contracts = [contract for contract in contracts if contract.date_valid_from.strftime("%m-%Y") == period]
+            if not matching_contracts:
+                logger.error(f"No executable contracts found for period {period}.")
+                return JsonResponse({"errors": f"No executable contracts found for period {period}."}, status=404)
+        except Exception as e:
+            logger.error(f"Database error while fetching contracts: {str(e)}")
+            return JsonResponse({"errors": "Internal server error while fetching contracts."}, status=500)
 
-    if payment_amount <= 0:
-        logger.error(f"Payment amount must be positive: {payment_amount}")
-        return JsonResponse({"errors": "Payment amount must be greater than zero."}, status=400)
+        # Find the earliest payment for the matching contracts
+        earliest_payment, earliest_contract = None, None
+        try:
+            for contract in matching_contracts:
+                payment = Payment.objects.filter(
+                    contract=contract,
+                    legacy_id__isnull=True,
+                    validity_to__isnull=True,
+                    status=Payment.STATUS_CREATED
+                ).order_by('payment_date').first()
 
-    # Fetch the policy holder using the policy_holder_code
-    policy_holder = PolicyHolder.objects.filter(code=policy_holder_code, is_deleted=False).first()
-    if not policy_holder:
-        logger.error(f"No policy holder found for code: {policy_holder_code}")
-        return JsonResponse({"errors": "No policy holder found."}, status=404)
+                if payment and (earliest_payment is None or payment.payment_date < earliest_payment.payment_date):
+                    earliest_payment = payment
+                    earliest_contract = contract
 
-    logger.info(f"Policy holder found: {policy_holder_code}")
+            if not earliest_payment or not earliest_contract:
+                logger.error(f"No due payment found for the period {period}.")
+                return JsonResponse({"errors": f"No due payment found for the period {period}."}, status=404)
+        except Exception as e:
+            logger.error(f"Error while finding earliest payment: {str(e)}")
+            return JsonResponse({"errors": "Internal server error while fetching payments."}, status=500)
 
-    # Convert the period (MM-YYYY) into a datetime object for comparison
-    try:
-        period_date = datetime.strptime(period, "%m-%Y")
-    except ValueError:
-        logger.error(f"Invalid period format: {period}. Expected format is MM-YYYY.")
-        return JsonResponse({"errors": "Invalid period format. Expected MM-YYYY."}, status=400)
+        # Fetch penalty associated with the contract (if any)
+        penalty_amount = Decimal(0)  # Default to 0 if no penalty is found
+        try:
+            penalty = PaymentPenaltyAndSanction.objects.filter(
+                outstanding_payment__isnull=True,
+                payment=earliest_payment,
+                is_deleted=False
+            ).first()
+            total_expected_amount = earliest_payment.expected_amount
+            if penalty:
+                total_expected_amount += penalty.amount
+                logger.info(
+                    f"Penalty found: {penalty.code} for payment: {earliest_payment.id}, Penalty amount: {penalty.amount}")
 
-    # Fetch all executable contracts for the policy holder that match the period
-    contracts = Contract.objects.filter(
-        policy_holder=policy_holder,
-        state=Contract.STATE_EXECUTABLE,
-        is_deleted=False
-    ).order_by('date_valid_from')
+                # Validate that the entered amount is correct
+            if payment_amount != total_expected_amount:
+                logger.error(f"Wrong amount entered: {payment_amount}. Expected: {total_expected_amount}")
+                return JsonResponse({"errors": f"Wrong amount entered. Expected sum: {total_expected_amount}."},
+                                    status=400)
+            penalty.received_amount = penalty.amount
+            penalty.status = PaymentPenaltyAndSanction.PENALTY_APPROVED
+            earliest_payment.is_penalty_included=True
+            earliest_payment.penalty_amount_paid=penalty.amount
+            penalty.save(username="Admin")
+            logger.info(f"Updated penalty status for payment: {earliest_payment.id}")
 
-    # Filter contracts by matching the period (MM-YYYY) with date_valid_from
-    matching_contracts = [contract for contract in contracts if contract.date_valid_from.strftime("%m-%Y") == period]
+        except Exception as e:
+            logger.error(f"Error while fetching penalty for contract {earliest_contract.code}: {str(e)}")
+            return JsonResponse({"errors": "Internal server error while fetching penalty details."}, status=500)
 
-    if not matching_contracts:
-        logger.error(f"No executable contracts found for policy holder ({policy_holder_code}) for the period {period}.")
-        return JsonResponse({"errors": f"No executable contracts found for the period {period}."}, status=404)
+        # Fetch Bank data using mmp_identifier
+        try:
+            bank = Banks.objects.filter(code=mmp_identifier, is_deleted=False).first()
+            if not bank:
+                logger.error(f"No bank found with MMP identifier: {mmp_identifier}")
+                return JsonResponse({"errors": f"No bank found with MMP identifier {mmp_identifier}."}, status=404)
+        except Exception as e:
+            logger.error(f"Database error while fetching bank details: {str(e)}")
+            return JsonResponse({"errors": "Internal server error while fetching bank details."}, status=500)
 
-    logger.info(f"Executable contract(s) found for policy holder: {policy_holder_code} for period {period}")
+        # Create json_ext data from the bank details
+        bank_encode_id = f'BanksType:{bank.id}'
+        json_ext_data = {
+            "bank": {
+                "id": base64_encode(bank_encode_id),
+                "code": bank.code,
+                "name": bank.name,
+                "erpId": bank.erp_id,
+                "jsonExt": None,  # Assuming this is still None as per your example
+                "journauxId": bank.journaux_id,
+                "altLangName": bank.alt_lang_name,
+                "dateCreated": bank.date_created.strftime("%Y-%m-%d %H:%M:%S") if bank.date_created else None,
+                "dateUpdated": bank.date_updated.strftime("%Y-%m-%d %H:%M:%S") if bank.date_updated else None
+            },
+            "amount": int(payment_amount),
+            "receiptNo": payment_reference,
+            "journauxId": bank.journaux_id,
+            "payment_method_id": TIPL_PAYMENT_METHOD_ID,
+        }
 
-    # Iterate over the matching contracts to find the first non-approved payment
-    earliest_payment = None
-    earliest_contract = None
+        # Update the earliest payment
+        try:
+            earliest_payment.received_amount = earliest_payment.expected_amount
+            earliest_payment.status = Payment.STATUS_APPROVED
+            earliest_payment.matched_date = payment_date
+            earliest_payment.received_amount_transaction = [json_ext_data]
+            earliest_payment.save()
 
-    for contract in matching_contracts:
-        # Fetch the first non-approved payment for the contract
-        payment = Payment.objects.filter(
-            contract=contract,
-            legacy_id__isnull=True,
-            validity_to__isnull=True,
-            status=Payment.STATUS_CREATED  # Only non-approved payments
-        ).order_by('payment_date').first()
+            logger.info(f"Payment updated for contract: {earliest_contract.code}, Amount: {earliest_payment.expected_amount}")
+        except Exception as e:
+            logger.error(f"Error while updating payment: {str(e)}")
+            return JsonResponse({"errors": "Internal server error while updating payment."}, status=500)
 
-        if payment:
-            # Track the earliest payment found
-            if earliest_payment is None or payment.payment_date < earliest_payment.payment_date:
-                earliest_payment = payment
-                earliest_contract = contract
+        return JsonResponse({
+            "success": f"Payment and penalty updated successfully for period {period}.",
+            "payment_reference": payment_reference,
+            "mmp_identifier": mmp_identifier,
+            "payment_date": payment_date.strftime("%Y-%m-%d")
+        }, status=200)
 
-    if not earliest_payment or not earliest_contract:
-        logger.error(f"No due payment found for policy holder ({policy_holder_code}) for the period {period}.")
-        return JsonResponse(
-            {"errors": f"No due payment found for policy holder ({policy_holder_code}) for the period {period}."},
-            status=404)
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        return JsonResponse({"errors": "An unexpected error occurred."}, status=500)
 
-    logger.info(f"Found earliest payment for policy holder: {policy_holder_code}, Payment ID: {earliest_payment.id}")
 
-    # Check if there's a penalty
-    penalty = PaymentPenaltyAndSanction.objects.filter(
-        outstanding_payment__isnull=True,
-        payment=earliest_payment,
-        is_deleted=False
-    ).first()
-
-    total_expected_amount = earliest_payment.expected_amount
-    if penalty:
-        total_expected_amount += penalty.amount
-        logger.info(
-            f"Penalty found: {penalty.code} for payment: {earliest_payment.id}, Penalty amount: {penalty.amount}")
-
-    # Validate that the entered amount is correct
-    if payment_amount != total_expected_amount:
-        logger.error(f"Wrong amount entered: {payment_amount}. Expected: {total_expected_amount}")
-        return JsonResponse({"errors": f"Wrong amount entered. Expected sum: {total_expected_amount}."}, status=400)
-
-    # Update penalty and payment if the amount matches
-    if penalty:
-        penalty.received_amount = penalty.amount
-        penalty.status = PaymentPenaltyAndSanction.PENALTY_APPROVED
-        penalty.save(username="Admin")
-        logger.info(f"Updated penalty status for payment: {earliest_payment.id}")
-
-    earliest_payment.received_amount = earliest_payment.expected_amount
-    earliest_payment.status = Payment.STATUS_APPROVED
-    # earliest_payment.mmp_identifier = mmp_identifier
-    earliest_payment.matched_date = payment_date
-    # earliest_payment.payment_reference = payment_reference
-    earliest_payment.save()
-
-    logger.info(f"Payment updated for contract: {earliest_contract.code}, Amount: {earliest_payment.expected_amount}")
-
-    return JsonResponse({
-        "success": f"Payment and penalty updated successfully for period {period}.",
-        "payment_reference": payment_reference,
-        "mmp_identifier": mmp_identifier,
-        "payment_date": payment_date.strftime("%Y-%m-%d")
-    }, status=200)
