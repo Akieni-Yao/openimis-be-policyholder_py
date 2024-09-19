@@ -1350,20 +1350,20 @@ def get_declaration_details(requests, policy_holder_code):
         return JsonResponse({"errors": f"Multiple insurees attached with this policy holder ({policy_holder_code})"},
                             status=400)
 
-    # Check and map insuree status
-    if ph_insuree.insuree.status in ['APPROVED', 'ACTIVE']:
-        insuree_status = "Registered"
-    else:
-        insuree_status = "Unregistered"
+    # # Check and map insuree status
+    # if ph_insuree.insuree.status in ['APPROVED', 'ACTIVE']:
+    #     insuree_status = 'Active'
+    # else:
+    #     insuree_status = "Unregistered"
 
-    logger.info(f"Insuree status for policy holder {policy_holder_code}: {insuree_status}")
+    # logger.info(f"Insuree status for policy holder {policy_holder_code}: {insuree_status}")
 
     # Check insuree's active status
     is_active = has_active_policy(ph_insuree.insuree)
     if is_active:
         insuree_right_status = 'Active'
     else:
-        return JsonResponse({"errors": "Insuree is not Active."}, status=403)
+        insuree_right_status = 'Inactive'
 
     # Fetch executable contracts
     contracts = Contract.objects.filter(
