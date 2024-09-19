@@ -1442,7 +1442,8 @@ def get_declaration_details(requests, policy_holder_code):
         logger.info(f"Contract and payment details collected for policy holder: {policy_holder_code}")
     else:
         logger.error(f"No due payment found for policy holder ({policy_holder_code})")
-        return JsonResponse({"message": f"No due payment found with this policy holder code({policy_holder_code})."}, status=404)
+        return JsonResponse({"message": f"No due payment found with this policy holder code({policy_holder_code})."},
+                            status=404)
 
     data['data'] = contract_data
     return JsonResponse(data, status=200)
@@ -1471,7 +1472,8 @@ def paid_contract_payment(request):
             return JsonResponse({"errors": "Invalid JSON input."}, status=400)
 
         # Extract required fields
-        required_fields = ['policy_holder_code', 'payment_amount', 'period', 'mmp_identifier', 'payment_date', 'payment_reference']
+        required_fields = ['policy_holder_code', 'payment_amount', 'period', 'mmp_identifier', 'payment_date',
+                           'payment_reference']
         missing_fields = [field for field in required_fields if not data.get(field)]
         if missing_fields:
             logger.error(f"Required field(s) missing: {missing_fields}")
@@ -1525,7 +1527,8 @@ def paid_contract_payment(request):
                 is_deleted=False,
             ).order_by('date_valid_from')
 
-            matching_contracts = [contract for contract in contracts if contract.date_valid_from.strftime("%m-%Y") == period]
+            matching_contracts = [contract for contract in contracts if
+                                  contract.date_valid_from.strftime("%m-%Y") == period]
             if not matching_contracts:
                 logger.error(f"No executable contracts found for period {period}.")
                 return JsonResponse({"errors": f"No executable contracts found for period {period}."}, status=404)
@@ -1571,11 +1574,12 @@ def paid_contract_payment(request):
                 earliest_payment.penalty_amount_paid = penalty.amount
                 penalty.save(username="Admin")
 
-            #     # Validate that the entered amount is correct
-            # if payment_amount != total_expected_amount:
-            #     logger.error(f"Wrong amount entered: {payment_amount}. Expected: {total_expected_amount}")
-            #     return JsonResponse({"errors": f"Wrong amount entered. Expected sum: {total_expected_amount}."},
-            #                         status=400)
+            if payment_amount not in [earliest_payment.expected_amount, total_expected_amount]:
+                logger.error(
+                    f"Wrong amount entered: {payment_amount}. Expected: {earliest_payment.expected_amount} or {total_expected_amount}")
+                return JsonResponse({
+                    "errors": f"Invalid amount. Expected {total_expected_amount}."},
+                    status=400)
 
             logger.info(f"Updated penalty status for payment: {earliest_payment.id}")
 
@@ -1621,7 +1625,8 @@ def paid_contract_payment(request):
             earliest_payment.received_amount_transaction = [json_ext_data]
             earliest_payment.save()
 
-            logger.info(f"Payment updated for contract: {earliest_contract.code}, Amount: {earliest_payment.expected_amount}")
+            logger.info(
+                f"Payment updated for contract: {earliest_contract.code}, Amount: {earliest_payment.expected_amount}")
         except Exception as e:
             logger.error(f"Error while updating payment: {str(e)}")
             return JsonResponse({"errors": "Internal server error while updating payment."}, status=500)
@@ -1636,5 +1641,3 @@ def paid_contract_payment(request):
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
         return JsonResponse({"errors": "An unexpected error occurred."}, status=500)
-
-
