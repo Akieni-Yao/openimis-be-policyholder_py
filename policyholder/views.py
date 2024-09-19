@@ -1574,11 +1574,11 @@ def paid_contract_payment(request):
                 logger.error(f"Wrong amount entered: {payment_amount}. Expected: {total_expected_amount}")
                 return JsonResponse({"errors": f"Wrong amount entered. Expected sum: {total_expected_amount}."},
                                     status=400)
-            penalty.received_amount = penalty.amount
-            penalty.status = PaymentPenaltyAndSanction.PENALTY_APPROVED
-            earliest_payment.is_penalty_included=True
-            earliest_payment.penalty_amount_paid=penalty.amount
-            penalty.save(username="Admin")
+                penalty.received_amount = penalty.amount
+                penalty.status = PaymentPenaltyAndSanction.PENALTY_APPROVED
+                earliest_payment.is_penalty_included=True
+                earliest_payment.penalty_amount_paid=penalty.amount
+                penalty.save(username="Admin")
             logger.info(f"Updated penalty status for payment: {earliest_payment.id}")
 
         except Exception as e:
