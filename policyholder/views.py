@@ -1298,10 +1298,22 @@ def custom_policyholder_policies_expire(request):
 
 
 def has_active_policy(insuree):
-    # Check if the insuree has any policy with active status
-    return Policy.objects.filter(
-        insuree_policies__insuree=insuree, status=Policy.STATUS_ACTIVE
-    ).exists()
+    current_date = datetime.now()
+    current_date = current_date.date()
+    ins_pol = InsureePolicy.objects.filter(
+        insuree__chf_id=insuree.chf_id,
+        insuree__legacy_id__isnull=True,
+        policy__legacy_id__isnull=True,
+        start_date__lte=current_date,
+        expiry_date__gte=current_date,
+        legacy_id__isnull=True).order_by('-expiry_date').all()
+    latest_record = None
+    if ins_pol and len(ins_pol) > 0:
+        for pol in ins_pol:
+            if pol.policy.status == 2:
+                latest_record = pol
+                break
+    return True if latest_record else False
 
 
 @api_view(["GET"])
