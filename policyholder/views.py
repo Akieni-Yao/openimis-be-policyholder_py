@@ -1554,9 +1554,6 @@ def paid_contract_payment(request):
         except Exception as e:
             logger.error(f"Error while finding earliest payment: {str(e)}")
             return JsonResponse({"errors": "Internal server error while fetching payments."}, status=500)
-
-        # Fetch penalty associated with the contract (if any)
-        penalty_amount = Decimal(0)  # Default to 0 if no penalty is found
         try:
             penalty = PaymentPenaltyAndSanction.objects.filter(
                 outstanding_payment__isnull=True,
@@ -1568,17 +1565,18 @@ def paid_contract_payment(request):
                 total_expected_amount += penalty.amount
                 logger.info(
                     f"Penalty found: {penalty.code} for payment: {earliest_payment.id}, Penalty amount: {penalty.amount}")
-
-                # Validate that the entered amount is correct
-            if payment_amount != total_expected_amount:
-                logger.error(f"Wrong amount entered: {payment_amount}. Expected: {total_expected_amount}")
-                return JsonResponse({"errors": f"Wrong amount entered. Expected sum: {total_expected_amount}."},
-                                    status=400)
                 penalty.received_amount = penalty.amount
                 penalty.status = PaymentPenaltyAndSanction.PENALTY_APPROVED
-                earliest_payment.is_penalty_included=True
-                earliest_payment.penalty_amount_paid=penalty.amount
+                earliest_payment.is_penalty_included = True
+                earliest_payment.penalty_amount_paid = penalty.amount
                 penalty.save(username="Admin")
+
+            #     # Validate that the entered amount is correct
+            # if payment_amount != total_expected_amount:
+            #     logger.error(f"Wrong amount entered: {payment_amount}. Expected: {total_expected_amount}")
+            #     return JsonResponse({"errors": f"Wrong amount entered. Expected sum: {total_expected_amount}."},
+            #                         status=400)
+
             logger.info(f"Updated penalty status for payment: {earliest_payment.id}")
 
         except Exception as e:
