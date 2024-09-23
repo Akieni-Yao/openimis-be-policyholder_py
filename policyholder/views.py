@@ -5,6 +5,7 @@ import io
 import calendar
 from datetime import datetime, timedelta
 
+from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import EmailMessage
@@ -1402,11 +1403,11 @@ def get_declaration_details(requests, policy_holder_code):
             legacy_id__isnull=True,
             validity_to__isnull=True,
             status=Payment.STATUS_CREATED  # Exclude approved payments
-        ).order_by('payment_date').first()
+        ).order_by('validity_from').first()
 
         if payment:
             # Check for the earliest payment
-            if earliest_payment is None or payment.payment_date < earliest_payment.payment_date:
+            if earliest_payment is None or payment.validity_from < earliest_payment.validity_from:
                 earliest_payment = payment
                 earliest_contract = contract
 
@@ -1524,9 +1525,10 @@ def paid_contract_payment(request):
             logger.error(f"Database error while fetching policy holder: {str(e)}")
             return JsonResponse({"errors": "Internal server error while fetching policy holder."}, status=500)
 
-        # Convert the period (MM-YYYY) into a datetime object for comparison
         try:
             period_date = datetime.strptime(period, "%m-%Y")
+            start_of_period = period_date.replace(day=1)
+            end_of_period = (start_of_period + relativedelta(months=1)) - timedelta(days=1)
         except ValueError as e:
             logger.error(f"Invalid period format: {str(e)}")
             return JsonResponse({"errors": "Invalid period format. Expected MM-YYYY."}, status=400)
@@ -1537,6 +1539,8 @@ def paid_contract_payment(request):
                 policy_holder=policy_holder,
                 state=Contract.STATE_EXECUTABLE,
                 is_deleted=False,
+                date_valid_from__gte=start_of_period,
+                date_valid_from__lte=end_of_period
             ).order_by('date_valid_from')
 
             matching_contracts = [contract for contract in contracts if
@@ -1557,9 +1561,9 @@ def paid_contract_payment(request):
                     legacy_id__isnull=True,
                     validity_to__isnull=True,
                     status=Payment.STATUS_CREATED
-                ).order_by('payment_date').first()
+                ).order_by('validity_from').first()
 
-                if payment and (earliest_payment is None or payment.payment_date < earliest_payment.payment_date):
+                if payment and (earliest_payment is None or payment.validity_from < earliest_payment.validity_from):
                     earliest_payment = payment
                     earliest_contract = contract
 
