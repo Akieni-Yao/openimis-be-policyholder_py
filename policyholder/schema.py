@@ -333,24 +333,30 @@ class Query(graphene.ObjectType):
     )
 
     def resolve_unpaid_declaration_by_policyholder(self, info, **kwargs):
-        # Check user permissions
-        user = info.context.user
-        if not user.has_perms(PolicyholderConfig.gql_query_policyholdercontributionplanbundle_perms):
-            if not user.has_perms(PolicyholderConfig.gql_query_policyholdercontributionplanbundle_portal_perms):
-                raise PermissionError("Unauthorized")
+        if not info.context.user.has_perms(PolicyholderConfig.gql_query_policyholdercontributionplanbundle_perms):
+            if not info.context.user.has_perms(
+                    PolicyholderConfig.gql_query_policyholdercontributionplanbundle_portal_perms):
+                        raise PermissionError("Unauthorized")
 
-        # Extract policy_holder_id from arguments
         policy_holder_id = kwargs.get("policy_holder_id")
         if not policy_holder_id:
             raise ValueError("policy_holder_id is required.")
 
-        # Query payments with related penalties for the specified policyholder
-        payments_with_penalty = Payment.objects.filter(
-            Q(contract__policy_holder__status='Locked') &
-            Q(contract__policy_holder_id=policy_holder_id)
-        ).order_by('-contract__date_valid_from')[:3]
+        # Query the last three contracts for the policyholder
+        contracts = Contract.objects.filter(
+            policy_holder_id=policy_holder_id
+        ).order_by('-date_valid_from')[:3]
 
-        return gql_optimizer.query(payments_with_penalty, info)
+        # Join the contracts with payments and penalties (avoiding redundant lookup)
+        payments = Payment.objects.filter(
+            contract__in=contracts
+        ).select_related('contract')
+
+        # Retrieve penalties associated with each payment
+        for payment in payments:
+            payment.penalties = payment.payments_penalty.all()
+
+        return gql_optimizer.query(payments, info)
 
 
 class Mutation(graphene.ObjectType):
