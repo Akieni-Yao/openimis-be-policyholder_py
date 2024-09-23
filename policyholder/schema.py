@@ -342,21 +342,12 @@ class Query(graphene.ObjectType):
         if not policy_holder_id:
             raise ValueError("policy_holder_id is required.")
 
-        # Query the last three contracts for the policyholder
-        contracts = Contract.objects.filter(
-            policy_holder_id=policy_holder_id
-        ).order_by('-date_valid_from')[:3]
+        payments_with_penalties = Payment.objects.filter(
+            contract__policy_holder=policy_holder_id,
+            payments_penalty__isnull=False  # Ensures there are penalties
+        ).distinct().order_by('-payment_date')[:3]
 
-        # Join the contracts with payments and penalties (avoiding redundant lookup)
-        payments = Payment.objects.filter(
-            contract__in=contracts
-        ).select_related('contract')
-
-        # Retrieve penalties associated with each payment
-        for payment in payments:
-            payment.penalties = payment.payments_penalty.all()
-
-        return gql_optimizer.query(payments, info)
+        return gql_optimizer.query(payments_with_penalties, info)
 
 
 class Mutation(graphene.ObjectType):
