@@ -12,13 +12,11 @@ from django.core.mail import EmailMessage
 from django.db.models import Q, Sum
 from django.shortcuts import redirect
 from django.utils import timezone
-
 import pandas as pd
-from django.http import JsonResponse, FileResponse, HttpResponse
+from django.http import JsonResponse, HttpResponse
 from django.utils.dateparse import parse_date
 from django.utils.encoding import force_text
 from django.utils.http import urlsafe_base64_decode
-from django.views.decorators.csrf import csrf_exempt
 from graphql import GraphQLError
 
 from rest_framework.decorators import permission_classes, api_view, authentication_classes
@@ -1472,6 +1470,7 @@ def get_declaration_details(requests, policy_holder_code):
 )
 def paid_contract_payment(request):
     try:
+        username = request.user.username
         # Check if the request is PUT
         if request.method != 'PUT':
             logger.error("Invalid request method. Only PUT requests are allowed.")
@@ -1588,7 +1587,7 @@ def paid_contract_payment(request):
                 penalty.status = PaymentPenaltyAndSanction.PENALTY_APPROVED
                 earliest_payment.is_penalty_included = True
                 earliest_payment.penalty_amount_paid = penalty.amount
-                penalty.save(username="Admin")
+                penalty.save(username=username)
 
             if payment_amount not in [earliest_payment.expected_amount, total_expected_amount]:
                 logger.error(
