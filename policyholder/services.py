@@ -1,4 +1,4 @@
-import core
+
 import json
 import logging
 import pytz
@@ -10,7 +10,9 @@ from django.db import connection, transaction
 from django.contrib.auth.models import AnonymousUser
 from django.core import serializers
 from django.forms.models import model_to_dict
+from django.http import JsonResponse
 
+from core.notification_service import base64_encode
 from policyholder.apps import PolicyholderConfig
 from policyholder.models import PolicyHolder as PolicyHolderModel, PolicyHolderUser as PolicyHolderUserModel, \
     PolicyHolderContributionPlan as PolicyHolderContributionPlanModel, PolicyHolderInsuree as PolicyHolderInsureeModel
@@ -18,12 +20,13 @@ from policyholder.validation import PolicyHolderValidation
 from policyholder.constants import *
 from policy.models import Policy
 from insuree.models import Insuree, InsureePolicy, Family
-from payment.models import PaymentDetail
-from contract.models import ContractDetails, ContractContributionPlanDetails
+from payment.models import PaymentDetail, Payment
+from contract.models import ContractDetails, ContractContributionPlanDetails, Contract
 from django.db import connection
 from policyholder.erp_intigration import erp_create_update_policyholder
 
 logger = logging.getLogger("openimis." + __name__)
+
 
 def activate_policy_of_insuree(ccpds):
     logger.debug("====  activate_policy_of_insuree  ====  start  ====")
@@ -54,12 +57,13 @@ def activate_policy_of_insuree(ccpds):
     logger.debug("====  activate_policy_of_insuree  ====  end  ====")
     return True
 
+
 def check_payment_done_by_policyholder(insuree_id):
     logger.debug("====  check_payment_done_by_policyholder  ====  start  ====")
     insuree = Insuree.objects.filter(id=insuree_id).first()
     # if insuree.is_payment_done and not insuree.is_rights and insuree.document_status and insuree.biometrics_is_master:
-        # insuree_policies = PolicyHolderInsureeModel.objects.filter(insuree_id=insuree.id).all()
-        # for inpo in insuree_policies:
+    # insuree_policies = PolicyHolderInsureeModel.objects.filter(insuree_id=insuree.id).all()
+    # for inpo in insuree_policies:
     if insuree.head:
         logger.debug(f"====  check_payment_done_by_policyholder  ====  insuree.head  ====  {insuree.head}")
         insuree_policies = PolicyHolderInsureeModel.objects.filter(insuree_id=insuree.id, is_deleted=False).first()
@@ -71,35 +75,46 @@ def check_payment_done_by_policyholder(insuree_id):
                 # for ip in insuree_policies:
                 if insuree_policies.contribution_plan_bundle.is_deleted == False:
                     contribution_plan_bundle_ids.append(insuree_policies.contribution_plan_bundle.id)
-                logger.debug(f"====  check_payment_done_by_policyholder  ====  contribution_plan_bundle_ids  ====  {contribution_plan_bundle_ids}")
-                
+                logger.debug(
+                    f"====  check_payment_done_by_policyholder  ====  contribution_plan_bundle_ids  ====  {contribution_plan_bundle_ids}")
+
                 contract_details = None
                 contract_details_ids = []
-                if len(contribution_plan_bundle_ids)>0:
-                    contract_details = ContractDetails.objects.filter(contribution_plan_bundle__id__in=contribution_plan_bundle_ids, insuree_id=insuree_id, is_deleted=False).all()
+                if len(contribution_plan_bundle_ids) > 0:
+                    contract_details = ContractDetails.objects.filter(
+                        contribution_plan_bundle__id__in=contribution_plan_bundle_ids, insuree_id=insuree_id,
+                        is_deleted=False).all()
                     if contract_details:
                         for cd in contract_details:
                             contract_details_ids.append(cd.uuid)
-                logger.debug(f"====  check_payment_done_by_policyholder  ====  contract_details_ids  ====  {contract_details_ids}")
+                logger.debug(
+                    f"====  check_payment_done_by_policyholder  ====  contract_details_ids  ====  {contract_details_ids}")
 
                 contract_contribution_plan_details = None
                 premium_ids = []
-                if len(contract_details_ids)>0:
-                    contract_contribution_plan_details = ContractContributionPlanDetails.objects.filter(contract_details__id__in=contract_details_ids, is_deleted=False).all()
+                if len(contract_details_ids) > 0:
+                    contract_contribution_plan_details = ContractContributionPlanDetails.objects.filter(
+                        contract_details__id__in=contract_details_ids, is_deleted=False).all()
                     if contract_contribution_plan_details:
                         for ccpd in contract_contribution_plan_details:
                             if ccpd.contribution.legacy_id == None:
                                 premium_ids.append(ccpd.contribution.id)
-                logger.debug(f"====  check_payment_done_by_policyholder  ====  contract_contribution_plan_details  ====  {contract_contribution_plan_details}")
+                logger.debug(
+                    f"====  check_payment_done_by_policyholder  ====  contract_contribution_plan_details  ====  {contract_contribution_plan_details}")
                 logger.debug(f"====  check_payment_done_by_policyholder  ====  premium_ids  ====  {premium_ids}")
 
                 if contract_contribution_plan_details and insuree_policies.is_payment_done_by_policy_holder:
-                    logger.debug(f"====  check_payment_done_by_policyholder  ====  insuree_policies.is_payment_done_by_policy_holder  ====  {insuree_policies.is_payment_done_by_policy_holder}")
+                    logger.debug(
+                        f"====  check_payment_done_by_policyholder  ====  insuree_policies.is_payment_done_by_policy_holder  ====  {insuree_policies.is_payment_done_by_policy_holder}")
                     if insuree.status == "APPROVED" and insuree.document_status and insuree.biometrics_is_master:
-                        logger.debug(f"====  check_payment_done_by_policyholder  ====  insuree.status  ====  {insuree.status}")
-                        logger.debug(f"====  check_payment_done_by_policyholder  ====  insuree.document_status  ====  {insuree.document_status}")
-                        logger.debug(f"====  check_payment_done_by_policyholder  ====  insuree.biometrics_is_master  ====  {insuree.biometrics_is_master}")
-                        PolicyHolderInsureeModel.objects.filter(id=insuree_policies.id).update(is_rights_enable_for_insuree=True)
+                        logger.debug(
+                            f"====  check_payment_done_by_policyholder  ====  insuree.status  ====  {insuree.status}")
+                        logger.debug(
+                            f"====  check_payment_done_by_policyholder  ====  insuree.document_status  ====  {insuree.document_status}")
+                        logger.debug(
+                            f"====  check_payment_done_by_policyholder  ====  insuree.biometrics_is_master  ====  {insuree.biometrics_is_master}")
+                        PolicyHolderInsureeModel.objects.filter(id=insuree_policies.id).update(
+                            is_rights_enable_for_insuree=True)
                         Insuree.objects.filter(id=insuree_id).update(status="ACTIVE")
                         if insuree.head:
                             Family.objects.filter(id=insuree.family.id).update(status="ACTIVE")
@@ -109,9 +124,11 @@ def check_payment_done_by_policyholder(insuree_id):
                                     Insuree.objects.filter(id=member.id).update(status="ACTIVE")
                         activate_policy_of_insuree(contract_contribution_plan_details)
                         insuree = Insuree.objects.filter(id=insuree_id).first()
-                        family =  Family.objects.filter(id=insuree.family.id).first()
-                        logger.debug(f"====  check_payment_done_by_policyholder  ====  insuree.status  ====  {insuree.status}")
-                        logger.debug(f"====  check_payment_done_by_policyholder  ====  family.status  ====  {family.status}")
+                        family = Family.objects.filter(id=insuree.family.id).first()
+                        logger.debug(
+                            f"====  check_payment_done_by_policyholder  ====  insuree.status  ====  {insuree.status}")
+                        logger.debug(
+                            f"====  check_payment_done_by_policyholder  ====  family.status  ====  {family.status}")
     else:
         family_members = Insuree.objects.filter(family_id=insuree.family.id, legacy_id=None).all()
         for member in family_members:
@@ -121,6 +138,7 @@ def check_payment_done_by_policyholder(insuree_id):
 
     logger.debug("====  check_payment_done_by_policyholder  ====  end  ====")
     return True
+
 
 def check_authentication(function):
     def wrapper(self, *args, **kwargs):
@@ -471,19 +489,117 @@ def assign_ph_exception_policy(ph_exception):
 
 
 def generate_camu_registration_number(code):
-        congo_timezone = pytz.timezone('Africa/Kinshasa')
-        # Get the current time in Congo Time
-        congo_time = datetime.datetime.now(congo_timezone)
-        series1 = "CAMU"  # Define the fixed components of the number
-        series2 = str(code)  # You mentioned "construction" as the sector of activity
-        series3 = congo_time.strftime("%H")  # Registration time (hour)
-        series4 = congo_time.strftime("%m").zfill(2)  # Month of registration with leading zero
-        series5 = congo_time.strftime("%d").zfill(2)  # Day of registration with leading zero
-        series6 = congo_time.strftime("%y")  # Year of registration
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT nextval('public.camu_code_seq')")
-            sequence_value = cursor.fetchone()[0]
-        series7 = str(sequence_value).zfill(3)  # Order of recording
-        # Concatenate the series to generate the final number
-        generated_number = f"{series1}{series2}{series3}{series4}{series5}{series6}{series7}"
-        return generated_number
+    congo_timezone = pytz.timezone('Africa/Kinshasa')
+    # Get the current time in Congo Time
+    congo_time = datetime.datetime.now(congo_timezone)
+    series1 = "CAMU"  # Define the fixed components of the number
+    series2 = str(code)  # You mentioned "construction" as the sector of activity
+    series3 = congo_time.strftime("%H")  # Registration time (hour)
+    series4 = congo_time.strftime("%m").zfill(2)  # Month of registration with leading zero
+    series5 = congo_time.strftime("%d").zfill(2)  # Day of registration with leading zero
+    series6 = congo_time.strftime("%y")  # Year of registration
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT nextval('public.camu_code_seq')")
+        sequence_value = cursor.fetchone()[0]
+    series7 = str(sequence_value).zfill(3)  # Order of recording
+    # Concatenate the series to generate the final number
+    generated_number = f"{series1}{series2}{series3}{series4}{series5}{series6}{series7}"
+    return generated_number
+
+
+def tipl_contract_scenarios(user, contract):
+    from contract.gql.gql_mutations.mutations import ContractCreateMutationMixin, ContractSubmitMutationMixin, \
+        ContractApproveMutationMixin
+    # Validation
+    if not user or not contract:
+        logger.error(f"Invalid user or contract data: user={user}, contract={contract}")
+        return False
+
+    try:
+        contract_create_mixin = ContractCreateMutationMixin()
+        c_output = contract_create_mixin.create_contract(user, contract)
+        logger.info(f"Contract creation output: {c_output}")
+        data = c_output.get('data', None)
+        contract['id'] =data.get('id', None)
+        contract_submit_mixin = ContractSubmitMutationMixin()
+        s_output = contract_submit_mixin.submit_contract(user, contract)
+        logger.info(f"Contract submission output: {s_output}")
+
+        contract_approved_mixin = ContractApproveMutationMixin()
+        a_output = contract_approved_mixin.approve_contract(user, contract)
+        logger.info(f"Contract approval output: {a_output}")
+
+    except Exception as e:
+        logger.error(f"Error during contract processing: {str(e)}", exc_info=True)
+        return False
+
+    logger.info(f"Contract scenarios processed successfully for user: {user.id}, contract: {contract['id']}")
+    return True
+
+
+def tipl_payment_scenarios(user, contract, payment_date, bank, payment_amount, payment_reference):
+    # Validation
+    if not all([user, contract, payment_date, bank, payment_amount, payment_reference]):
+        logger.error(f"Invalid data: user={user}, contract={contract}, payment_date={payment_date}, "
+                     f"bank={bank}, payment_amount={payment_amount}, payment_reference={payment_reference}")
+        return False
+
+    try:
+        # Log beginning of the process
+        logger.info(f"Starting payment scenario for contract: {contract['id']} and user: {user.id}")
+
+        # Prepare JSON extended data
+        bank_encode_id = f'BanksType:{bank.id}'
+        json_ext_data = {
+            "bank": {
+                "id": base64_encode(bank_encode_id),
+                "code": bank.code,
+                "name": bank.name,
+                "erpId": bank.erp_id,
+                "jsonExt": None,  # Assuming this is still None as per your example
+                "journauxId": bank.journaux_id,
+                "altLangName": bank.alt_lang_name,
+                "dateCreated": bank.date_created.strftime("%Y-%m-%d %H:%M:%S") if bank.date_created else None,
+                "dateUpdated": bank.date_updated.strftime("%Y-%m-%d %H:%M:%S") if bank.date_updated else None
+            },
+            "amount": int(payment_amount),
+            "receiptNo": payment_reference,
+            "journauxId": bank.journaux_id,
+            "payment_method_id": TIPL_PAYMENT_METHOD_ID,
+        }
+
+        # Validate contract existence
+        contract_obj = Contract.objects.filter(id=contract['id']).first()
+        if not contract_obj:
+            logger.error(f"Contract not found: {contract['id']}")
+            return False
+
+        # Retrieve the first valid payment
+        payment = Payment.objects.filter(
+            contract=contract_obj,
+            legacy_id__isnull=True,
+            validity_to__isnull=True,
+            status=Payment.STATUS_CREATED
+        ).order_by('validity_from').first()
+
+        if not payment:
+            logger.error(f"No valid payment found for contract: {contract['id']}")
+            return False
+        if payment.expected_amount != payment_amount:
+            return False
+        # Update payment data
+        payment.received_amount = payment.expected_amount
+        payment.status = Payment.STATUS_APPROVED
+        payment.matched_date = payment_date
+        payment.received_amount_transaction = [json_ext_data]
+
+        # Save payment and log the update
+        payment.save()
+        logger.info(f"Payment updated and approved for contract: {contract['id']}, payment: {payment.id}")
+
+    except Exception as e:
+        logger.error(f"Error processing payment scenario: {str(e)}", exc_info=True)
+        return False
+
+    logger.info(f"Payment scenario processed successfully for user: {user.id}, contract: {contract['id']}")
+    return True

@@ -1492,21 +1492,23 @@ def get_declaration_details(requests, policy_holder_code):
     ]
 )
 def paid_contract_payment(request):
+    from policyholder.services import tipl_contract_scenarios, tipl_payment_scenarios
     try:
         username = request.user.username
+
         # Check if the request is PUT
         if request.method != 'PUT':
             logger.error("Invalid request method. Only PUT requests are allowed.")
             return JsonResponse({"errors": "Invalid request method. Only PUT requests are allowed."}, status=405)
 
-        # Get data from the request body
+        # Parse the request body
         try:
             data = json.loads(request.body)
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON input: {str(e)}")
             return JsonResponse({"errors": "Invalid JSON input."}, status=400)
 
-        # Extract required fields
+        # Validate required fields
         required_fields = ['policy_holder_code', 'payment_amount', 'period', 'mmp_identifier', 'payment_date',
                            'payment_reference']
         missing_fields = [field for field in required_fields if not data.get(field)]
@@ -1521,6 +1523,12 @@ def paid_contract_payment(request):
         payment_date = data.get('payment_date')
         payment_reference = data.get('payment_reference')
 
+        # Fetch Bank data using mmp_identifier
+        bank = Banks.objects.filter(code=mmp_identifier, is_deleted=False).first()
+        if not bank:
+            logger.error(f"No bank found with MMP identifier: {mmp_identifier}")
+            return JsonResponse({"errors": f"No bank found with MMP identifier {mmp_identifier}."}, status=404)
+
         # Validate payment_date format (DD-MM-YYYY)
         try:
             payment_date = datetime.strptime(payment_date, '%d-%m-%Y').date()
@@ -1528,7 +1536,7 @@ def paid_contract_payment(request):
             logger.error(f"Invalid payment date format: {str(e)}")
             return JsonResponse({"errors": "Invalid payment date format. Expected DD-MM-YYYY."}, status=400)
 
-        # Convert payment_amount to Decimal
+        # Validate payment_amount and ensure it is a positive decimal
         try:
             payment_amount = Decimal(payment_amount)
             if payment_amount <= 0:
@@ -1547,6 +1555,7 @@ def paid_contract_payment(request):
             logger.error(f"Database error while fetching policy holder: {str(e)}")
             return JsonResponse({"errors": "Internal server error while fetching policy holder."}, status=500)
 
+        # Validate and parse period (MM-YYYY format)
         try:
             period_date = datetime.strptime(period, "%m-%Y")
             start_of_period = period_date.replace(day=1)
@@ -1555,7 +1564,7 @@ def paid_contract_payment(request):
             logger.error(f"Invalid period format: {str(e)}")
             return JsonResponse({"errors": "Invalid period format. Expected MM-YYYY."}, status=400)
 
-        # Fetch all executable contracts for the policy holder that match the period
+        # Fetch executable contracts for the policy holder that match the period
         try:
             contracts = Contract.objects.filter(
                 policy_holder=policy_holder,
@@ -1567,16 +1576,36 @@ def paid_contract_payment(request):
 
             matching_contracts = [contract for contract in contracts if
                                   contract.date_valid_from.strftime("%m-%Y") == period]
-            if not matching_contracts:
-                logger.error(f"No executable contracts found for period {period}.")
-                return JsonResponse({"errors": f"No executable contracts found for period {period}."}, status=404)
-        except Exception as e:
-            logger.error(f"Database error while fetching contracts: {str(e)}")
-            return JsonResponse({"errors": "Internal server error while fetching contracts."}, status=500)
 
-        # Find the earliest payment for the matching contracts
-        earliest_payment, earliest_contract = None, None
-        try:
+            # If no contracts are found, create a new contract
+            if not matching_contracts:
+                logger.info(f"No executable contracts found for period {period}. Creating a new contract.")
+                contract = {
+                    'policy_holder_id': policy_holder.id,
+                    'date_valid_from': start_of_period.strftime("%Y-%m-%d"),
+                    'date_valid_to': end_of_period.strftime("%Y-%m-%d"),
+                    'penalty_waive_off_contract': False,
+                    'penalty_waive_off_payment': False
+                }
+                output = tipl_contract_scenarios(request.user, contract)
+                if output:
+                    payment_output = tipl_payment_scenarios(request.user, contract, payment_date, bank, payment_amount,
+                                                            payment_reference)
+                    if payment_output:
+                        logger.info(f"Payment scenario successfully executed for contract: {contract}")
+                    else:
+                        logger.error("Payment scenario failed after contract creation.")
+                        return JsonResponse({"errors": "Failed to approve payment after contract creation."}, status=400)
+
+                return JsonResponse({
+                    "success": f"Payment and contract created successfully for period {period}.",
+                    "payment_reference": payment_reference,
+                    "mmp_identifier": mmp_identifier,
+                    "payment_date": payment_date.strftime("%Y-%m-%d")
+                }, status=200)
+
+            # Find earliest payment for the matching contracts
+            earliest_payment, earliest_contract = None, None
             for contract in matching_contracts:
                 payment = Payment.objects.filter(
                     contract=contract,
@@ -1592,26 +1621,24 @@ def paid_contract_payment(request):
             if not earliest_payment or not earliest_contract:
                 logger.error(f"No due payment found for the period {period}.")
                 return JsonResponse({"errors": f"No due payment found for the period {period}."}, status=404)
-        except Exception as e:
-            logger.error(f"Error while finding earliest payment: {str(e)}")
-            return JsonResponse({"errors": "Internal server error while fetching payments."}, status=500)
-        try:
+
+            # Fetch and validate penalty
             penalty = PaymentPenaltyAndSanction.objects.filter(
                 outstanding_payment__isnull=True,
                 payment=earliest_payment,
                 is_deleted=False
             ).first()
+
             total_expected_amount = earliest_payment.expected_amount
             if penalty:
                 total_expected_amount += penalty.amount
-                logger.info(
-                    f"Penalty found: {penalty.code} for payment: {earliest_payment.id}, Penalty amount: {penalty.amount}")
                 penalty.received_amount = penalty.amount
                 penalty.status = PaymentPenaltyAndSanction.PENALTY_APPROVED
                 earliest_payment.is_penalty_included = True
                 earliest_payment.penalty_amount_paid = penalty.amount
                 penalty.save(username=username)
 
+            # Validate payment amount against expected amount
             if payment_amount not in [earliest_payment.expected_amount, total_expected_amount]:
                 logger.error(
                     f"Wrong amount entered: {payment_amount}. Expected: {earliest_payment.expected_amount} or {total_expected_amount}")
@@ -1619,44 +1646,27 @@ def paid_contract_payment(request):
                     "errors": f"Invalid amount. Expected {total_expected_amount}."},
                     status=400)
 
-            logger.info(f"Updated penalty status for payment: {earliest_payment.id}")
-
-        except Exception as e:
-            logger.error(f"Error while fetching penalty for contract {earliest_contract.code}: {str(e)}")
-            return JsonResponse({"errors": "Internal server error while fetching penalty details."}, status=500)
-
-        # Fetch Bank data using mmp_identifier
-        try:
-            bank = Banks.objects.filter(code=mmp_identifier, is_deleted=False).first()
-            if not bank:
-                logger.error(f"No bank found with MMP identifier: {mmp_identifier}")
-                return JsonResponse({"errors": f"No bank found with MMP identifier {mmp_identifier}."}, status=404)
-        except Exception as e:
-            logger.error(f"Database error while fetching bank details: {str(e)}")
-            return JsonResponse({"errors": "Internal server error while fetching bank details."}, status=500)
-
-        # Create json_ext data from the bank details
-        bank_encode_id = f'BanksType:{bank.id}'
-        json_ext_data = {
-            "bank": {
-                "id": base64_encode(bank_encode_id),
-                "code": bank.code,
-                "name": bank.name,
-                "erpId": bank.erp_id,
-                "jsonExt": None,  # Assuming this is still None as per your example
+            # Create json_ext data from the bank details
+            bank_encode_id = f'BanksType:{bank.id}'
+            json_ext_data = {
+                "bank": {
+                    "id": base64_encode(bank_encode_id),
+                    "code": bank.code,
+                    "name": bank.name,
+                    "erpId": bank.erp_id,
+                    "jsonExt": None,  # Assuming this is still None as per your example
+                    "journauxId": bank.journaux_id,
+                    "altLangName": bank.alt_lang_name,
+                    "dateCreated": bank.date_created.strftime("%Y-%m-%d %H:%M:%S") if bank.date_created else None,
+                    "dateUpdated": bank.date_updated.strftime("%Y-%m-%d %H:%M:%S") if bank.date_updated else None
+                },
+                "amount": int(payment_amount),
+                "receiptNo": payment_reference,
                 "journauxId": bank.journaux_id,
-                "altLangName": bank.alt_lang_name,
-                "dateCreated": bank.date_created.strftime("%Y-%m-%d %H:%M:%S") if bank.date_created else None,
-                "dateUpdated": bank.date_updated.strftime("%Y-%m-%d %H:%M:%S") if bank.date_updated else None
-            },
-            "amount": int(payment_amount),
-            "receiptNo": payment_reference,
-            "journauxId": bank.journaux_id,
-            "payment_method_id": TIPL_PAYMENT_METHOD_ID,
-        }
+                "payment_method_id": TIPL_PAYMENT_METHOD_ID,
+            }
 
-        # Update the earliest payment
-        try:
+            # Update the earliest payment
             earliest_payment.received_amount = earliest_payment.expected_amount
             earliest_payment.status = Payment.STATUS_APPROVED
             earliest_payment.matched_date = payment_date
@@ -1665,9 +1675,10 @@ def paid_contract_payment(request):
 
             logger.info(
                 f"Payment updated for contract: {earliest_contract.code}, Amount: {earliest_payment.expected_amount}")
+
         except Exception as e:
-            logger.error(f"Error while updating payment: {str(e)}")
-            return JsonResponse({"errors": "Internal server error while updating payment."}, status=500)
+            logger.error(f"Error during payment processing: {str(e)}", exc_info=True)
+            return JsonResponse({"errors": "Internal server error during payment processing."}, status=500)
 
         return JsonResponse({
             "success": f"Payment and penalty updated successfully for period {period}.",
@@ -1677,5 +1688,5 @@ def paid_contract_payment(request):
         }, status=200)
 
     except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
+        logger.error(f"Unexpected error: {str(e)}", exc_info=True)
         return JsonResponse({"errors": "An unexpected error occurred."}, status=500)
