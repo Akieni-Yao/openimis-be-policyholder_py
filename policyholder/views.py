@@ -24,6 +24,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 
 from contract.models import Contract
+from contract.services import Contract as ContractService
 from core.constants import *
 from core.models import Role, InteractiveUser, Banks
 from core.notification_service import create_camu_notification, base64_encode
@@ -1318,7 +1319,6 @@ def has_active_policy(insuree):
 @api_view(["GET"])
 @permission_classes(
     [
-        # Change this right and create a specific one instead
         check_user_with_rights(
             PolicyholderConfig.gql_query_policyholder_perms,
         )
@@ -1326,7 +1326,7 @@ def has_active_policy(insuree):
 )
 def get_declaration_details(requests, policy_holder_code):
     data = {}
-
+    user = requests.user
     # Validate inputs
     if not policy_holder_code:
         logger.error("Policy holder code is missing.")
@@ -1342,11 +1342,11 @@ def get_declaration_details(requests, policy_holder_code):
 
     # Check if policy holder is locked or unlocked
     if policy_holder.status == PH_STATUS_LOCKED:
-        return JsonResponse({"errors": f"({policy_holder_code})Policy Holder is Locked."}, status=400)
+        logger.warning(f"Policy holder ({policy_holder_code}) is locked.")
+        return JsonResponse({"errors": f"({policy_holder_code}) Policy Holder is Locked."}, status=400)
     else:
         policy_holder_status = "Unlocked"
-
-    logger.info(f"Policy holder status: {policy_holder_status}")
+        logger.info(f"Policy holder status: {policy_holder_status}")
 
     # Fetch policy holder insurees
     ph_insuree_list = PolicyHolderInsuree.objects.filter(policy_holder=policy_holder, is_deleted=False)
@@ -1361,20 +1361,10 @@ def get_declaration_details(requests, policy_holder_code):
         return JsonResponse({"errors": f"Multiple insurees attached with this policy holder ({policy_holder_code})"},
                             status=400)
 
-    # # Check and map insuree status
-    # if ph_insuree.insuree.status in ['APPROVED', 'ACTIVE']:
-    #     insuree_status = 'Active'
-    # else:
-    #     insuree_status = "Unregistered"
-
-    # logger.info(f"Insuree status for policy holder {policy_holder_code}: {insuree_status}")
-
     # Check insuree's active status
     is_active = has_active_policy(ph_insuree.insuree)
-    if is_active:
-        insuree_right_status = 'Active'
-    else:
-        insuree_right_status = 'Inactive'
+    insuree_right_status = 'Active' if is_active else 'Inactive'
+    logger.info(f"Insuree status for policy holder {policy_holder_code}: {insuree_right_status}")
 
     # Fetch executable contracts
     contracts = Contract.objects.filter(
@@ -1404,6 +1394,7 @@ def get_declaration_details(requests, policy_holder_code):
         ).order_by('validity_from').first()
 
         if payment:
+            logger.info(f"Found payment for contract: {contract.code} with amount {payment.expected_amount}")
             # Check for the earliest payment
             if earliest_payment is None or payment.validity_from < earliest_payment.validity_from:
                 earliest_payment = payment
@@ -1421,7 +1412,7 @@ def get_declaration_details(requests, policy_holder_code):
         total_penalty_amount = Decimal(0)  # Default to 0 if no penalty
 
         if penalty:
-            # Fetch penalty rate based on penalty level
+            logger.info(f"Penalty found for payment {earliest_payment.id} with level {penalty.penalty_level}")
             product_config = get_payment_product_config(earliest_payment)
             if product_config:
                 if penalty.penalty_level == "1st":
@@ -1435,16 +1426,15 @@ def get_declaration_details(requests, policy_holder_code):
                 outstanding_payment__isnull=True,
                 is_deleted=False
             ).aggregate(Sum('amount'))['amount__sum'] or Decimal(0)
+            logger.info(f"Total penalty amount calculated: {total_penalty_amount}")
+
         total_amount = total_penalty_amount + earliest_payment.expected_amount
 
         # Collect contract and payment details
         contract_data.append({
             'policy_holder': getattr(policy_holder, 'trade_name', None),
             'policy_holder_code': getattr(policy_holder, 'code', None),
-            # 'policy_holder_status': policy_holder_status,  # Updated status here
-            # 'insuree_status': insuree_status,  # Updated insuree status here
             'insuree_right_status': insuree_right_status,
-            # 'contract_code': getattr(earliest_contract, 'code', None),
             'period': getattr(earliest_contract, 'date_valid_from', None).strftime(
                 "%m-%Y") if earliest_contract and earliest_contract.date_valid_from else None,
             'label': f'declaration + {penalty_rate}% de penalité' if penalty_rate else 'declaration',
@@ -1452,11 +1442,44 @@ def get_declaration_details(requests, policy_holder_code):
         })
         logger.info(f"Contract and payment details collected for policy holder: {policy_holder_code}")
     else:
-        logger.error(f"No due payment found for policy holder ({policy_holder_code})")
-        return JsonResponse({"message": f"No due payment found with this policy holder code({policy_holder_code})."},
-                            status=404)
+        latest_executable_contract = contracts.last()
+        if latest_executable_contract and latest_executable_contract.date_valid_from:
+            date_valid_from = latest_executable_contract.date_valid_from
+            # Calculate the first day of the next month
+            next_month = (date_valid_from.replace(day=1) + timedelta(days=32)).replace(day=1)
+            period = next_month.strftime("%m-%Y")
+            logger.info(f"Calculated future period based on last executable contract: {period}")
+        else:
+            period = None
+            logger.warning(
+                f"No executable contracts available for policy holder {policy_holder_code} to calculate future period.")
+
+        contract = {
+            'policy_holder_id': policy_holder.id,
+        }
+        logger.debug(f"Contract prepared for policy holder {policy_holder.id}: {contract}")
+
+        try:
+            contract_service = ContractService(user=user)
+            output_data = contract_service.tipl_contract_evaluation(contract=contract)
+            logger.info(f"Contract evaluation completed for policy holder {policy_holder.id}")
+        except Exception as e:
+            logger.error(f"Error during contract evaluation for policy holder {policy_holder.id}: {str(e)}")
+            return JsonResponse({"errors": "Error evaluating contract."}, status=500)
+
+        # Append contract data with future period
+        contract_data.append({
+            'policy_holder': getattr(policy_holder, 'trade_name', None),
+            'policy_holder_code': getattr(policy_holder, 'code', None),
+            'insuree_right_status': insuree_right_status,
+            'period': period,  # This will now show the next month's MM-YYYY
+            'label': 'declaration',
+            'total_amount': output_data  # Ensure this is always a Decimal (since no payment was found)
+        })
+        logger.info(f"Future contract data appended for policy holder {policy_holder.id}")
 
     data['data'] = contract_data
+    logger.info(f"Returning data for policy holder: {policy_holder_code}")
     return JsonResponse(data, status=200)
 
 
