@@ -1327,6 +1327,10 @@ def has_active_policy(insuree):
 def get_declaration_details(requests, policy_holder_code):
     data = {}
     user = requests.user
+    # Prepare to store contract and payment data
+    contract_data = []
+    earliest_payment = None
+    earliest_contract = None
     # Validate inputs
     if not policy_holder_code:
         logger.error("Policy holder code is missing.")
@@ -1374,15 +1378,31 @@ def get_declaration_details(requests, policy_holder_code):
     ).order_by('date_valid_from')
 
     if not contracts:
-        logger.error(f"No executable contracts found for policy holder ({policy_holder_code})")
-        return JsonResponse({"errors": "No executable contracts found for this policy holder."}, status=404)
+        contract = {
+            'policy_holder_id': policy_holder.id,
+        }
+        # logger.error(f"No executable contracts found for policy holder ({policy_holder_code})")
+        try:
+            contract_service = ContractService(user=user)
+            output_data = contract_service.tipl_contract_evaluation(contract=contract)
+            logger.info(f"Contract evaluation completed for policy holder {policy_holder.id}")
+        except Exception as e:
+            logger.error(f"Error during contract evaluation for policy holder {policy_holder.id}: {str(e)}")
+            return JsonResponse({"errors": "Error evaluating contract."}, status=500)
+        period = datetime.now().strftime("%m-%Y")
+        contract_data.append({
+            'policy_holder': getattr(policy_holder, 'trade_name', None),
+            'policy_holder_code': getattr(policy_holder, 'code', None),
+            'insuree_right_status': insuree_right_status,
+            'period': period,  # This will now show the next month's MM-YYYY
+            'label': 'declaration',
+            'total_amount': output_data  # Ensure this is always a Decimal (since no payment was found)
+        })
+        data['data'] = contract_data
+        logger.info(f"Returning data for policy holder: {policy_holder_code}")
+        return JsonResponse(data, status=200)
 
     logger.info(f"Executable contracts found for policy holder: {policy_holder_code}")
-
-    # Prepare to store contract and payment data
-    contract_data = []
-    earliest_payment = None
-    earliest_contract = None
 
     for contract in contracts:
         # Fetch the first non-approved payment for each contract
@@ -1595,7 +1615,8 @@ def paid_contract_payment(request):
                         logger.info(f"Payment scenario successfully executed for contract: {contract}")
                     else:
                         logger.error("Payment scenario failed after contract creation.")
-                        return JsonResponse({"errors": "Failed to approve payment after contract creation."}, status=400)
+                        return JsonResponse({"errors": "Failed to approve payment after contract creation."},
+                                            status=400)
 
                 return JsonResponse({
                     "success": f"Payment and contract created successfully for period {period}.",
