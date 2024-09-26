@@ -62,9 +62,13 @@ def erp_create_update_policyholder(ph_id, cpb_id, user):
     if phcp and phcp.policy_holder.bank_account:
         bank_account = phcp.policy_holder.bank_account.get("bankAccount", {})
         account_no = bank_account.get("accountNb", {})
-        bank_id = payment.received_amount_transaction.get("bank", {})
+        # bank_id = payment.received_amount_transaction.get("bank", {})
 
         if account_no:
+            bank_code = bank_account.get("bank", {})
+            bank_details = Banks.objects.filter(code=bank_code, is_deleted=False).first()
+            bank_id = bank_details.erp_id
+
             bank_accounts = []
             bank_account_details = {
                 "account_number": account_no,
@@ -143,9 +147,12 @@ def erp_create_update_fosa(policyholder_code, account_payable_id, user):
     if phcp and phcp.policy_holder.bank_account:
         bank_account = phcp.policy_holder.bank_account.get("bankAccount", {})
         account_no = bank_account.get("accountNb", {})
-        bank_id = payment.received_amount_transaction.get("bank", {})
+        # bank_id = payment.received_amount_transaction.get("bank", {})
 
         if account_no:
+            bank_code = bank_account.get("bank", {})
+            bank_details = Banks.objects.filter(code=bank_code, is_deleted=False).first()
+            bank_id = bank_details.erp_id
             bank_accounts = []
             bank_account_details = {
                 "account_number": account_no,
