@@ -55,6 +55,8 @@ def erp_create_update_policyholder(ph_id, cpb_id, user):
     phcp = PolicyHolderContributionPlan.objects.filter(
         policy_holder__id=ph_id, contribution_plan_bundle__id=cpb_id, is_deleted=False).first()
     payment = Payment.objects.filter(contract__policy_holder__id=ph_id).first()
+    if not payment:
+        return True
 
     bank_accounts = None
     if phcp and phcp.policy_holder.bank_account:
