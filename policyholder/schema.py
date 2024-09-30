@@ -21,7 +21,7 @@ from policyholder.gql.gql_mutations.delete_mutations import DeletePolicyHolderMu
     DeletePolicyHolderInsureeMutation, DeletePolicyHolderUserMutation, DeletePolicyHolderContributionPlanMutation
 from policyholder.gql.gql_mutations.update_mutations import UpdatePolicyHolderMutation, \
     UpdatePolicyHolderInsureeMutation, UpdatePolicyHolderUserMutation, UpdatePolicyHolderContributionPlanMutation, \
-    UpdatePolicyHolderInsureeDesignation, PHApprovalMutation
+    UpdatePolicyHolderInsureeDesignation, PHApprovalMutation, UnlockPolicyHolderMutation
 from policyholder.gql.gql_mutations.replace_mutation import ReplacePolicyHolderInsureeMutation, \
     ReplacePolicyHolderContributionPlanMutation, ReplacePolicyHolderUserMutation
 
@@ -333,24 +333,21 @@ class Query(graphene.ObjectType):
     )
 
     def resolve_unpaid_declaration_by_policyholder(self, info, **kwargs):
-        # Check user permissions
-        user = info.context.user
-        if not user.has_perms(PolicyholderConfig.gql_query_policyholdercontributionplanbundle_perms):
-            if not user.has_perms(PolicyholderConfig.gql_query_policyholdercontributionplanbundle_portal_perms):
-                raise PermissionError("Unauthorized")
+        if not info.context.user.has_perms(PolicyholderConfig.gql_query_policyholdercontributionplanbundle_perms):
+            if not info.context.user.has_perms(
+                    PolicyholderConfig.gql_query_policyholdercontributionplanbundle_portal_perms):
+                        raise PermissionError("Unauthorized")
 
-        # Extract policy_holder_id from arguments
         policy_holder_id = kwargs.get("policy_holder_id")
         if not policy_holder_id:
             raise ValueError("policy_holder_id is required.")
 
-        # Query payments with related penalties for the specified policyholder
-        payments_with_penalty = Payment.objects.filter(
-            Q(contract__policy_holder__status='Locked') &
-            Q(contract__policy_holder_id=policy_holder_id)
-        ).order_by('-contract__date_valid_from')[:3]
+        payments_with_penalties = Payment.objects.filter(
+            contract__policy_holder=policy_holder_id,
+            payments_penalty__isnull=False  # Ensures there are penalties
+        ).distinct().order_by('-payment_date')[:3]
 
-        return gql_optimizer.query(payments_with_penalty, info)
+        return gql_optimizer.query(payments_with_penalties, info)
 
 
 class Mutation(graphene.ObjectType):
@@ -377,7 +374,7 @@ class Mutation(graphene.ObjectType):
     category_change_status_change = CategoryChangeStatusChange.Field()
     create_ph_portal_user = CreatePHPortalUserMutation.Field()
     policyholder_approval = PHApprovalMutation.Field()
-    # unlock_policyholder = UnlockPolicyHolderMutation.Field()
+    unlock_policyholder = UnlockPolicyHolderMutation.Field()
 
 
 def on_policy_holder_mutation(sender, **kwargs):

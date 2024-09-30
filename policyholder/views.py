@@ -1,19 +1,19 @@
 import json
 import logging
-import random
 import math
 import io
 import calendar
 from datetime import datetime, timedelta
 
+from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import EmailMessage
+from django.db.models import Q, Sum
 from django.shortcuts import redirect
 from django.utils import timezone
-
 import pandas as pd
-from django.http import JsonResponse, FileResponse, HttpResponse
+from django.http import JsonResponse, HttpResponse
 from django.utils.dateparse import parse_date
 from django.utils.encoding import force_text
 from django.utils.http import urlsafe_base64_decode
@@ -24,22 +24,26 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 
 from contract.models import Contract
+from contract.services import Contract as ContractService
 from core.constants import *
-from core.models import Role, InteractiveUser
-from core.notification_service import create_camu_notification
+from core.models import Role, InteractiveUser, Banks
+from core.notification_service import create_camu_notification, base64_encode
 from insuree.dms_utils import create_openKm_folder_for_bulkupload, send_mail_to_temp_insuree_with_pdf
 from insuree.gql_mutations import temp_generate_employee_camu_registration_number
 from insuree.models import Insuree, Gender, Family, InsureePolicy
 from location.models import Location
+from payment.models import Payment, PaymentPenaltyAndSanction
+from payment.views import get_payment_product_config
 from policy.models import Policy
 from policyholder.apps import *
-from policyholder.constants import CC_WAITING_FOR_DOCUMENT, PH_STATUS_CREATED
+from policyholder.constants import CC_WAITING_FOR_DOCUMENT, PH_STATUS_CREATED, PH_STATUS_LOCKED, TIPL_PAYMENT_METHOD_ID
 from policyholder.dms_utils import create_folder_for_cat_chnage_req, validate_enrolment_type, send_notification_to_head
 from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, CategoryChange, \
     PolicyHolderUser
 from contribution_plan.models import ContributionPlanBundleDetails
 from workflow.workflow_stage import insuree_add_to_workflow
 from insuree.abis_api import create_abis_insuree
+from decimal import Decimal, InvalidOperation
 
 logger = logging.getLogger(__name__)
 
@@ -1291,3 +1295,419 @@ def custom_policyholder_policies_expire(request):
     logger.info("====  expire_policies_manual_job  ====  end  ====")
 
     return JsonResponse(data)
+
+
+def has_active_policy(insuree):
+    current_date = datetime.now()
+    current_date = current_date.date()
+    ins_pol = InsureePolicy.objects.filter(
+        insuree__chf_id=insuree.chf_id,
+        insuree__legacy_id__isnull=True,
+        policy__legacy_id__isnull=True,
+        start_date__lte=current_date,
+        expiry_date__gte=current_date,
+        legacy_id__isnull=True).order_by('-expiry_date').all()
+    latest_record = None
+    if ins_pol and len(ins_pol) > 0:
+        for pol in ins_pol:
+            if pol.policy.status == 2:
+                latest_record = pol
+                break
+    return True if latest_record else False
+
+
+@api_view(["GET"])
+@permission_classes(
+    [
+        check_user_with_rights(
+            PolicyholderConfig.gql_query_policyholder_perms,
+        )
+    ]
+)
+def get_declaration_details(requests, policy_holder_code):
+    data = {}
+    user = requests.user
+    # Prepare to store contract and payment data
+    contract_data = []
+    earliest_payment = None
+    earliest_contract = None
+    # Validate inputs
+    if not policy_holder_code:
+        logger.error("Policy holder code is missing.")
+        return JsonResponse({"errors": "Policy holder code is required."}, status=400)
+
+    # Fetch the policy holder
+    policy_holder = get_policy_holder_from_code(policy_holder_code)
+    if not policy_holder:
+        logger.error(f"Unknown policy holder ({policy_holder_code})")
+        return JsonResponse({"errors": f"Unknown policy holder ({policy_holder_code})"}, status=404)
+
+    logger.info(f"Policy holder found: {policy_holder_code}")
+
+    # Check if policy holder is locked or unlocked
+    if policy_holder.status == PH_STATUS_LOCKED:
+        logger.warning(f"Policy holder ({policy_holder_code}) is locked.")
+        return JsonResponse({"errors": f"({policy_holder_code}) Policy Holder is Locked."}, status=400)
+    else:
+        policy_holder_status = "Unlocked"
+        logger.info(f"Policy holder status: {policy_holder_status}")
+
+    # Fetch policy holder insurees
+    ph_insuree_list = PolicyHolderInsuree.objects.filter(policy_holder=policy_holder, is_deleted=False)
+    ph_insuree = ph_insuree_list.first()
+
+    if not ph_insuree:
+        logger.error(f"No insuree found for policy holder ({policy_holder_code})")
+        return JsonResponse({"errors": "No insuree found for this policy holder."}, status=404)
+
+    if ph_insuree_list.count() != 1:
+        logger.error(f"Multiple insurees attached to policy holder ({policy_holder_code})")
+        return JsonResponse({"errors": f"Multiple insurees attached with this policy holder ({policy_holder_code})"},
+                            status=400)
+
+    # Check insuree's active status
+    is_active = has_active_policy(ph_insuree.insuree)
+    insuree_right_status = 'Active' if is_active else 'Inactive'
+    logger.info(f"Insuree status for policy holder {policy_holder_code}: {insuree_right_status}")
+
+    # Fetch executable contracts
+    contracts = Contract.objects.filter(
+        state=Contract.STATE_EXECUTABLE,
+        policy_holder=policy_holder,
+        is_deleted=False
+    ).order_by('date_valid_from')
+
+    if not contracts:
+        contract = {
+            'policy_holder_id': policy_holder.id,
+        }
+        # logger.error(f"No executable contracts found for policy holder ({policy_holder_code})")
+        try:
+            contract_service = ContractService(user=user)
+            output_data = contract_service.tipl_contract_evaluation(contract=contract)
+            logger.info(f"Contract evaluation completed for policy holder {policy_holder.id}")
+        except Exception as e:
+            logger.error(f"Error during contract evaluation for policy holder {policy_holder.id}: {str(e)}")
+            return JsonResponse({"errors": "Error evaluating contract."}, status=500)
+        period = datetime.now().strftime("%m-%Y")
+        contract_data.append({
+            'policy_holder': getattr(policy_holder, 'trade_name', None),
+            'policy_holder_code': getattr(policy_holder, 'code', None),
+            'insuree_right_status': insuree_right_status,
+            'period': period,  # This will now show the next month's MM-YYYY
+            'label': 'declaration',
+            'total_amount': output_data  # Ensure this is always a Decimal (since no payment was found)
+        })
+        data['data'] = contract_data
+        logger.info(f"Returning data for policy holder: {policy_holder_code}")
+        return JsonResponse(data, status=200)
+
+    logger.info(f"Executable contracts found for policy holder: {policy_holder_code}")
+
+    for contract in contracts:
+        # Fetch the first non-approved payment for each contract
+        payment = Payment.objects.filter(
+            contract=contract,
+            legacy_id__isnull=True,
+            validity_to__isnull=True,
+            status=Payment.STATUS_CREATED  # Exclude approved payments
+        ).order_by('validity_from').first()
+
+        if payment:
+            logger.info(f"Found payment for contract: {contract.code} with amount {payment.expected_amount}")
+            # Check for the earliest payment
+            if earliest_payment is None or payment.validity_from < earliest_payment.validity_from:
+                earliest_payment = payment
+                earliest_contract = contract
+
+    if earliest_payment and earliest_contract:
+        # Fetch penalties related to the earliest payment
+        penalty = PaymentPenaltyAndSanction.objects.filter(
+            outstanding_payment__isnull=True,
+            payment=earliest_payment,
+            is_deleted=False
+        ).first()
+
+        penalty_rate = None
+        total_penalty_amount = Decimal(0)  # Default to 0 if no penalty
+
+        if penalty:
+            logger.info(f"Penalty found for payment {earliest_payment.id} with level {penalty.penalty_level}")
+            product_config = get_payment_product_config(earliest_payment)
+            if product_config:
+                if penalty.penalty_level == "1st":
+                    penalty_rate = product_config.get("firstPenaltyRate", None)
+                elif penalty.penalty_level == "2nd":
+                    penalty_rate = product_config.get("secondPenaltyRate", None)
+
+            # Aggregate penalty amount
+            total_penalty_amount = PaymentPenaltyAndSanction.objects.filter(
+                payment=earliest_payment,
+                outstanding_payment__isnull=True,
+                is_deleted=False
+            ).aggregate(Sum('amount'))['amount__sum'] or Decimal(0)
+            logger.info(f"Total penalty amount calculated: {total_penalty_amount}")
+
+        total_amount = total_penalty_amount + earliest_payment.expected_amount
+
+        # Collect contract and payment details
+        contract_data.append({
+            'policy_holder': getattr(policy_holder, 'trade_name', None),
+            'policy_holder_code': getattr(policy_holder, 'code', None),
+            'insuree_right_status': insuree_right_status,
+            'period': getattr(earliest_contract, 'date_valid_from', None).strftime(
+                "%m-%Y") if earliest_contract and earliest_contract.date_valid_from else None,
+            'label': f'declaration + {penalty_rate}% de penalité' if penalty_rate else 'declaration',
+            'total_amount': total_amount or Decimal(0)  # Ensure this is always a Decimal
+        })
+        logger.info(f"Contract and payment details collected for policy holder: {policy_holder_code}")
+    else:
+        latest_executable_contract = contracts.last()
+        if latest_executable_contract and latest_executable_contract.date_valid_from:
+            date_valid_from = latest_executable_contract.date_valid_from
+            # Calculate the first day of the next month
+            next_month = (date_valid_from.replace(day=1) + timedelta(days=32)).replace(day=1)
+            period = next_month.strftime("%m-%Y")
+            logger.info(f"Calculated future period based on last executable contract: {period}")
+        else:
+            period = None
+            logger.warning(
+                f"No executable contracts available for policy holder {policy_holder_code} to calculate future period.")
+
+        contract = {
+            'policy_holder_id': policy_holder.id,
+        }
+        logger.debug(f"Contract prepared for policy holder {policy_holder.id}: {contract}")
+
+        try:
+            contract_service = ContractService(user=user)
+            output_data = contract_service.tipl_contract_evaluation(contract=contract)
+            logger.info(f"Contract evaluation completed for policy holder {policy_holder.id}")
+        except Exception as e:
+            logger.error(f"Error during contract evaluation for policy holder {policy_holder.id}: {str(e)}")
+            return JsonResponse({"errors": "Error evaluating contract."}, status=500)
+
+        # Append contract data with future period
+        contract_data.append({
+            'policy_holder': getattr(policy_holder, 'trade_name', None),
+            'policy_holder_code': getattr(policy_holder, 'code', None),
+            'insuree_right_status': insuree_right_status,
+            'period': period,  # This will now show the next month's MM-YYYY
+            'label': 'declaration',
+            'total_amount': output_data  # Ensure this is always a Decimal (since no payment was found)
+        })
+        logger.info(f"Future contract data appended for policy holder {policy_holder.id}")
+
+    data['data'] = contract_data
+    logger.info(f"Returning data for policy holder: {policy_holder_code}")
+    return JsonResponse(data, status=200)
+
+
+@api_view(["PUT"])
+@permission_classes(
+    [
+        check_user_with_rights(
+            PolicyholderConfig.gql_query_policyholder_perms,
+        )
+    ]
+)
+def paid_contract_payment(request):
+    from policyholder.services import tipl_contract_scenarios, tipl_payment_scenarios
+    try:
+        username = request.user.username
+
+        # Check if the request is PUT
+        if request.method != 'PUT':
+            logger.error("Invalid request method. Only PUT requests are allowed.")
+            return JsonResponse({"errors": "Invalid request method. Only PUT requests are allowed."}, status=405)
+
+        # Parse the request body
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON input: {str(e)}")
+            return JsonResponse({"errors": "Invalid JSON input."}, status=400)
+
+        # Validate required fields
+        required_fields = ['policy_holder_code', 'payment_amount', 'period', 'mmp_identifier', 'payment_date',
+                           'payment_reference']
+        missing_fields = [field for field in required_fields if not data.get(field)]
+        if missing_fields:
+            logger.error(f"Required field(s) missing: {missing_fields}")
+            return JsonResponse({"errors": f"Missing fields: {', '.join(missing_fields)}"}, status=400)
+
+        policy_holder_code = data.get('policy_holder_code')
+        payment_amount = data.get('payment_amount')
+        period = data.get('period')
+        mmp_identifier = data.get('mmp_identifier')
+        payment_date = data.get('payment_date')
+        payment_reference = data.get('payment_reference')
+
+        # Fetch Bank data using mmp_identifier
+        bank = Banks.objects.filter(code=mmp_identifier, is_deleted=False).first()
+        if not bank:
+            logger.error(f"No bank found with MMP identifier: {mmp_identifier}")
+            return JsonResponse({"errors": f"No bank found with MMP identifier {mmp_identifier}."}, status=404)
+
+        # Validate payment_date format (DD-MM-YYYY)
+        try:
+            payment_date = datetime.strptime(payment_date, '%d-%m-%Y').date()
+        except ValueError as e:
+            logger.error(f"Invalid payment date format: {str(e)}")
+            return JsonResponse({"errors": "Invalid payment date format. Expected DD-MM-YYYY."}, status=400)
+
+        # Validate payment_amount and ensure it is a positive decimal
+        try:
+            payment_amount = Decimal(payment_amount)
+            if payment_amount <= 0:
+                raise ValueError("Payment amount must be greater than zero.")
+        except (InvalidOperation, ValueError, TypeError) as e:
+            logger.error(f"Invalid payment amount: {str(e)}")
+            return JsonResponse({"errors": "Invalid payment amount."}, status=400)
+
+        # Fetch the policy holder
+        try:
+            policy_holder = PolicyHolder.objects.filter(code=policy_holder_code, is_deleted=False).first()
+            if not policy_holder:
+                logger.error(f"No policy holder found for code: {policy_holder_code}")
+                return JsonResponse({"errors": "No policy holder found."}, status=404)
+        except Exception as e:
+            logger.error(f"Database error while fetching policy holder: {str(e)}")
+            return JsonResponse({"errors": "Internal server error while fetching policy holder."}, status=500)
+
+        # Validate and parse period (MM-YYYY format)
+        try:
+            period_date = datetime.strptime(period, "%m-%Y")
+            start_of_period = period_date.replace(day=1)
+            end_of_period = (start_of_period + relativedelta(months=1)) - timedelta(days=1)
+        except ValueError as e:
+            logger.error(f"Invalid period format: {str(e)}")
+            return JsonResponse({"errors": "Invalid period format. Expected MM-YYYY."}, status=400)
+
+        # Fetch executable contracts for the policy holder that match the period
+        try:
+            contracts = Contract.objects.filter(
+                policy_holder=policy_holder,
+                state=Contract.STATE_EXECUTABLE,
+                is_deleted=False,
+                date_valid_from__gte=start_of_period,
+                date_valid_from__lte=end_of_period
+            ).order_by('date_valid_from')
+
+            matching_contracts = [contract for contract in contracts if
+                                  contract.date_valid_from.strftime("%m-%Y") == period]
+
+            # If no contracts are found, create a new contract
+            if not matching_contracts:
+                logger.info(f"No executable contracts found for period {period}. Creating a new contract.")
+                contract = {
+                    'policy_holder_id': policy_holder.id,
+                    'date_valid_from': start_of_period.strftime("%Y-%m-%d"),
+                    'date_valid_to': end_of_period.strftime("%Y-%m-%d"),
+                    'penalty_waive_off_contract': False,
+                    'penalty_waive_off_payment': False
+                }
+                output = tipl_contract_scenarios(request.user, contract)
+                if output:
+                    payment_output = tipl_payment_scenarios(request.user, contract, payment_date, bank, payment_amount,
+                                                            payment_reference)
+                    if payment_output:
+                        logger.info(f"Payment scenario successfully executed for contract: {contract}")
+                    else:
+                        logger.error("Payment scenario failed after contract creation.")
+                        return JsonResponse({"errors": "Failed to approve payment after contract creation."},
+                                            status=400)
+
+                return JsonResponse({
+                    "success": f"Payment and contract created successfully for period {period}.",
+                    "payment_reference": payment_reference,
+                    "mmp_identifier": mmp_identifier,
+                    "payment_date": payment_date.strftime("%Y-%m-%d")
+                }, status=200)
+
+            # Find earliest payment for the matching contracts
+            earliest_payment, earliest_contract = None, None
+            for contract in matching_contracts:
+                payment = Payment.objects.filter(
+                    contract=contract,
+                    legacy_id__isnull=True,
+                    validity_to__isnull=True,
+                    status=Payment.STATUS_CREATED
+                ).order_by('validity_from').first()
+
+                if payment and (earliest_payment is None or payment.validity_from < earliest_payment.validity_from):
+                    earliest_payment = payment
+                    earliest_contract = contract
+
+            if not earliest_payment or not earliest_contract:
+                logger.error(f"No due payment found for the period {period}.")
+                return JsonResponse({"errors": f"No due payment found for the period {period}."}, status=404)
+
+            # Fetch and validate penalty
+            penalty = PaymentPenaltyAndSanction.objects.filter(
+                outstanding_payment__isnull=True,
+                payment=earliest_payment,
+                is_deleted=False
+            ).first()
+
+            total_expected_amount = earliest_payment.expected_amount
+            if penalty:
+                total_expected_amount += penalty.amount
+                penalty.received_amount = penalty.amount
+                penalty.status = PaymentPenaltyAndSanction.PENALTY_APPROVED
+                earliest_payment.is_penalty_included = True
+                earliest_payment.penalty_amount_paid = penalty.amount
+                penalty.save(username=username)
+
+            # Validate payment amount against expected amount
+            if payment_amount not in [earliest_payment.expected_amount, total_expected_amount]:
+                logger.error(
+                    f"Wrong amount entered: {payment_amount}. Expected: {earliest_payment.expected_amount} or {total_expected_amount}")
+                return JsonResponse({
+                    "errors": f"Invalid amount. Expected {total_expected_amount}."},
+                    status=400)
+
+            # Create json_ext data from the bank details
+            bank_encode_id = f'BanksType:{bank.id}'
+            json_ext_data = {
+                "bank": {
+                    "id": base64_encode(bank_encode_id),
+                    "code": bank.code,
+                    "name": bank.name,
+                    "erpId": bank.erp_id,
+                    "jsonExt": None,  # Assuming this is still None as per your example
+                    "journauxId": bank.journaux_id,
+                    "altLangName": bank.alt_lang_name,
+                    "dateCreated": bank.date_created.strftime("%Y-%m-%d %H:%M:%S") if bank.date_created else None,
+                    "dateUpdated": bank.date_updated.strftime("%Y-%m-%d %H:%M:%S") if bank.date_updated else None
+                },
+                "amount": int(payment_amount),
+                "receiptNo": payment_reference,
+                "journauxId": bank.journaux_id,
+                "payment_method_id": TIPL_PAYMENT_METHOD_ID,
+            }
+
+            # Update the earliest payment
+            earliest_payment.received_amount = earliest_payment.expected_amount
+            earliest_payment.status = Payment.STATUS_APPROVED
+            earliest_payment.matched_date = payment_date
+            earliest_payment.received_amount_transaction = [json_ext_data]
+            earliest_payment.save()
+
+            logger.info(
+                f"Payment updated for contract: {earliest_contract.code}, Amount: {earliest_payment.expected_amount}")
+
+        except Exception as e:
+            logger.error(f"Error during payment processing: {str(e)}", exc_info=True)
+            return JsonResponse({"errors": "Internal server error during payment processing."}, status=500)
+
+        return JsonResponse({
+            "success": f"Payment and penalty updated successfully for period {period}.",
+            "payment_reference": payment_reference,
+            "mmp_identifier": mmp_identifier,
+            "payment_date": payment_date.strftime("%Y-%m-%d")
+        }, status=200)
+
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}", exc_info=True)
+        return JsonResponse({"errors": "An unexpected error occurred."}, status=500)
