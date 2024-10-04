@@ -16,13 +16,15 @@ from core.models import ErpApiFailedLogs, Banks
 logger = logging.getLogger(__name__)
 
 # erp_url = os.environ.get('ERP_HOST')
-erp_url = os.environ.get('ERP_HOST', "https://camu-staging-15480786.dev.odoo.com")
-erp_country_code = os.environ.get('ERP_COUNTRY_CODE', 2)
+erp_url = os.environ.get(
+    'ERP_HOST', "https://camu-staging-15480786.dev.odoo.com")
+erp_country_code = os.environ.get('ERP_COUNTRY_CODE', 42)
 
 headers = {
     'Content-Type': 'application/json',
     'Tmr-Api-Key': 'test'
 }
+
 
 def erp_mapping_data(phcp, bank_accounts, is_vendor, account_payable_id=None):
     mapping_dict = {
@@ -44,13 +46,18 @@ def erp_mapping_data(phcp, bank_accounts, is_vendor, account_payable_id=None):
     }
     return mapping_dict
 
+
 def filter_null_values(data):
     return {k: v for k, v in data.items() if v is not None}
 
+
 def erp_create_update_policyholder(ph_id, cpb_id, user):
-    logger.debug(" ======    erp_create_update_policyholder - start    =======")
-    logger.debug(f" ======    erp_create_update_policyholder : ph_id : {ph_id}    =======")
-    logger.debug(f" ======    erp_create_update_policyholder : cpb_id : {cpb_id}    =======")
+    logger.debug(
+        " ======    erp_create_update_policyholder - start    =======")
+    logger.debug(
+        f" ======    erp_create_update_policyholder : ph_id : {ph_id}    =======")
+    logger.debug(
+        f" ======    erp_create_update_policyholder : cpb_id : {cpb_id}    =======")
 
     phcp = PolicyHolderContributionPlan.objects.filter(
         policy_holder__id=ph_id, contribution_plan_bundle__id=cpb_id, is_deleted=False).first()
@@ -63,7 +70,8 @@ def erp_create_update_policyholder(ph_id, cpb_id, user):
 
         if account_no:
             bank_code = bank_account.get("bank", {})
-            bank_details = Banks.objects.filter(code=bank_code, is_deleted=False).first()
+            bank_details = Banks.objects.filter(
+                code=bank_code, is_deleted=False).first()
             bank_id = bank_details.erp_id
 
             bank_accounts = []
@@ -78,27 +86,37 @@ def erp_create_update_policyholder(ph_id, cpb_id, user):
     policyholder_data = filter_null_values(policyholder_data)
 
     if phcp.policy_holder.erp_partner_access_id:
-        logger.debug(" ======    erp_create_update_policyholder - update    =======")
+        logger.debug(
+            " ======    erp_create_update_policyholder - update    =======")
         action = "Update Policyholder"
-        url = '{}/update/partner/{}'.format(erp_url, phcp.policy_holder.erp_partner_access_id)
-        logger.debug(f" ======    erp_create_update_policyholder : url : {url}    =======")
+        url = '{}/update/partner/{}'.format(erp_url,
+                                            phcp.policy_holder.erp_partner_access_id)
+        logger.debug(
+            f" ======    erp_create_update_policyholder : url : {url}    =======")
     else:
-        logger.debug(" ======    erp_create_update_policyholder - create    =======")
+        logger.debug(
+            " ======    erp_create_update_policyholder - create    =======")
         action = "Create Policyholder"
         url = '{}/create/partner'.format(erp_url)
-        logger.debug(f" ======    erp_create_update_policyholder : url : {url}    =======")
+        logger.debug(
+            f" ======    erp_create_update_policyholder : url : {url}    =======")
 
-    logger.debug(f" ======    erp_create_update_policyholder : policyholder_data : {policyholder_data}    =======")
+    logger.debug(
+        f" ======    erp_create_update_policyholder : policyholder_data : {policyholder_data}    =======")
 
     try:
         json_data = json.dumps(policyholder_data)
-        logger.debug(f" ======    erp_create_update_policyholder : json_data : {json_data}    =======")
+        logger.debug(
+            f" ======    erp_create_update_policyholder : json_data : {json_data}    =======")
     except TypeError as e:
         logger.error(f"Error serializing JSON: {e}")
 
-    response = requests.post(url, headers=headers, json=policyholder_data, verify=False)
-    logger.debug(f" ======    erp_create_update_policyholder : response.status_code : {response.status_code}    =======")
-    logger.debug(f" ======    erp_create_update_policyholder : response.text : {response.text}    =======")
+    response = requests.post(url, headers=headers,
+                             json=policyholder_data, verify=False)
+    logger.debug(
+        f" ======    erp_create_update_policyholder : response.status_code : {response.status_code}    =======")
+    logger.debug(
+        f" ======    erp_create_update_policyholder : response.text : {response.text}    =======")
 
     if response.status_code not in [200, 201]:
         failed_data = {
@@ -120,7 +138,8 @@ def erp_create_update_policyholder(ph_id, cpb_id, user):
             logger.error(f"Failed to save ERP API Failed log: {e}")
     try:
         response_json = response.json()
-        logger.debug(f" ======    erp_create_update_policyholder : response.json : {response_json}    =======")
+        logger.debug(
+            f" ======    erp_create_update_policyholder : response.json : {response_json}    =======")
 
         # Update the PolicyHolder with the IDs from the response
         PolicyHolder.objects.filter(id=ph_id).update(
@@ -131,15 +150,21 @@ def erp_create_update_policyholder(ph_id, cpb_id, user):
     logger.debug(" ======    erp_create_update_policyholder - end    =======")
     return True
 
+
 def erp_create_update_fosa(policyholder_code, account_payable_id, user):
     logger.debug(" ======    erp_create_update_fosa - start    =======")
-    logger.debug(f" ======    erp_create_update_fosa : policyholder_code : {policyholder_code}    =======")
+    logger.debug(
+        f" ======    erp_create_update_fosa : policyholder_code : {policyholder_code}    =======")
 
-    policy_holder = PolicyHolder.objects.filter(code=policyholder_code, is_deleted=False).first()
-    phcp = PolicyHolderContributionPlan.objects.filter(policy_holder=policy_holder, is_deleted=False).first()
-    payment = Payment.objects.filter(contract__policy_holder__code=policyholder_code).first()
+    policy_holder = PolicyHolder.objects.filter(
+        code=policyholder_code, is_deleted=False).first()
+    phcp = PolicyHolderContributionPlan.objects.filter(
+        policy_holder=policy_holder, is_deleted=False).first()
+    payment = Payment.objects.filter(
+        contract__policy_holder__code=policyholder_code).first()
 
-    health_facility = HealthFacility.objects.filter(legacy_id__isnull=True, validity_to__isnull=True, json_ext__camuCode=policyholder_code).first()
+    health_facility = HealthFacility.objects.filter(
+        legacy_id__isnull=True, validity_to__isnull=True, json_ext__camuCode=policyholder_code).first()
     bank_accounts = None
     if phcp and phcp.policy_holder.bank_account:
         bank_account = phcp.policy_holder.bank_account.get("bankAccount", {})
@@ -148,7 +173,8 @@ def erp_create_update_fosa(policyholder_code, account_payable_id, user):
 
         if account_no:
             bank_code = bank_account.get("bank", {})
-            bank_details = Banks.objects.filter(code=bank_code, is_deleted=False).first()
+            bank_details = Banks.objects.filter(
+                code=bank_code, is_deleted=False).first()
             bank_id = bank_details.erp_id
             bank_accounts = []
             bank_account_details = {
@@ -158,22 +184,29 @@ def erp_create_update_fosa(policyholder_code, account_payable_id, user):
             }
             bank_accounts.append(filter_null_values(bank_account_details))
 
-    policyholder_data = erp_mapping_data(phcp, bank_accounts, True, account_payable_id)
+    policyholder_data = erp_mapping_data(
+        phcp, bank_accounts, True, account_payable_id)
     policyholder_data = filter_null_values(policyholder_data)
 
-    url = '{}/update/partner/{}'.format(erp_url, phcp.policy_holder.erp_partner_access_id)
+    url = '{}/update/partner/{}'.format(erp_url,
+                                        phcp.policy_holder.erp_partner_access_id)
     logger.debug(f" ======    erp_create_update_fosa : url : {url}    =======")
-    logger.debug(f" ======    erp_create_update_fosa : policyholder_data : {policyholder_data}    =======")
+    logger.debug(
+        f" ======    erp_create_update_fosa : policyholder_data : {policyholder_data}    =======")
 
     try:
         json_data = json.dumps(policyholder_data)
-        logger.debug(f" ======    erp_create_update_fosa : json_data : {json_data}    =======")
+        logger.debug(
+            f" ======    erp_create_update_fosa : json_data : {json_data}    =======")
     except TypeError as e:
         logger.error(f"Error serializing JSON: {e}")
 
-    response = requests.post(url, headers=headers, json=policyholder_data, verify=False)
-    logger.debug(f" ======    erp_create_update_fosa : response.status_code : {response.status_code}    =======")
-    logger.debug(f" ======    erp_create_update_fosa : response.text : {response.text}    =======")
+    response = requests.post(url, headers=headers,
+                             json=policyholder_data, verify=False)
+    logger.debug(
+        f" ======    erp_create_update_fosa : response.status_code : {response.status_code}    =======")
+    logger.debug(
+        f" ======    erp_create_update_fosa : response.text : {response.text}    =======")
 
     if response.status_code not in [200, 201]:
         failed_data = {
@@ -196,7 +229,8 @@ def erp_create_update_fosa(policyholder_code, account_payable_id, user):
 
     try:
         response_json = response.json()
-        logger.debug(f" ======    erp_create_update_fosa : response.json : {response_json}    =======")
+        logger.debug(
+            f" ======    erp_create_update_fosa : response.json : {response_json}    =======")
     except json.JSONDecodeError:
         logger.error("Failed to decode JSON response")
 
@@ -207,34 +241,46 @@ def erp_create_update_fosa(policyholder_code, account_payable_id, user):
 @authentication_classes([])
 @permission_classes([AllowAny])
 def create_existing_policyholder_in_erp():
-    logger.debug(" ======    create_existing_policyholder_in_erp - Start    =======")
-    policyholder_list = PolicyHolder.objects.filter(erp_partner_id__isnull=True, is_deleted=False)
-    logger.debug(f" ======    create_existing_policyholder_in_erp : policyholder_list : {policyholder_list}    =======")
+    logger.debug(
+        " ======    create_existing_policyholder_in_erp - Start    =======")
+    policyholder_list = PolicyHolder.objects.filter(
+        erp_partner_id__isnull=True, is_deleted=False)
+    logger.debug(
+        f" ======    create_existing_policyholder_in_erp : policyholder_list : {policyholder_list}    =======")
     for policyholder in policyholder_list:
-        phcp = PolicyHolderContributionPlan.objects.filter(policy_holder=policyholder, is_deleted=False).first()
-        logger.debug(f" ======    create_existing_policyholder_in_erp : phcp : {phcp}    =======")
+        phcp = PolicyHolderContributionPlan.objects.filter(
+            policy_holder=policyholder, is_deleted=False).first()
+        logger.debug(
+            f" ======    create_existing_policyholder_in_erp : phcp : {phcp}    =======")
         if phcp:
             policyholder_data = erp_mapping_data(phcp, False)
             policyholder_data = filter_null_values(policyholder_data)
 
             url = '{}/create/partner'.format(erp_url)
-            logger.debug(f" ======    create_existing_policyholder_in_erp : url : {url}    =======")
+            logger.debug(
+                f" ======    create_existing_policyholder_in_erp : url : {url}    =======")
 
-            logger.debug(f" ======    create_existing_policyholder_in_erp : policyholder_data : {policyholder_data}    =======")
+            logger.debug(
+                f" ======    create_existing_policyholder_in_erp : policyholder_data : {policyholder_data}    =======")
 
             try:
                 json_data = json.dumps(policyholder_data)
-                logger.debug(f" ======    create_existing_policyholder_in_erp : json_data : {json_data}    =======")
+                logger.debug(
+                    f" ======    create_existing_policyholder_in_erp : json_data : {json_data}    =======")
             except TypeError as e:
                 logger.error(f"Error serializing JSON: {e}")
 
-            response = requests.post(url, headers=headers, json=policyholder_data, verify=False)
-            logger.debug(f" ======    create_existing_policyholder_in_erp : response.status_code : {response.status_code}    =======")
-            logger.debug(f" ======    create_existing_policyholder_in_erp : response.text : {response.text}    =======")
+            response = requests.post(
+                url, headers=headers, json=policyholder_data, verify=False)
+            logger.debug(
+                f" ======    create_existing_policyholder_in_erp : response.status_code : {response.status_code}    =======")
+            logger.debug(
+                f" ======    create_existing_policyholder_in_erp : response.text : {response.text}    =======")
 
             try:
                 response_json = response.json()
-                logger.debug(f" ======    create_existing_policyholder_in_erp : response.json : {response_json}    =======")
+                logger.debug(
+                    f" ======    create_existing_policyholder_in_erp : response.json : {response_json}    =======")
 
                 # Update the PolicyHolder with the IDs from the response
                 PolicyHolder.objects.filter(id=ph_id).update(
@@ -242,7 +288,8 @@ def create_existing_policyholder_in_erp():
             except json.JSONDecodeError:
                 logger.error("Failed to decode JSON response")
 
-    logger.debug(" ======    create_existing_policyholder_in_erp - End    =======")
+    logger.debug(
+        " ======    create_existing_policyholder_in_erp - End    =======")
     return Response({"message": "Script Successfully Run."})
 
 
@@ -250,41 +297,63 @@ def create_existing_policyholder_in_erp():
 @permission_classes([AllowAny])
 def create_existing_fosa_in_erp():
     logger.debug(" ======    create_existing_fosa_in_erp - Start    =======")
-    fosa_list = HealthFacility.objects.filter(legacy_id__isnull=True, validity_to__isnull=True)
-    logger.debug(f" ======    create_existing_fosa_in_erp : fosa_list : {fosa_list}    =======")
+    fosa_list = HealthFacility.objects.filter(
+        legacy_id__isnull=True, validity_to__isnull=True)
+    logger.debug(
+        f" ======    create_existing_fosa_in_erp : fosa_list : {fosa_list}    =======")
     for fosa in fosa_list:
-        logger.debug(f" ======    create_existing_fosa_in_erp : fosa.id : {fosa.id}    =======")
-        logger.debug(f" ======    create_existing_fosa_in_erp : fosa.fosa_code : {fosa.fosa_code}    =======")
+        logger.debug(
+            f" ======    create_existing_fosa_in_erp : fosa.id : {fosa.id}    =======")
+        logger.debug(
+            f" ======    create_existing_fosa_in_erp : fosa.fosa_code : {fosa.fosa_code}    =======")
         policyholder_code = fosa.json_ext["camuCode"]
         category_fosa = fosa.json_ext["category_fosa"]
-        policy_holder = PolicyHolder.objects.filter(code=policyholder_code, is_deleted=False).first()
-        hf_cat = HealthFacilityCategory.objects.filter(code=updated_object.json_ext['category_fosa'], is_deleted=False).first()
-        logger.debug(f" ======    create_existing_fosa_in_erp : policyholder_code : {policyholder_code}    =======")
-        logger.debug(f" ======    create_existing_fosa_in_erp : category_fosa : {category_fosa}    =======")
+        policy_holder = PolicyHolder.objects.filter(
+            code=policyholder_code, is_deleted=False).first()
+        hf_cat = HealthFacilityCategory.objects.filter(
+            code=updated_object.json_ext['category_fosa'], is_deleted=False).first()
+        logger.debug(
+            f" ======    create_existing_fosa_in_erp : policyholder_code : {policyholder_code}    =======")
+        logger.debug(
+            f" ======    create_existing_fosa_in_erp : category_fosa : {category_fosa}    =======")
         if policy_holder and hf_cat and hf_cat.account_payable_id:
-            logger.debug(f" ======    create_existing_fosa_in_erp : policy_holder.id : {policy_holder.id}    =======")
-            logger.debug(f" ======    create_existing_fosa_in_erp : policy_holder.code : {policy_holder.code}    =======")
-            logger.debug(f" ======    create_existing_fosa_in_erp : hf_cat.id : {hf_cat.id}    =======")
-            logger.debug(f" ======    create_existing_fosa_in_erp : hf_cat.account_payable_id : {hf_cat.account_payable_id}    =======")
-            phcp = PolicyHolderContributionPlan.objects.filter(policy_holder=policy_holder, is_deleted=False).first()
-            logger.debug(f" ======    create_existing_fosa_in_erp : phcp.id : {phcp.id}    =======")
+            logger.debug(
+                f" ======    create_existing_fosa_in_erp : policy_holder.id : {policy_holder.id}    =======")
+            logger.debug(
+                f" ======    create_existing_fosa_in_erp : policy_holder.code : {policy_holder.code}    =======")
+            logger.debug(
+                f" ======    create_existing_fosa_in_erp : hf_cat.id : {hf_cat.id}    =======")
+            logger.debug(
+                f" ======    create_existing_fosa_in_erp : hf_cat.account_payable_id : {hf_cat.account_payable_id}    =======")
+            phcp = PolicyHolderContributionPlan.objects.filter(
+                policy_holder=policy_holder, is_deleted=False).first()
+            logger.debug(
+                f" ======    create_existing_fosa_in_erp : phcp.id : {phcp.id}    =======")
             if phcp:
-                policyholder_data = erp_mapping_data(phcp, True, hf_cat.account_payable_id)
+                policyholder_data = erp_mapping_data(
+                    phcp, True, hf_cat.account_payable_id)
                 policyholder_data = filter_null_values(policyholder_data)
 
-                url = '{}/update/partner/{}'.format(erp_url, phcp.policy_holder.erp_partner_access_id)
-                logger.debug(f" ======    create_existing_fosa_in_erp : url : {url}    =======")
-                logger.debug(f" ======    create_existing_fosa_in_erp : policyholder_data : {policyholder_data}    =======")
+                url = '{}/update/partner/{}'.format(
+                    erp_url, phcp.policy_holder.erp_partner_access_id)
+                logger.debug(
+                    f" ======    create_existing_fosa_in_erp : url : {url}    =======")
+                logger.debug(
+                    f" ======    create_existing_fosa_in_erp : policyholder_data : {policyholder_data}    =======")
 
                 try:
                     json_data = json.dumps(policyholder_data)
-                    logger.debug(f" ======    create_existing_fosa_in_erp : json_data : {json_data}    =======")
+                    logger.debug(
+                        f" ======    create_existing_fosa_in_erp : json_data : {json_data}    =======")
                 except TypeError as e:
                     logger.error(f"Error serializing JSON: {e}")
 
-                response = requests.post(url, headers=headers, json=policyholder_data, verify=False)
-                logger.debug(f" ======    create_existing_fosa_in_erp : response.status_code : {response.status_code}    =======")
-                logger.debug(f" ======    create_existing_fosa_in_erp : response.text : {response.text}    =======")
+                response = requests.post(
+                    url, headers=headers, json=policyholder_data, verify=False)
+                logger.debug(
+                    f" ======    create_existing_fosa_in_erp : response.status_code : {response.status_code}    =======")
+                logger.debug(
+                    f" ======    create_existing_fosa_in_erp : response.text : {response.text}    =======")
 
     logger.debug(" ======    create_existing_fosa_in_erp - End    =======")
     return Response({"message": "Script Successfully Run."})
