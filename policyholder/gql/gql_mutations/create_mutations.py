@@ -36,6 +36,9 @@ from django.apps import apps
 from policyholder.views import manuall_check_for_category_change_request
 from workflow.constants import *
 from policyholder.erp_intigration import erp_create_update_policyholder
+from insuree.models import Insuree
+from product.models import Product
+from contribution_plan.models import ContributionPlanBundle
 
 logger = logging.getLogger(__name__)
 
@@ -127,11 +130,22 @@ class CreatePolicyHolderInsureeMutation(BaseHistoryModelCreateMutationMixin, Bas
     @classmethod
     def _validate_mutation(cls, user, **data):
         insuree_id = data.get('insuree_id')
+        contribution_plan_bundle_id = data.get("contribution_plan_bundle_id")
         policyholder_id = data.get('policy_holder_id')
         is_insuree = PolicyHolderInsuree.objects.filter(policy_holder__id=policyholder_id, insuree__id=insuree_id,
                                                         is_deleted=False).first()
+        insurees = Insuree.objects.filter(id=insuree_id).first()
+        products = ContributionPlanBundle.objects.filter(id=contribution_plan_bundle_id, code="PSC5").first()
+        
         if is_insuree:
             raise ValidationError(message="Already Exists")
+        
+        if products is None and insurees.age() < 18:
+            raise ValidationError(message="A principal insuree should have minimum 18 years old")
+        
+        if products is not None and insurees.age() < 16:
+            raise ValidationError(message="Student should have minimum 16 years old")
+        
         employer_number = data.get('employer_number', '')
         income = data.get('json_ext', {}).get('calculation_rule', {}).get('income')
         is_valid_enrolment = manual_validate_enrolment_type(insuree_id, policyholder_id)
