@@ -214,7 +214,7 @@ def erp_delete_policyholder(ph_id, cpb_id, user):
     # except TypeError as e:
     #     logger.error(f"Error serializing JSON: {e}")
 
-    response = requests.post(url, headers=headers, json=None, verify=False)
+    response = requests.delete(url, headers=headers, json=None, verify=False)
     logger.debug(
         f" ======    erp_delete_policyholder : response.status_code : {response.status_code}    ======="
     )
@@ -415,7 +415,7 @@ def erp_delete_fosa(policyholder_code, account_payable_id, user):
     # except TypeError as e:
     #     logger.error(f"Error serializing JSON: {e}")
 
-    response = requests.post(url, headers=headers, json=None, verify=False)
+    response = requests.delete(url, headers=headers, json=None, verify=False)
     logger.debug(
         f" ======    erp_delete_fosa : response.status_code : {response.status_code}    ======="
     )
