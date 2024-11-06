@@ -22,6 +22,7 @@ from insuree.dms_utils import rename_folder_dms_and_openkm
 from django.core.mail import EmailMessage
 from django.conf import settings
 from django.utils import timezone
+from policyholder.erp_intigration import erp_create_update_policyholder
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,16 @@ class UpdatePolicyHolderMutation(BaseHistoryModelUpdateMutationMixin, BaseMutati
         super()._validate_mutation(user, **data)
         PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_update_policyholder_perms)
         PolicyHolderValidation.validate_update(user, **data)
+        
+        contributionPlan = PolicyHolderContributionPlan.objects.filter(
+        policy_holder__id=data['id'], is_deleted=False).first()        
+        
+        if contributionPlan is not None and contributionPlan.contribution_plan_bundle is not None:
+            cpId= contributionPlan.contribution_plan_bundle.id
+            print(f"********************** UPDATE POLICIY HOLDER ERP BEGIN {cpId}")
+            erp_create_update_policyholder(data['id'], cpId, user)
+            print("*********************** UPDATE POLICIY HOLDER ERP END")
+
 
 
 class UpdatePolicyHolderInsureeMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
