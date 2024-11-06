@@ -49,7 +49,6 @@ class ApprovePolicyholderExceptionType(graphene.ObjectType):
     success = graphene.Boolean()
     message = graphene.String()
 
-
 class Query(graphene.ObjectType):
     policy_holder = OrderedDjangoFilterConnectionField(
         PolicyHolderGQLType,
