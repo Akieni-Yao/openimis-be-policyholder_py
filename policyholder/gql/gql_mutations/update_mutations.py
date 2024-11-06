@@ -42,14 +42,13 @@ class UpdatePolicyHolderMutation(BaseHistoryModelUpdateMutationMixin, BaseMutati
         PolicyHolderValidation.validate_update(user, **data)
         
         contributionPlan = PolicyHolderContributionPlan.objects.filter(
-        policy_holder__id=data['id'], is_deleted=False).first()
-        
+        policy_holder__id=data['id'], is_deleted=False).first()        
         
         if contributionPlan is not None and contributionPlan.contribution_plan_bundle is not None:
             cpId= contributionPlan.contribution_plan_bundle.id
-            print(f"********************************** UPDATE POLICIY HOLDER ERP BEGIN {cpId}")
+            print(f"********************** UPDATE POLICIY HOLDER ERP BEGIN {cpId}")
             erp_create_update_policyholder(data['id'], cpId, user)
-            print("********************************** UPDATE POLICIY HOLDER ERP END")
+            print("*********************** UPDATE POLICIY HOLDER ERP END")
 
 
 
