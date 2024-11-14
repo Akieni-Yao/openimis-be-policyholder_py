@@ -160,14 +160,11 @@ def erp_create_update_policyholder(ph_id, cpb_id, user):
     logger.debug(" ======    erp_create_update_policyholder - end    =======")
     return True
 
+
 def erp_delete_policyholder(ph_id, cpb_id, user):
     logger.debug(" ======    erp_delete_policyholder - start    =======")
-    logger.debug(
-        f" ======    erp_delete_policyholder : ph_id : {ph_id}    ======="
-    )
-    logger.debug(
-        f" ======    erp_delete_policyholder : cpb_id : {cpb_id}    ======="
-    )
+    logger.debug(f" ======    erp_delete_policyholder : ph_id : {ph_id}    =======")
+    logger.debug(f" ======    erp_delete_policyholder : cpb_id : {cpb_id}    =======")
 
     phcp = PolicyHolderContributionPlan.objects.filter(
         policy_holder__id=ph_id, contribution_plan_bundle__id=cpb_id
@@ -181,9 +178,7 @@ def erp_delete_policyholder(ph_id, cpb_id, user):
 
         if account_no:
             bank_code = bank_account.get("bank", {})
-            bank_details = Banks.objects.filter(
-                code=bank_code
-            ).first()
+            bank_details = Banks.objects.filter(code=bank_code).first()
             bank_id = bank_details.erp_id
 
             bank_accounts = []
@@ -202,9 +197,7 @@ def erp_delete_policyholder(ph_id, cpb_id, user):
     url = "{}/delete/partner/{}".format(
         erp_url, phcp.policy_holder.erp_partner_access_id
     )
-    logger.debug(
-        f" ======    erp_create_update_policyholder : url : {url}    ======="
-    )
+    logger.debug(f" ======    erp_create_update_policyholder : url : {url}    =======")
 
     # try:
     #     json_data = json.dumps(policyholder_data)
@@ -257,7 +250,7 @@ def erp_delete_policyholder(ph_id, cpb_id, user):
     logger.debug(" ======    erp_delete_policyholder - end    =======")
     return True
 
-def erp_create_update_fosa(policyholder_code, account_payable_id, user):
+def erp_create_update_fosa(policyholder_code, account_payable_id, user, is_vendor=True):
     logger.debug(" ======    erp_create_update_fosa - start    =======")
     logger.debug(
         f" ======    erp_create_update_fosa : policyholder_code : {policyholder_code}    ======="
@@ -298,7 +291,7 @@ def erp_create_update_fosa(policyholder_code, account_payable_id, user):
             }
             bank_accounts.append(filter_null_values(bank_account_details))
 
-    policyholder_data = erp_mapping_data(phcp, bank_accounts, True, account_payable_id)
+    policyholder_data = erp_mapping_data(phcp, bank_accounts, is_vendor, account_payable_id)
     policyholder_data = filter_null_values(policyholder_data)
 
     url = "{}/update/partner/{}".format(
@@ -355,15 +348,14 @@ def erp_create_update_fosa(policyholder_code, account_payable_id, user):
     logger.debug(" ======    erp_create_update_fosa - end    =======")
     return True
 
+
 def erp_delete_fosa(policyholder_code, account_payable_id, user):
     logger.debug(" ======    erp_delete_fosa - start    =======")
     logger.debug(
         f" ======    erp_delete_fosa : policyholder_code : {policyholder_code}    ======="
     )
 
-    policy_holder = PolicyHolder.objects.filter(
-        code=policyholder_code
-    ).first()
+    policy_holder = PolicyHolder.objects.filter(code=policyholder_code).first()
     phcp = PolicyHolderContributionPlan.objects.filter(
         policy_holder=policy_holder
     ).first()
@@ -384,9 +376,7 @@ def erp_delete_fosa(policyholder_code, account_payable_id, user):
 
         if account_no:
             bank_code = bank_account.get("bank", {})
-            bank_details = Banks.objects.filter(
-                code=bank_code
-            ).first()
+            bank_details = Banks.objects.filter(code=bank_code).first()
             bank_id = bank_details.erp_id
             bank_accounts = []
             bank_account_details = {
