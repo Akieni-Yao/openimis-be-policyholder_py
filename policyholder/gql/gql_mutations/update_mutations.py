@@ -166,6 +166,8 @@ class PHApprovalMutation(graphene.Mutation):
             is_rework = input.is_rework
 
             ph_obj = PolicyHolder.objects.filter(id=ph_id, request_number=request_number).first()
+            
+            print(f"********************** UPDATE POLICIY HOLDER ERP BEGIN {ph_obj}")
 
             if ph_obj:
                 if is_approved:
@@ -178,18 +180,18 @@ class PHApprovalMutation(graphene.Mutation):
                     ph_obj.save(username=username)
                     rename_folder_dms_and_openkm(ph_obj.request_number, generated_number)
                     message = "Policy Holder Request Successfully Approved."
+                    print(f"********************** UPDATE POLICIY HOLDER ERP END APPROVED {ph_obj}")
                 elif is_rejected:
                     ph_obj.is_rejected = True
                     ph_obj.status = PH_STATUS_REJECTED
                     ph_obj.rejected_reason = input.rejected_reason
-                    # ph_obj.is_deleted = True
+                    # ph_obj.is_deleted = True 
                     ph_obj.save(username=username)
 
-                    phu_obj = PolicyHolderUser.objects.filter(policy_holder=ph_obj).first()
+                    # phu_obj = PolicyHolderUser.objects.filter(policy_holder=ph_obj).first()
                     # phu_obj.is_deleted = True
-                    phu_obj.save(username=username)
-
-                    InteractiveUser.objects.filter(id=phu_obj.user.i_user.id).update(validity_to=timezone.now())
+                    # phu_obj.save(username=username)
+                    # InteractiveUser.objects.filter(id=phu_obj.user.i_user.id).update(validity_to=timezone.now())
 
                     message = "Policy Holder Request Rejected."
                     subject = "CAMU, Your Policyholder Application request has been rejected."
@@ -198,6 +200,7 @@ class PHApprovalMutation(graphene.Mutation):
                         contact_name=ph_obj.contact_name.get("contactName"),
                         rejection_reason=ph_obj.rejected_reason
                     )
+                    print(f"********************** UPDATE POLICIY HOLDER ERP END REJECTED {ph_obj}")
                 elif is_rework:
                     ph_obj.is_rework = True
                     ph_obj.is_submit = False
@@ -212,6 +215,7 @@ class PHApprovalMutation(graphene.Mutation):
                         contact_name=ph_obj.contact_name.get("contactName"),
                         rework_comment=ph_obj.rework_comment
                     )
+                    print(f"********************** UPDATE POLICIY HOLDER ERP END REWORK {ph_obj}")
                 else:
                     success = False
                     message = "Policy Holder request action is not valid."
@@ -219,11 +223,13 @@ class PHApprovalMutation(graphene.Mutation):
                 if ph_obj.email and subject and email_body:
                     email_message = EmailMessage(subject, email_body, settings.EMAIL_HOST_USER, [ph_obj.email])
                     email_message.send()
-            try:
-                create_camu_notification(POLICYHOLDER_UPDATE_NT, ph_obj)
-                logger.info("Successfully created CAMU notification with POLICYHOLDER_CREATION_NT.")
-            except Exception as e:
-                logger.error(f"Failed to create CAMU notification: {e}")
+                    
+                try:
+                    print(f"********************** UPDATE POLICIY HOLDER ERP NOTIFICATION {ph_obj}")
+                    create_camu_notification(POLICYHOLDER_UPDATE_NT, ph_obj)
+                    logger.info("Successfully created CAMU notification with POLICYHOLDER_CREATION_NT.")
+                except Exception as e:
+                    logger.error(f"Failed to create CAMU notification: {e}")
             else:
                 success = False
                 message = "Policy Holder Request not found"
