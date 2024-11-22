@@ -182,11 +182,11 @@ class PHApprovalMutation(graphene.Mutation):
                     ph_obj.is_rejected = True
                     ph_obj.status = PH_STATUS_REJECTED
                     ph_obj.rejected_reason = input.rejected_reason
-                    ph_obj.is_deleted = True
+                    # ph_obj.is_deleted = True
                     ph_obj.save(username=username)
 
                     phu_obj = PolicyHolderUser.objects.filter(policy_holder=ph_obj).first()
-                    phu_obj.is_deleted = True
+                    # phu_obj.is_deleted = True
                     phu_obj.save(username=username)
 
                     InteractiveUser.objects.filter(id=phu_obj.user.i_user.id).update(validity_to=timezone.now())
