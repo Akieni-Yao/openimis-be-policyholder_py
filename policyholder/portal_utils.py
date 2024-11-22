@@ -153,7 +153,7 @@ def make_portal_reset_password_link(user, token):
 
 
 def send_approved_or_rejected_email(user, subject, message):
-    body_message = f"Hi {user.last_name}, {message}"
+    body_message = f"Hi {user['last_name']}, {message}"
     logger.info("Sending approved or rejected email...")
 
     html_message = """
@@ -170,14 +170,14 @@ def send_approved_or_rejected_email(user, subject, message):
     </body>
     </html>
     """.format(
-        last_name=user.last_name, message=message
+        last_name=user["last_name"], message=message
     )
 
     send_mail(
         subject,
         body_message,
         settings.EMAIL_HOST_USER,
-        [user.email],
+        [user["email"]],
         html_message=html_message,
     )
     logger.info("Verification email sent.")
