@@ -32,12 +32,12 @@ def send_verification_email(user):
     verification_url = f"{settings.BACKEND_URL}/api/policyholder/verify-email/{uid}/{token}/{e_timestamp}/"
     logger.info(f"Verification URL: {verification_url}")
 
-    subject = 'Verify your email'
+    subject = "Verify your email"
 
-    message = f'Hi {user.last_name}, Please click the link below to verify your email:\n\n{verification_url}'
+    message = f"Hi {user.last_name}, Please click the link below to verify your email:\n\n{verification_url}"
     logger.info("Sending verification email...")
 
-    html_message = '''
+    html_message = """
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -51,9 +51,17 @@ def send_verification_email(user):
         <a href="{verification_url}">Verify Email</a>
     </body>
     </html>
-    '''.format(last_name=user.last_name, verification_url=verification_url)
+    """.format(
+        last_name=user.last_name, verification_url=verification_url
+    )
 
-    send_mail(subject, message, settings.EMAIL_HOST_USER, [user.email], html_message=html_message)
+    send_mail(
+        subject,
+        message,
+        settings.EMAIL_HOST_USER,
+        [user.email],
+        html_message=html_message,
+    )
     logger.info("Verification email sent.")
 
 
@@ -63,12 +71,15 @@ def send_password_reset_email(user):
     domain = get_current_site(None).domain
     reset_url = f"http://{domain}/reset-password/{uid}/{token}/"
 
-    subject = 'Password Reset Request'
-    message = render_to_string('password_reset_email.html', {
-        'user': user,
-        'reset_url': reset_url,
-    })
-    send_mail(subject, message, 'from@example.com', [user.email])
+    subject = "Password Reset Request"
+    message = render_to_string(
+        "password_reset_email.html",
+        {
+            "user": user,
+            "reset_url": reset_url,
+        },
+    )
+    send_mail(subject, message, "from@example.com", [user.email])
 
 
 class ForgotPassword(graphene.Mutation):
@@ -112,13 +123,19 @@ class ResetPassword(graphene.Mutation):
 
         if user is not None and default_token_generator.check_token(user, token):
             # Check token expiration (e.g., 15 minutes)
-            token_expiration = user.password_reset_token_created_at + timezone.timedelta(minutes=15)
+            token_expiration = (
+                user.password_reset_token_created_at + timezone.timedelta(minutes=15)
+            )
             if timezone.now() <= token_expiration:
                 user.set_password(new_password)
                 user.save()
-                return ResetPassword(success=True, message="Password reset successfully.")
+                return ResetPassword(
+                    success=True, message="Password reset successfully."
+                )
             else:
-                return ResetPassword(success=False, message="Password reset link expired.")
+                return ResetPassword(
+                    success=False, message="Password reset link expired."
+                )
         else:
             return ResetPassword(success=False, message="Invalid password reset link.")
 
@@ -133,3 +150,34 @@ def make_portal_reset_password_link(user, token):
     e_timestamp = urlsafe_base64_encode(force_bytes(timestamp))
     verification_url = f"{settings.BACKEND_URL}/api/policyholder/portal-reset/{uid}/{token}/{e_timestamp}/"
     return verification_url
+
+
+def send_approved_or_rejected_email(user, subject, message):
+    body_message = f"Hi {user['last_name']}, {message}"
+    logger.info("Sending approved or rejected email...")
+
+    html_message = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Email Verification</title>
+    </head>
+    <body>
+        <p>Hi {last_name},</p>
+        <p>{message}</p>
+    </body>
+    </html>
+    """.format(
+        last_name=user["last_name"], message=message
+    )
+
+    send_mail(
+        subject,
+        body_message,
+        settings.EMAIL_HOST_USER,
+        [user["email"]],
+        html_message=html_message,
+    )
+    logger.info("Verification email sent.")
