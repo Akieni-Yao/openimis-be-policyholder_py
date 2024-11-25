@@ -197,8 +197,6 @@ class PHApprovalMutation(graphene.Mutation):
                 id=ph_id, request_number=request_number
             ).first()
 
-            print(f"********************** UPDATE POLICIY HOLDER ERP BEGIN {ph_obj}")
-
             if ph_obj:
                 if is_approved:
                     json_ext_dict = ph_obj.json_ext.get("jsonExt")
@@ -213,14 +211,12 @@ class PHApprovalMutation(graphene.Mutation):
                     )
                     message = "Policy Holder Request Successfully Approved."
                     email_body = (
-                        "Your Policy Holder Request has been Successfully Approved."
+                        f"Your Policy Holder Request {ph_obj.request_number} has been Successfully Approved."
                     )
                     subject = (
                         "CAMU, Your Policyholder Application request has been approved."
                     )
-                    print(
-                        f"********************** UPDATE POLICIY HOLDER ERP END APPROVED {ph_obj}"
-                    )
+
                 elif is_rejected:
                     ph_obj.is_rejected = True
                     ph_obj.status = PH_STATUS_REJECTED
@@ -237,15 +233,7 @@ class PHApprovalMutation(graphene.Mutation):
                     subject = (
                         "CAMU, Your Policyholder Application request has been rejected."
                     )
-                    email_body = f"Your Policy Holder Request has been Rejected. Reason: {ph_obj.rejected_reason}"
-                    # email_body = policyholder_reject.format(
-                    #     request_number=ph_obj.request_number,
-                    #     contact_name=ph_obj.contact_name.get("contactName"),
-                    #     rejection_reason=ph_obj.rejected_reason,
-                    # )
-                    print(
-                        f"********************** UPDATE POLICIY HOLDER ERP END REJECTED {ph_obj}"
-                    )
+                    email_body = f"Your Policy Holder Request {ph_obj.request_number} has been Rejected. Reason: {ph_obj.rejected_reason}"
                 elif is_rework:
                     ph_obj.is_rework = True
                     ph_obj.is_submit = False
@@ -255,17 +243,7 @@ class PHApprovalMutation(graphene.Mutation):
                     ph_obj.save(username=username)
                     message = "Policy Holder Request Sent for Rework."
                     subject = "CAMU, Your Policyholder Application need some rework."
-                    email_body = (
-                        f"Your Policy Holder Request has been Sent for Rework. Reason: {ph_obj.rework_comment}"
-                    )
-                    # email_body = policyholder_rework.format(
-                    #     request_number=ph_obj.request_number,
-                    #     contact_name=ph_obj.contact_name.get("contactName"),
-                    #     rework_comment=ph_obj.rework_comment,
-                    # )
-                    print(
-                        f"********************** UPDATE POLICIY HOLDER ERP END REWORK {ph_obj}"
-                    )
+                    email_body = f"Your Policy Holder Request {ph_obj.request_number} has been Sent for Rework. Reason: {ph_obj.rework_comment}"
                 else:
                     success = False
                     message = "Policy Holder request action is not valid."
@@ -281,11 +259,9 @@ class PHApprovalMutation(graphene.Mutation):
                     )
                     # email_message = EmailMessage(subject, email_body, settings.EMAIL_HOST_USER, [ph_obj.email])
                     # email_message.send()
+                    # 
 
                 try:
-                    print(
-                        f"********************** UPDATE POLICIY HOLDER ERP NOTIFICATION {ph_obj}"
-                    )
                     create_camu_notification(POLICYHOLDER_UPDATE_NT, ph_obj)
                     logger.info(
                         "Successfully created CAMU notification with POLICYHOLDER_CREATION_NT."
