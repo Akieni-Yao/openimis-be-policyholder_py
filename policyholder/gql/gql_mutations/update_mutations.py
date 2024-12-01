@@ -51,23 +51,36 @@ class UpdatePolicyHolderMutation(BaseHistoryModelUpdateMutationMixin, BaseMutati
     @classmethod
     def _validate_mutation(cls, user, **data):
         super()._validate_mutation(user, **data)
+
         PermissionValidation.validate_perms(
             user, PolicyholderConfig.gql_mutation_update_policyholder_perms
         )
+
         PolicyHolderValidation.validate_update(user, **data)
 
-        contributionPlan = PolicyHolderContributionPlan.objects.filter(
-            policy_holder__id=data["id"], is_deleted=False
-        ).first()
+        print("********************** UPDATE POLICY HOLDER VALIDATION")
 
-        if (
-            contributionPlan is not None
-            and contributionPlan.contribution_plan_bundle is not None
-        ):
-            cpId = contributionPlan.contribution_plan_bundle.id
-            print(f"********************** UPDATE POLICIY HOLDER ERP BEGIN {cpId}")
-            erp_create_update_policyholder(data["id"], cpId, user)
-            print("*********************** UPDATE POLICIY HOLDER ERP END")
+        try:
+
+            print("********************** UPDATE POLICY HOLDER VALIDATION ERP")
+            contributionPlan = PolicyHolderContributionPlan.objects.filter(
+                policy_holder__id=data["id"], is_deleted=False
+            ).first()
+
+            if (
+                contributionPlan is not None
+                and contributionPlan.contribution_plan_bundle is not None
+            ):
+
+                cpId = contributionPlan.contribution_plan_bundle.id
+
+                print("********************** UPDATE POLICY HOLDER VALIDATION ERP 2")
+
+                erp_create_update_policyholder(data["id"], cpId, user)
+
+            print("********************** UPDATE POLICY HOLDER VALIDATION ERP SUCCESS")
+        except Exception as e:
+            print(f"********************** ERP UPDATE POLICIY HOLDER ERP ERROR {e}")
 
 
 class UpdatePolicyHolderInsureeMutation(
@@ -210,9 +223,7 @@ class PHApprovalMutation(graphene.Mutation):
                         ph_obj.request_number, generated_number
                     )
                     message = "Policy Holder Request Successfully Approved."
-                    email_body = (
-                        f"Your Policy Holder Request {ph_obj.request_number} has been Successfully Approved."
-                    )
+                    email_body = f"Your Policy Holder Request {ph_obj.request_number} has been Successfully Approved."
                     subject = (
                         "CAMU, Your Policyholder Application request has been approved."
                     )
@@ -259,7 +270,7 @@ class PHApprovalMutation(graphene.Mutation):
                     )
                     # email_message = EmailMessage(subject, email_body, settings.EMAIL_HOST_USER, [ph_obj.email])
                     # email_message.send()
-                    # 
+                    #
 
                 try:
                     create_camu_notification(POLICYHOLDER_UPDATE_NT, ph_obj)
