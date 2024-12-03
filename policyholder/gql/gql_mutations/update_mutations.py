@@ -315,16 +315,14 @@ class UnlockPolicyHolderMutation(graphene.Mutation):
                 success=False, message="No payments found for this policyholder."
             )
 
-        if payments.filter(
-            status__ne=5
-        ).exists():  # Check if any payment is not fully paid
+        if payments.filter(~Q(status=1) & ~Q(status=5)).exists():
             return UnlockPolicyHolderMutation(
                 success=False, message="Not all payments are fully paid."
             )
 
         # Check penalties of those payments: should have status 3 or 4, penalty_type 'Penalty', and is_approved=True
         penalties = PaymentPenaltyAndSanction.objects.filter(
-            Q(payment__in=payments) & ~Q(status__in=[3, 4])
+            Q(payment__in=payments) & ~Q(status__in=[PaymentPenaltyAndSanction.PENALTY_APPROVED, PaymentPenaltyAndSanction.PENALTY_CANCELED, PaymentPenaltyAndSanction.INSTALLMENT_APPROVED])
         )
 
         # If penalties exist that are unresolved or not approved
@@ -337,9 +335,11 @@ class UnlockPolicyHolderMutation(graphene.Mutation):
                 success=False, message="Penalties are not fully resolved."
             )
 
+        username = info.context.user.username
+
         # If all payments are fully paid, penalties are resolved and approved, unlock the policyholder
         policyholder.status = "Approved"
-        policyholder.save()
+        policyholder.save(username=username)
 
         return UnlockPolicyHolderMutation(
             success=True, message="Policyholder unlocked successfully."
