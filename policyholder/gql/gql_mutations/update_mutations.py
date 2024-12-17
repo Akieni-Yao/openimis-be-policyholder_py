@@ -157,11 +157,13 @@ class UpdatePolicyHolderInsureeDesignation(graphene.Mutation):
         insuree_id = graphene.String(required=True)
         designation = graphene.String(required=True)
         flag = graphene.Boolean(required=True)
+        position_id = graphene.String(required=False)
+        speciality_id = graphene.String(required=False)
 
     success = graphene.Boolean()
     message = graphene.String()
 
-    def mutate(self, info, policy_holder_code, insuree_id, designation, flag):
+    def mutate(self, info, policy_holder_code, insuree_id, designation, flag, position_id=None, speciality_id=None):
         try:
             username = info.context.user.username
             policy_holder = PolicyHolder.objects.get(code=policy_holder_code)
@@ -172,7 +174,10 @@ class UpdatePolicyHolderInsureeDesignation(graphene.Mutation):
             )
             json_ext_data = record.json_ext
             if flag:
-                json_ext_data["designation"] = designation
+                json_ext_data['designation'] = designation
+                json_ext_data['position_id'] = position_id
+                json_ext_data['speciality_id'] = speciality_id
+                
                 record.json_ext = json_ext_data
             else:
                 record.json_ext = json_ext_data
