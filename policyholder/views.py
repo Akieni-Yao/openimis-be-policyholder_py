@@ -44,6 +44,7 @@ from contribution_plan.models import ContributionPlanBundleDetails
 from workflow.workflow_stage import insuree_add_to_workflow
 from insuree.abis_api import create_abis_insuree
 from decimal import Decimal, InvalidOperation
+from policyholder.tasks import sync_policyholders_to_erp
 
 logger = logging.getLogger(__name__)
 
@@ -1711,3 +1712,18 @@ def paid_contract_payment(request):
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}", exc_info=True)
         return JsonResponse({"errors": "An unexpected error occurred."}, status=500)
+
+
+@api_view(["GET"])
+@permission_classes(
+    [
+        check_user_with_rights(
+            PolicyholderConfig.gql_query_policyholder_perms,
+        )
+    ]
+)
+def erp_sync_policy_holders(request):
+    sync_policyholders_to_erp.delay()
+    return JsonResponse(
+        {"message": "Policyholders sync started"},
+        status=200)

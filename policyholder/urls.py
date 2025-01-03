@@ -16,5 +16,6 @@ urlpatterns = [
 
     path('create-existing-policyholder-in-erp/', erp_intigration.create_existing_policyholder_in_erp),
     path('create-existing-fosa-in-erp/', erp_intigration.create_existing_fosa_in_erp),
+    path('erp-sync-mising-policyholders/', views.erp_sync_policy_holders),
 
 ]
