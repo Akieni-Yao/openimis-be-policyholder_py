@@ -365,6 +365,13 @@ class Query(graphene.ObjectType):
             ).values_list("insuree_id", flat=True)
             if insuree_ids:
                 query = query.exclude(insuree_id__in=insuree_ids)
+                
+        # # check validity_to is null
+        # if kwargs.get("insuree__validity_to__isnull") is not None:
+        #     print(f"******************* display kwargs : {kwargs} *******************")
+        #     # query = query.filter(insuree__validity_to__isnull=True)
+        #     kwargs.pop("insuree__validity_to__isnull")
+        #     query = query.exclude(insuree__validity_to__isnull=True)
 
         return gql_optimizer.query(query.filter(*filters).all(), info)
 
