@@ -19,7 +19,11 @@ from django.utils.encoding import force_text
 from django.utils.http import urlsafe_base64_decode
 from graphql import GraphQLError
 
-from rest_framework.decorators import permission_classes, api_view, authentication_classes
+from rest_framework.decorators import (
+    permission_classes,
+    api_view,
+    authentication_classes,
+)
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 
@@ -28,7 +32,10 @@ from contract.services import Contract as ContractService
 from core.constants import *
 from core.models import Role, InteractiveUser, Banks
 from core.notification_service import create_camu_notification, base64_encode
-from insuree.dms_utils import create_openKm_folder_for_bulkupload, send_mail_to_temp_insuree_with_pdf
+from insuree.dms_utils import (
+    create_openKm_folder_for_bulkupload,
+    send_mail_to_temp_insuree_with_pdf,
+)
 from insuree.gql_mutations import temp_generate_employee_camu_registration_number
 from insuree.models import Insuree, Gender, Family, InsureePolicy
 from location.models import Location
@@ -36,10 +43,24 @@ from payment.models import Payment, PaymentPenaltyAndSanction
 from payment.views import get_payment_product_config
 from policy.models import Policy
 from policyholder.apps import *
-from policyholder.constants import CC_WAITING_FOR_DOCUMENT, PH_STATUS_CREATED, PH_STATUS_LOCKED, TIPL_PAYMENT_METHOD_ID
-from policyholder.dms_utils import create_folder_for_cat_chnage_req, validate_enrolment_type, send_notification_to_head
-from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, CategoryChange, \
-    PolicyHolderUser
+from policyholder.constants import (
+    CC_WAITING_FOR_DOCUMENT,
+    PH_STATUS_CREATED,
+    PH_STATUS_LOCKED,
+    TIPL_PAYMENT_METHOD_ID,
+)
+from policyholder.dms_utils import (
+    create_folder_for_cat_chnage_req,
+    validate_enrolment_type,
+    send_notification_to_head,
+)
+from policyholder.models import (
+    PolicyHolder,
+    PolicyHolderInsuree,
+    PolicyHolderContributionPlan,
+    CategoryChange,
+    PolicyHolderUser,
+)
 from contribution_plan.models import ContributionPlanBundleDetails
 from workflow.workflow_stage import insuree_add_to_workflow
 from insuree.abis_api import create_abis_insuree
@@ -49,7 +70,7 @@ from policyholder.tasks import sync_policyholders_to_erp
 logger = logging.getLogger(__name__)
 
 MINIMUM_AGE_LIMIT = 16
-HEADER_INSUREE_CAMU_NO = 'camu_number'
+HEADER_INSUREE_CAMU_NO = "camu_number"
 HEADER_FAMILY_HEAD = "family_head"
 HEADER_FAMILY_LOCATION_CODE = "family_location_code"
 HEADER_INSUREE_OTHER_NAMES = "insuree_other_names"
@@ -72,7 +93,7 @@ HEADER_TOTAL_SHARE = "totalContribution"
 HEADER_DELETE = "Delete"
 HEADERS = [
     HEADER_INSUREE_CAMU_NO,
-    HEADER_FAMILY_HEAD,
+    # HEADER_FAMILY_HEAD,
     HEADER_FAMILY_LOCATION_CODE,
     HEADER_INSUREE_OTHER_NAMES,
     HEADER_INSUREE_LAST_NAME,
@@ -83,20 +104,20 @@ HEADERS = [
     HEADER_PHONE,
     HEADER_ADDRESS,
     HEADER_INSUREE_ID,
-    HEADER_INCOME,
+    # HEADER_INCOME,
     HEADER_EMAIL,
-    HEADER_EMPLOYER_NUMBER,
-    HEADER_EMPLOYER_PERCENTAGE,
-    HEADER_EMPLOYER_SHARE,
-    HEADER_EMPLOYEE_PERCENTAGE,
-    HEADER_EMPLOYEE_SHARE,
-    HEADER_TOTAL_SHARE,
+    # HEADER_EMPLOYER_NUMBER,
+    # HEADER_EMPLOYER_PERCENTAGE,
+    # HEADER_EMPLOYER_SHARE,
+    # HEADER_EMPLOYEE_PERCENTAGE,
+    # HEADER_EMPLOYEE_SHARE,
+    # HEADER_TOTAL_SHARE,
     HEADER_DELETE,
 ]
 
 GENDERS = {
-    "F": Gender.objects.get(code='F'),
-    "M": Gender.objects.get(code='M'),
+    "F": Gender.objects.get(code="F"),
+    "M": Gender.objects.get(code="M"),
 }
 
 RANDOM_INSUREE_ID_MIN_VALUE = 900_000_000_000
@@ -144,21 +165,22 @@ def validate_line(line):
 
 def get_village_from_line(line):
     village_code = line[HEADER_FAMILY_LOCATION_CODE]
-    village = (Location.objects.filter(validity_to__isnull=True,
-                                       type="V",
-                                       code=village_code)
-               .first())
+    village = Location.objects.filter(
+        validity_to__isnull=True, type="V", code=village_code
+    ).first()
     return village
 
 
-def get_or_create_family_from_line(line, village: Location, audit_user_id: int, enrolment_type):
-    head_id = line[HEADER_FAMILY_HEAD]
+def get_or_create_family_from_line(
+    line, village: Location, audit_user_id: int, enrolment_type
+):
+    # head_id = line[HEADER_FAMILY_HEAD]
+    head_id = None
     family = None
     if head_id:
-        family = (Family.objects.filter(validity_to__isnull=True,
-                                        head_insuree__chf_id=head_id,
-                                        location=village)
-                  .first())
+        family = Family.objects.filter(
+            validity_to__isnull=True, head_insuree__chf_id=head_id, location=village
+        ).first()
     created = False
 
     if not family and not head_id:
@@ -168,7 +190,7 @@ def get_or_create_family_from_line(line, village: Location, audit_user_id: int, 
             audit_user_id=audit_user_id,
             status="PRE_REGISTERED",
             address=line[HEADER_ADDRESS],
-            json_ext={"enrolmentType": map_enrolment_type_to_category(enrolment_type)}
+            json_ext={"enrolmentType": map_enrolment_type_to_category(enrolment_type)},
         )
         created = True
 
@@ -179,22 +201,36 @@ def generate_available_chf_id(gender, village, dob, insureeEnrolmentType):
     data = {
         "gender_id": gender.upper(),
         "json_ext": {
-            "insureelocations": {"parent": {"parent": {"parent": {"code": village.parent.parent.parent.code}}}}},
+            "insureelocations": {
+                "parent": {
+                    "parent": {"parent": {"code": village.parent.parent.parent.code}}
+                }
+            }
+        },
         "dob": dob,
-        "insureeEnrolmentType": map_enrolment_type_to_category(insureeEnrolmentType)
+        "insureeEnrolmentType": map_enrolment_type_to_category(insureeEnrolmentType),
     }
     return temp_generate_employee_camu_registration_number(None, data)
 
 
-def get_or_create_insuree_from_line(line, family: Family, is_family_created: bool, audit_user_id: int, location=None,
-                                    core_user_id=None, enrolment_type=None):
+def get_or_create_insuree_from_line(
+    line,
+    family: Family,
+    is_family_created: bool,
+    audit_user_id: int,
+    location=None,
+    core_user_id=None,
+    enrolment_type=None,
+):
     id = line[HEADER_INSUREE_ID]
     camu_num = line[HEADER_INSUREE_CAMU_NO]
     insuree = None
     if id:
-        insuree = (Insuree.objects.filter(validity_to__isnull=True, chf_id=id).first())
+        insuree = Insuree.objects.filter(validity_to__isnull=True, chf_id=id).first()
     if not insuree and camu_num:
-        insuree = (Insuree.objects.filter(validity_to__isnull=True, camu_number=camu_num).first())
+        insuree = Insuree.objects.filter(
+            validity_to__isnull=True, camu_number=camu_num
+        ).first()
 
     created = False
     # if insuree:
@@ -213,7 +249,7 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
             line[HEADER_INSUREE_GENDER],
             location if location else family.location,
             line[HEADER_INSUREE_DOB],
-            enrolment_type
+            enrolment_type,
         )
         current_village = location if location else family.location
         response_string = json.dumps(current_village, cls=LocationEncoder)
@@ -239,8 +275,8 @@ def get_or_create_insuree_from_line(line, family: Family, is_family_created: boo
                 "insureeEnrolmentType": map_enrolment_type_to_category(enrolment_type),
                 "insureelocations": response_data,
                 "BirthPlace": line[HEADER_BIRTH_LOCATION_CODE],
-                "insureeaddress": line[HEADER_ADDRESS]
-            }
+                "insureeaddress": line[HEADER_ADDRESS],
+            },
         )
         created = True
 
@@ -254,8 +290,12 @@ def validating_insuree_on_name_dob(line):
         line[HEADER_INSUREE_DOB] = timezone.make_aware(datetime_obj).date()
 
     insuree = Insuree.objects.filter(
-        other_names=line[HEADER_INSUREE_OTHER_NAMES], last_name=line[HEADER_INSUREE_LAST_NAME],
-        dob=line[HEADER_INSUREE_DOB], validity_to__isnull=True, legacy_id__isnull=True).first()
+        other_names=line[HEADER_INSUREE_OTHER_NAMES],
+        last_name=line[HEADER_INSUREE_LAST_NAME],
+        dob=line[HEADER_INSUREE_DOB],
+        validity_to__isnull=True,
+        legacy_id__isnull=True,
+    ).first()
 
     return insuree
 
@@ -269,16 +309,24 @@ def soft_delete_insuree(line, policy_holder_code, user_id):
     camu_num = line[HEADER_INSUREE_CAMU_NO]
     insuree = None
     if id:
-        insuree = (Insuree.objects.filter(validity_to__isnull=True, chf_id=id).first())
+        insuree = Insuree.objects.filter(validity_to__isnull=True, chf_id=id).first()
     if not insuree:
-        insuree = (Insuree.objects.filter(validity_to__isnull=True, camu_number=camu_num).first())
+        insuree = Insuree.objects.filter(
+            validity_to__isnull=True, camu_number=camu_num
+        ).first()
     if insuree:
-        phn = PolicyHolderInsuree.objects.filter(insuree_id=insuree.id, policy_holder__code=policy_holder_code,
-                                                 policy_holder__date_valid_to__isnull=True,
-                                                 policy_holder__is_deleted=False, date_valid_to__isnull=True,
-                                                 is_deleted=False).first()
+        phn = PolicyHolderInsuree.objects.filter(
+            insuree_id=insuree.id,
+            policy_holder__code=policy_holder_code,
+            policy_holder__date_valid_to__isnull=True,
+            policy_holder__is_deleted=False,
+            date_valid_to__isnull=True,
+            is_deleted=False,
+        ).first()
         if phn:
-            PolicyHolderInsuree.objects.filter(id=phn.id).update(is_deleted=True, date_valid_to=datetime.now())
+            PolicyHolderInsuree.objects.filter(id=phn.id).update(
+                is_deleted=True, date_valid_to=datetime.now()
+            )
             return True
     return False
 
@@ -327,15 +375,15 @@ def import_phi(request, policy_holder_code):
         "Téléphone": HEADER_PHONE,
         "Adresse": HEADER_ADDRESS,
         "Village": HEADER_FAMILY_LOCATION_CODE,
-        "ID Famille": HEADER_FAMILY_HEAD,
+        # "ID Famille": HEADER_FAMILY_HEAD,
         "Email": HEADER_EMAIL,
-        "Matricule": HEADER_EMPLOYER_NUMBER,
-        "Salaire Brut": HEADER_INCOME,
-        "Part Patronale %": HEADER_EMPLOYER_PERCENTAGE,
-        "Part Patronale": HEADER_EMPLOYER_SHARE,
-        "Part Salariale %": HEADER_EMPLOYEE_PERCENTAGE,
-        "Part Salariale": HEADER_EMPLOYEE_SHARE,
-        "Cotisation total": HEADER_TOTAL_SHARE,
+        # "Matricule": HEADER_EMPLOYER_NUMBER,
+        # "Salaire Brut": HEADER_INCOME,
+        # "Part Patronale %": HEADER_EMPLOYER_PERCENTAGE,
+        # "Part Patronale": HEADER_EMPLOYER_SHARE,
+        # "Part Salariale %": HEADER_EMPLOYEE_PERCENTAGE,
+        # "Part Salariale": HEADER_EMPLOYEE_SHARE,
+        # "Cotisation total": HEADER_TOTAL_SHARE,
         "Supprimé": HEADER_DELETE,
     }
 
@@ -346,7 +394,7 @@ def import_phi(request, policy_holder_code):
 
     # For output excel with error and success message
     output = io.BytesIO()
-    writer = pd.ExcelWriter(output, engine='xlsxwriter')
+    writer = pd.ExcelWriter(output, engine="xlsxwriter")
     processed_data = pd.DataFrame()
 
     for index, line in df.iterrows():  # for each line in the Excel file
@@ -356,10 +404,15 @@ def import_phi(request, policy_holder_code):
         logger.debug("Importing line %s: %s", total_lines, line)
 
         # List of possible date formats to try
-        date_formats = ['%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y']  # Add more formats as needed
+        date_formats = [
+            "%Y-%m-%d",
+            "%m/%d/%Y",
+            "%d/%m/%Y",
+        ]  # Add more formats as needed
 
         dob_value = line[HEADER_INSUREE_DOB]
-        if not line.get(HEADER_INSUREE_ID) and line.get(HEADER_FAMILY_HEAD):
+        # if not line.get(HEADER_INSUREE_ID) and line.get(HEADER_FAMILY_HEAD):
+        if not line.get(HEADER_INSUREE_ID):
             if isinstance(dob_value, datetime):
                 dob = dob_value
             else:
@@ -374,54 +427,89 @@ def import_phi(request, policy_holder_code):
                 if dob is None:
                     # If none of the formats match, handle the error
                     errors.append(
-                        f"Error line {total_lines} - Format de date invalide pour la date de naissance : {dob_value}")
+                        f"Error line {total_lines} - Format de date invalide pour la date de naissance : {dob_value}"
+                    )
                     logger.debug(
-                        f"Error line {total_lines} - Format de date invalide pour la date de naissance : {dob_value}")
+                        f"Error line {total_lines} - Format de date invalide pour la date de naissance : {dob_value}"
+                    )
                     total_validation_errors += 1
                     # Adding error in output excel
                     row_data = line.tolist()
-                    row_data.extend(["Échec", f"Format de date invalide pour la date de naissance : {dob_value}"])
-                    processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
+                    row_data.extend(
+                        [
+                            "Échec",
+                            f"Format de date invalide pour la date de naissance : {dob_value}",
+                        ]
+                    )
+                    processed_data = processed_data.append(
+                        pd.Series(row_data), ignore_index=True
+                    )
                     continue
 
-            age = (datetime.now().date() - dob.date()) // timedelta(days=365.25)  # Calculate age in years
+            age = (datetime.now().date() - dob.date()) // timedelta(
+                days=365.25
+            )  # Calculate age in years
             if age < MINIMUM_AGE_LIMIT:
                 errors.append(
-                    f"Error line {total_lines} - L'assuré doit être âgé d'au moins {MINIMUM_AGE_LIMIT} ans.")
-                logger.debug(f"Error line {total_lines} - L'assuré doit être âgé d'au moins {MINIMUM_AGE_LIMIT} ans.")
+                    f"Error line {total_lines} - L'assuré doit être âgé d'au moins {MINIMUM_AGE_LIMIT} ans."
+                )
+                logger.debug(
+                    f"Error line {total_lines} - L'assuré doit être âgé d'au moins {MINIMUM_AGE_LIMIT} ans."
+                )
                 total_validation_errors += 1
                 # Adding error in output excel
                 row_data = line.tolist()
-                row_data.extend(["Échec", f"L'assuré doit être âgé d'au moins {MINIMUM_AGE_LIMIT} ans."])
-                processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
+                row_data.extend(
+                    [
+                        "Échec",
+                        f"L'assuré doit être âgé d'au moins {MINIMUM_AGE_LIMIT} ans.",
+                    ]
+                )
+                processed_data = processed_data.append(
+                    pd.Series(row_data), ignore_index=True
+                )
                 continue
-            force_value = str(line.get('Force', '')).strip().lower()
-            if force_value not in ['yes', 'Yes', 'YES']:
+            force_value = str(line.get("Force", "")).strip().lower()
+            if force_value not in ["yes", "Yes", "YES"]:
                 # Check if insuree with the same name and DOB already exists
                 insuree = validating_insuree_on_name_dob(line)
                 if insuree:
                     # Generate an error message instructing to add insuree forcibly
                     errors.append(
-                        f"Error line {total_lines} - Un assuré ayant le même nom et la même date de naissance existe déjà. Si vous voulez l'ajouter, veuillez le faire de force en ajoutant une nouvelle colonne nommée 'Force' avec la valeur 'YES'.")
+                        f"Error line {total_lines} - Un assuré ayant le même nom et la même date de naissance existe déjà. Si vous voulez l'ajouter, veuillez le faire de force en ajoutant une nouvelle colonne nommée 'Force' avec la valeur 'YES'."
+                    )
                     logger.debug(
-                        f"Error line {total_lines} - Un assuré ayant le même nom et la même date de naissance existe déjà. Si vous voulez l'ajouter, veuillez le faire de force en ajoutant une nouvelle colonne nommée 'Force' avec la valeur 'YES'.")
+                        f"Error line {total_lines} - Un assuré ayant le même nom et la même date de naissance existe déjà. Si vous voulez l'ajouter, veuillez le faire de force en ajoutant une nouvelle colonne nommée 'Force' avec la valeur 'YES'."
+                    )
 
                     # Adding error in output excel
                     row_data = line.tolist()
-                    row_data.extend(["Échec",
-                                     "Un assuré ayant le même nom et la même date de naissance existe déjà. Si vous voulez l'ajouter, veuillez le faire de force en ajoutant une nouvelle colonne nommée 'Force' avec la valeur 'YES'."])
-                    processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
+                    row_data.extend(
+                        [
+                            "Échec",
+                            "Un assuré ayant le même nom et la même date de naissance existe déjà. Si vous voulez l'ajouter, veuillez le faire de force en ajoutant une nouvelle colonne nommée 'Force' avec la valeur 'YES'.",
+                        ]
+                    )
+                    processed_data = processed_data.append(
+                        pd.Series(row_data), ignore_index=True
+                    )
                     continue
         validation_errors = validate_line(line)
         if validation_errors:
-            errors.append(f"Error line {total_lines} - Problèmes de validation  ({validation_errors})")
-            logger.debug(f"Error line {total_lines} - Problèmes de validation  ({validation_errors})")
+            errors.append(
+                f"Error line {total_lines} - Problèmes de validation  ({validation_errors})"
+            )
+            logger.debug(
+                f"Error line {total_lines} - Problèmes de validation  ({validation_errors})"
+            )
             total_validation_errors += 1
 
             # Adding error in output excel
             row_data = line.tolist()
             row_data.extend(["Échec", validation_errors])
-            processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
+            processed_data = processed_data.append(
+                pd.Series(row_data), ignore_index=True
+            )
             continue
 
         if line[HEADER_DELETE] and line[HEADER_DELETE].lower() == "yes":
@@ -431,65 +519,105 @@ def import_phi(request, policy_holder_code):
 
         village = get_village_from_line(line)
         if not village:
-            errors.append(f"Error line {total_lines} - Village inconnu ({line[HEADER_FAMILY_LOCATION_CODE]})")
-            logger.debug(f"Error line {total_lines} -Village inconnu ({line[HEADER_FAMILY_LOCATION_CODE]})")
+            errors.append(
+                f"Error line {total_lines} - Village inconnu ({line[HEADER_FAMILY_LOCATION_CODE]})"
+            )
+            logger.debug(
+                f"Error line {total_lines} -Village inconnu ({line[HEADER_FAMILY_LOCATION_CODE]})"
+            )
             total_locations_not_found += 1
 
             # Adding error in output excel
             row_data = line.tolist()
-            row_data.extend(["Échec", f"Village inconnu - {line[HEADER_FAMILY_LOCATION_CODE]}"])
-            processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
+            row_data.extend(
+                ["Échec", f"Village inconnu - {line[HEADER_FAMILY_LOCATION_CODE]}"]
+            )
+            processed_data = processed_data.append(
+                pd.Series(row_data), ignore_index=True
+            )
             continue
 
         try:
-            ph_cpb = PolicyHolderContributionPlan.objects.filter(policy_holder=policy_holder, is_deleted=False).first()
+            ph_cpb = PolicyHolderContributionPlan.objects.filter(
+                policy_holder=policy_holder, is_deleted=False
+            ).first()
             if not ph_cpb:
                 errors.append(
-                    f"Error line {total_lines} - Pas de plans de cotisation avec ({policy_holder.trade_name})")
+                    f"Error line {total_lines} - Pas de plans de cotisation avec ({policy_holder.trade_name})"
+                )
                 logger.debug(
-                    f"Error line {total_lines} - Pas de plans de cotisation avec ({policy_holder.trade_name})")
+                    f"Error line {total_lines} - Pas de plans de cotisation avec ({policy_holder.trade_name})"
+                )
                 total_contribution_plan_not_found += 1
 
                 # Adding error in output excel
                 row_data = line.tolist()
-                row_data.extend(["Échec", f"Pas de plans de cotisation avec - {policy_holder.trade_name}"])
-                processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
+                row_data.extend(
+                    [
+                        "Échec",
+                        f"Pas de plans de cotisation avec - {policy_holder.trade_name}",
+                    ]
+                )
+                processed_data = processed_data.append(
+                    pd.Series(row_data), ignore_index=True
+                )
                 continue
 
             cpb = ph_cpb.contribution_plan_bundle
             if not cpb:
                 errors.append(
-                    f"Error line {total_lines} - Contribution plan inconnu ({ph_cpb.contribution_plan_bundle})")
+                    f"Error line {total_lines} - Contribution plan inconnu ({ph_cpb.contribution_plan_bundle})"
+                )
                 logger.debug(
-                    f"Error line {total_lines} - Contribution plan inconnu ({ph_cpb.contribution_plan_bundle})")
+                    f"Error line {total_lines} - Contribution plan inconnu ({ph_cpb.contribution_plan_bundle})"
+                )
                 total_locations_not_found += 1
 
                 # Adding error in output excel
                 row_data = line.tolist()
-                row_data.extend(["Échec", f"Contribution plan inconnu - {ph_cpb.contribution_plan_bundle}"])
-                processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
+                row_data.extend(
+                    [
+                        "Échec",
+                        f"Contribution plan inconnu - {ph_cpb.contribution_plan_bundle}",
+                    ]
+                )
+                processed_data = processed_data.append(
+                    pd.Series(row_data), ignore_index=True
+                )
                 continue
 
             enrolment_type = cpb.name
         except Exception as e:
-            logger.error(f"Error occurred while retrieving Contribution Plan Bundle: {e}")
+            logger.error(
+                f"Error occurred while retrieving Contribution Plan Bundle: {e}"
+            )
             enrolment_type = None
 
         is_valid_enrolment = validate_enrolment_type(line, enrolment_type)
         if not is_valid_enrolment:
             row_data = line.tolist()
-            row_data.extend(["Échec", "Le type d'enrôlement doit être différent de 'étudiant'."])
-            processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
+            row_data.extend(
+                ["Échec", "Le type d'enrôlement doit être différent de 'étudiant'."]
+            )
+            processed_data = processed_data.append(
+                pd.Series(row_data), ignore_index=True
+            )
             continue
 
-        is_cc_request = check_for_category_change_request(request.user, line, policy_holder, enrolment_type)
+        is_cc_request = check_for_category_change_request(
+            request.user, line, policy_holder, enrolment_type
+        )
         if is_cc_request:
             row_data = line.tolist()
             row_data.extend(["Réussite", "Demande de changement de catégorie Créé."])
-            processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
+            processed_data = processed_data.append(
+                pd.Series(row_data), ignore_index=True
+            )
             # continue
 
-        family, family_created = get_or_create_family_from_line(line, village, user_id, enrolment_type)
+        family, family_created = get_or_create_family_from_line(
+            line, village, user_id, enrolment_type
+        )
         logger.debug("family_created: %s", family_created)
         if family_created:
             total_families_created += 1
@@ -497,30 +625,45 @@ def import_phi(request, policy_holder_code):
             # Adding error in output excel
             row_data = line.tolist()
             row_data.extend(["Échec", "ID du chef de famille inconnu."])
-            processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
+            processed_data = processed_data.append(
+                pd.Series(row_data), ignore_index=True
+            )
             continue
 
-        insuree, insuree_created = get_or_create_insuree_from_line(line, family, family_created, user_id, None,
-                                                                   core_user_id, enrolment_type)
+        insuree, insuree_created = get_or_create_insuree_from_line(
+            line, family, family_created, user_id, None, core_user_id, enrolment_type
+        )
         logger.debug("insuree_created: %s", insuree_created)
         if insuree_created:
             total_insurees_created += 1
             try:
                 logger.info(
-                    "====  policyholder  ====  import_phi  ====  create_openKm_folder_for_bulkupload  ====  Start")
+                    "====  policyholder  ====  import_phi  ====  create_openKm_folder_for_bulkupload  ====  Start"
+                )
                 user = request.user
                 create_openKm_folder_for_bulkupload(user, insuree)
                 logger.info(
-                    "====  policyholder  ====  import_phi  ====  create_openKm_folder_for_bulkupload  ====  End")
+                    "====  policyholder  ====  import_phi  ====  create_openKm_folder_for_bulkupload  ====  End"
+                )
             except Exception as e:
                 logger.error(f"insuree bulk upload error for dms: {e}")
             try:
-                logger.info("====  policyholder  ====  import_phi  ====  insuree_add_to_workflow  ====  Start")
-                insuree_add_to_workflow(None, insuree.id, "INSUREE_ENROLLMENT", "Pre_Register")
-                logger.info("====  policyholder  ====  import_phi  ====  insuree_add_to_workflow  ====  End")
-                logger.info("====  policyholder  ====  import_phi  ====  create_abis_insuree  ====  Start")
+                logger.info(
+                    "====  policyholder  ====  import_phi  ====  insuree_add_to_workflow  ====  Start"
+                )
+                insuree_add_to_workflow(
+                    None, insuree.id, "INSUREE_ENROLLMENT", "Pre_Register"
+                )
+                logger.info(
+                    "====  policyholder  ====  import_phi  ====  insuree_add_to_workflow  ====  End"
+                )
+                logger.info(
+                    "====  policyholder  ====  import_phi  ====  create_abis_insuree  ====  Start"
+                )
                 create_abis_insuree(None, insuree)
-                logger.info("====  policyholder  ====  import_phi  ====  create_abis_insuree  ====  End")
+                logger.info(
+                    "====  policyholder  ====  import_phi  ====  create_abis_insuree  ====  End"
+                )
             except Exception as e:
                 logger.error(f"insuree bulk upload error for abis or workflow : {e}")
         elif not insuree_created:
@@ -546,25 +689,31 @@ def import_phi(request, policy_holder_code):
                 # Adding error in output excel
                 row_data = line.tolist()
                 row_data.extend(["Échec", reason])
-                processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
+                processed_data = processed_data.append(
+                    pd.Series(row_data), ignore_index=True
+                )
                 continue
 
         if family_created:
             family.head_insuree = insuree
             family.save()
         phi_json_ext = {}
-        if line[HEADER_INCOME]:
-            phi_json_ext["calculation_rule"] = {
-                "income": line[HEADER_INCOME]
-            }
+        # if line[HEADER_INCOME]:
+        #     phi_json_ext["calculation_rule"] = {"income": line[HEADER_INCOME]}
         employer_number = None
-        if line[HEADER_INCOME]:
-            employer_number = line[HEADER_EMPLOYER_NUMBER]
+        # if line[HEADER_INCOME]:
+        #     employer_number = line[HEADER_EMPLOYER_NUMBER]
         # PolicyHolderInsuree is HistoryModel that prevents the use of .objects.update_or_create() :(
-        phi = PolicyHolderInsuree.objects.filter(insuree=insuree, policy_holder=policy_holder).first()
+        phi = PolicyHolderInsuree.objects.filter(
+            insuree=insuree, policy_holder=policy_holder
+        ).first()
         if phi:
             phi._state.adding = True
-            if phi.contribution_plan_bundle != cpb or phi.employer_number != employer_number or phi.json_ext != phi_json_ext:
+            if (
+                phi.contribution_plan_bundle != cpb
+                or phi.employer_number != employer_number
+                or phi.json_ext != phi_json_ext
+            ):
                 phi.contribution_plan_bundle = cpb
                 phi.employer_number = employer_number
                 # phi.json_ext = {**phi.json_ext, **phi_json_ext} if phi.json_ext else phi_json_ext
@@ -577,15 +726,19 @@ def import_phi(request, policy_holder_code):
                 policy_holder=policy_holder,
                 contribution_plan_bundle=cpb,
                 json_ext=phi_json_ext,
-                employer_number=employer_number
+                employer_number=employer_number,
             )
             total_phi_created += 1
             phi.save(username=request.user.username)
         try:
             create_camu_notification(INS_ADDED_NT, phi)
-            logger.info("Successfully created CAMU notification with INS_ADDED_NT and phi.")
+            logger.info(
+                "Successfully created CAMU notification with INS_ADDED_NT and phi."
+            )
         except Exception as e:
-            logger.error(f"Failed to create CAMU notification with with INS_ADDED_NT : {e}")
+            logger.error(
+                f"Failed to create CAMU notification with with INS_ADDED_NT : {e}"
+            )
         # Adding success entry in output Excel
         row_data = line.tolist()
         row_data.extend(["Réussite", ""])
@@ -594,7 +747,9 @@ def import_phi(request, policy_holder_code):
         try:
             logger.info("---------------   if insuree have email   -------------------")
             if insuree.email:
-                insuree_enrolment_type = insuree.json_ext['insureeEnrolmentType'].lower()
+                insuree_enrolment_type = insuree.json_ext[
+                    "insureeEnrolmentType"
+                ].lower()
                 send_mail_to_temp_insuree_with_pdf(insuree, insuree_enrolment_type)
                 logger.info("---------------  email is sent   -------------------")
         except Exception as e:
@@ -611,95 +766,142 @@ def import_phi(request, policy_holder_code):
         status_code = 422  # Unprocessable Entity for general validation errors
 
     # Generate output Excel
-    output_headers = list(org_columns) + ['Status', 'Reason']
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        processed_data.to_excel(writer, sheet_name='Processed Data', index=False, header=output_headers)
+    output_headers = list(org_columns) + ["Status", "Reason"]
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        processed_data.to_excel(
+            writer, sheet_name="Processed Data", index=False, header=output_headers
+        )
 
     output.seek(0)
-    response = HttpResponse(output.getvalue(),
-                            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                            status=status_code)
-    response['Content-Disposition'] = 'attachment; filename=import_results.xlsx'
+    response = HttpResponse(
+        output.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        status=status_code,
+    )
+    response["Content-Disposition"] = "attachment; filename=import_results.xlsx"
     return response
 
 
 def export_phi(request, policy_holder_code):
     try:
-        insuree_ids = PolicyHolderInsuree.objects.filter(policy_holder__code=policy_holder_code,
-                                                         policy_holder__date_valid_to__isnull=True,
-                                                         policy_holder__is_deleted=False, date_valid_to__isnull=True,
-                                                         is_deleted=False).values_list('insuree_id',
-                                                                                       flat=True).distinct()
+        insuree_ids = (
+            PolicyHolderInsuree.objects.filter(
+                policy_holder__code=policy_holder_code,
+                policy_holder__date_valid_to__isnull=True,
+                policy_holder__is_deleted=False,
+                date_valid_to__isnull=True,
+                is_deleted=False,
+            )
+            .values_list("insuree_id", flat=True)
+            .distinct()
+        )
 
-        queryset = Insuree.objects.filter(validity_to__isnull=True, id__in=insuree_ids, head=True) \
-            .select_related('gender', 'current_village', 'family', 'family__location', 'family__location__parent',
-                            'family__location__parent__parent', 'family__location__parent__parent__parent')
+        queryset = Insuree.objects.filter(
+            validity_to__isnull=True, id__in=insuree_ids, head=True
+        ).select_related(
+            "gender",
+            "current_village",
+            "family",
+            "family__location",
+            "family__location__parent",
+            "family__location__parent__parent",
+            "family__location__parent__parent__parent",
+        )
 
-        data = list(queryset.values('camu_number', 'last_name', 'other_names', 'chf_id', 'gender__code', 'phone',
-                                    'family__location__code', 'family__head_insuree__chf_id', 'email', 'json_ext', 'id',
-                                    'dob', 'marital'))
+        data = list(
+            queryset.values(
+                "camu_number",
+                "last_name",
+                "other_names",
+                "chf_id",
+                "gender__code",
+                "phone",
+                "family__location__code",
+                "family__head_insuree__chf_id",
+                "email",
+                "json_ext",
+                "id",
+                "dob",
+                "marital",
+            )
+        )
 
         df = pd.DataFrame(data)
 
-        insuree_dob = [dob.strftime("%d/%m/%Y") for dob in df['dob']]
-        df.insert(loc=4, column='Date de naissance', value=insuree_dob)
+        insuree_dob = [dob.strftime("%d/%m/%Y") for dob in df["dob"]]
+        df.insert(loc=4, column="Date de naissance", value=insuree_dob)
 
         def extract_birth_place(json_data):
-            return json_data.get('BirthPlace', None) if json_data else None
+            return json_data.get("BirthPlace", None) if json_data else None
 
-        birth_place = [extract_birth_place(json_data) for json_data in df['json_ext']]
-        df.insert(loc=5, column='Lieu de naissance', value=birth_place)
+        birth_place = [extract_birth_place(json_data) for json_data in df["json_ext"]]
+        df.insert(loc=5, column="Lieu de naissance", value=birth_place)
 
         def extract_civility(marital):
             return mapping_marital_status(None, marital)
             # return json_data.get('civilQuality', None) if json_data else None
 
-        civility = [extract_civility(json_data) for json_data in df['marital']]
-        df.insert(loc=7, column='Civilité', value=civility)
+        civility = [extract_civility(json_data) for json_data in df["marital"]]
+        df.insert(loc=7, column="Civilité", value=civility)
 
         def extract_address(json_data):
-            return json_data.get('insureeaddress', None) if json_data else None
+            return json_data.get("insureeaddress", None) if json_data else None
 
-        address = [extract_address(json_data) for json_data in df['json_ext']]
-        df.insert(loc=9, column='Adresse', value=address)
+        address = [extract_address(json_data) for json_data in df["json_ext"]]
+        df.insert(loc=9, column="Adresse", value=address)
 
         def extract_emp_no(insuree_id, policy_holder_code):
-            phn_json = PolicyHolderInsuree.objects.filter(insuree_id=insuree_id, policy_holder__code=policy_holder_code,
-                                                          policy_holder__date_valid_to__isnull=True,
-                                                          policy_holder__is_deleted=False, date_valid_to__isnull=True,
-                                                          is_deleted=False).first()
+            phn_json = PolicyHolderInsuree.objects.filter(
+                insuree_id=insuree_id,
+                policy_holder__code=policy_holder_code,
+                policy_holder__date_valid_to__isnull=True,
+                policy_holder__is_deleted=False,
+                date_valid_to__isnull=True,
+                is_deleted=False,
+            ).first()
             # return json_data.get('employeeNumber', None) if json_data else None
             if phn_json:
                 return phn_json.employer_number
             return None
 
-        emp_no = [extract_emp_no(insuree_id, policy_holder_code) for insuree_id in df['id']]
-        df.insert(loc=13, column='Matricule', value=emp_no)
+        emp_no = [
+            extract_emp_no(insuree_id, policy_holder_code) for insuree_id in df["id"]
+        ]
+        df.insert(loc=13, column="Matricule", value=emp_no)
 
         employee_income = dict()
 
         def extract_income(insuree_id, policy_holder_code):
-            phn_json = PolicyHolderInsuree.objects.filter(insuree_id=insuree_id, policy_holder__code=policy_holder_code,
-                                                          policy_holder__date_valid_to__isnull=True,
-                                                          policy_holder__is_deleted=False, date_valid_to__isnull=True,
-                                                          is_deleted=False).first()
+            phn_json = PolicyHolderInsuree.objects.filter(
+                insuree_id=insuree_id,
+                policy_holder__code=policy_holder_code,
+                policy_holder__date_valid_to__isnull=True,
+                policy_holder__is_deleted=False,
+                date_valid_to__isnull=True,
+                is_deleted=False,
+            ).first()
             if phn_json:
                 json_data = phn_json.json_ext
                 if json_data:
-                    ei = json_data.get('calculation_rule', None).get('income', None)
+                    ei = json_data.get("calculation_rule", None).get("income", None)
                     employee_income.update({insuree_id: ei})
                     return ei
             return None
 
-        income = [extract_income(insuree_id, policy_holder_code) for insuree_id in df['id']]
-        df.insert(loc=15, column='Salaire Brut', value=income)
+        income = [
+            extract_income(insuree_id, policy_holder_code) for insuree_id in df["id"]
+        ]
+        df.insert(loc=15, column="Salaire Brut", value=income)
 
         conti_plan = None
-        ph_cpb = PolicyHolderContributionPlan.objects.filter(policy_holder__code=policy_holder_code,
-                                                             is_deleted=False).first()
+        ph_cpb = PolicyHolderContributionPlan.objects.filter(
+            policy_holder__code=policy_holder_code, is_deleted=False
+        ).first()
         if ph_cpb and ph_cpb.contribution_plan_bundle:
             cpb = ph_cpb.contribution_plan_bundle
-            cpbd = ContributionPlanBundleDetails.objects.filter(contribution_plan_bundle=cpb, is_deleted=False).first()
+            cpbd = ContributionPlanBundleDetails.objects.filter(
+                contribution_plan_bundle=cpb, is_deleted=False
+            ).first()
             conti_plan = cpbd.contribution_plan if cpbd else None
         else:
             logger.debug(" No contribution plan bundle.")
@@ -709,82 +911,120 @@ def export_phi(request, policy_holder_code):
         def extract_employer_percentage(insuree_id):
             if conti_plan:
                 json_data = conti_plan.json_ext if conti_plan.json_ext else None
-                calculation_rule = json_data.get('calculation_rule', None) if json_data else None
-                ercp = calculation_rule.get('employerContribution', None) if calculation_rule else None
+                calculation_rule = (
+                    json_data.get("calculation_rule", None) if json_data else None
+                )
+                ercp = (
+                    calculation_rule.get("employerContribution", None)
+                    if calculation_rule
+                    else None
+                )
                 employer_contri_per.update({insuree_id: ercp})
                 return f"{ercp}%" if ercp else None
             return None
 
-        employer_percentage = [extract_employer_percentage(insuree_id) for insuree_id in df['id']]
-        df.insert(loc=16, column='Part Patronale %', value=employer_percentage)
+        employer_percentage = [
+            extract_employer_percentage(insuree_id) for insuree_id in df["id"]
+        ]
+        df.insert(loc=16, column="Part Patronale %", value=employer_percentage)
 
         employer_contri = dict()
 
         def extract_employer_share(insuree_id):
             try:
                 if employer_contri_per[insuree_id] and employee_income[insuree_id]:
-                    erc = round((float(employer_contri_per[insuree_id]) / 100) * float(employee_income[insuree_id]), 2)
+                    erc = round(
+                        (float(employer_contri_per[insuree_id]) / 100)
+                        * float(employee_income[insuree_id]),
+                        2,
+                    )
                     employer_contri.update({insuree_id: erc})
                     return erc
                 return None
             except Exception as e:
                 return None
 
-        employer_share = [extract_employer_share(insuree_id) for insuree_id in df['id']]
-        df.insert(loc=17, column='Part Patronale', value=employer_share)
+        employer_share = [extract_employer_share(insuree_id) for insuree_id in df["id"]]
+        df.insert(loc=17, column="Part Patronale", value=employer_share)
 
         employee_contri_per = dict()
 
         def extract_employee_percentage(insuree_id):
             if conti_plan:
                 json_data = conti_plan.json_ext if conti_plan.json_ext else None
-                calculation_rule = json_data.get('calculation_rule', None) if json_data else None
-                eecp = calculation_rule.get('employeeContribution', None) if calculation_rule else None
+                calculation_rule = (
+                    json_data.get("calculation_rule", None) if json_data else None
+                )
+                eecp = (
+                    calculation_rule.get("employeeContribution", None)
+                    if calculation_rule
+                    else None
+                )
                 employee_contri_per.update({insuree_id: eecp})
                 return f"{eecp}%" if eecp else None
             return None
 
-        employee_percentage = [extract_employee_percentage(insuree_id) for insuree_id in df['id']]
-        df.insert(loc=18, column='Part Salariale %', value=employee_percentage)
+        employee_percentage = [
+            extract_employee_percentage(insuree_id) for insuree_id in df["id"]
+        ]
+        df.insert(loc=18, column="Part Salariale %", value=employee_percentage)
 
         employee_contri = dict()
 
         def extract_employee_share(insuree_id):
             try:
                 if employee_income[insuree_id] and employee_contri_per[insuree_id]:
-                    eec = round((float(employee_contri_per[insuree_id]) / 100) * float(employee_income[insuree_id]), 2)
+                    eec = round(
+                        (float(employee_contri_per[insuree_id]) / 100)
+                        * float(employee_income[insuree_id]),
+                        2,
+                    )
                     employee_contri.update({insuree_id: eec})
                     return eec
                 return None
             except Exception as e:
                 return None
 
-        employee_share = [extract_employee_share(insuree_id) for insuree_id in df['id']]
-        df.insert(loc=19, column='Part Salariale', value=employee_share)
+        employee_share = [extract_employee_share(insuree_id) for insuree_id in df["id"]]
+        df.insert(loc=19, column="Part Salariale", value=employee_share)
 
         def extract_total_share(insuree_id):
             try:
                 if employee_contri[insuree_id] and employer_contri[insuree_id]:
-                    total_contri = employee_contri[insuree_id] + employer_contri[insuree_id]
+                    total_contri = (
+                        employee_contri[insuree_id] + employer_contri[insuree_id]
+                    )
                     return total_contri
                 return None
             except Exception as e:
                 return None
 
-        total_share = [extract_total_share(insuree_id) for insuree_id in df['id']]
-        df.insert(loc=20, column='Cotisation total', value=total_share)
+        total_share = [extract_total_share(insuree_id) for insuree_id in df["id"]]
+        df.insert(loc=20, column="Cotisation total", value=total_share)
 
-        df['Supprimé'] = ''  #
+        df["Supprimé"] = ""  #
 
-        df.rename(columns={'camu_number': 'Numéro CAMU', 'last_name': 'Nom', 'other_names': 'Prénom',
-                           'chf_id': 'Numéro CAMU temporaire', 'gender__code': 'Sexe', 'phone': 'Téléphone',
-                           'family__location__code': 'Village', 'family__head_insuree__chf_id': 'ID Famille',
-                           'email': 'Email'}, inplace=True)
+        df.rename(
+            columns={
+                "camu_number": "Numéro CAMU",
+                "last_name": "Nom",
+                "other_names": "Prénom",
+                "chf_id": "Numéro CAMU temporaire",
+                "gender__code": "Sexe",
+                "phone": "Téléphone",
+                "family__location__code": "Village",
+                "family__head_insuree__chf_id": "ID Famille",
+                "email": "Email",
+            },
+            inplace=True,
+        )
 
-        df.drop(columns=['json_ext', 'id', 'dob', 'marital'], inplace=True)
+        df.drop(columns=["json_ext", "id", "dob", "marital"], inplace=True)
 
-        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        response['Content-Disposition'] = 'attachment; filename="data.xlsx"'
+        response = HttpResponse(
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        response["Content-Disposition"] = 'attachment; filename="data.xlsx"'
 
         # Write DataFrame to response as an Excel file
         df.to_excel(response, index=False, header=True)
@@ -793,7 +1033,7 @@ def export_phi(request, policy_holder_code):
         return response
     except Exception as e:
         logger.error("Unexpected error while exporting insurees", exc_info=e)
-        return Response({'success': False, 'error': str(e)}, status=500)
+        return Response({"success": False, "error": str(e)}, status=500)
 
 
 class LocationEncoder(json.JSONEncoder):
@@ -806,7 +1046,7 @@ class LocationEncoder(json.JSONEncoder):
                 "type": obj.type,
                 "code": obj.code,
                 "name": obj.name,
-                "parent": self.default(obj.parent) if obj.parent else None
+                "parent": self.default(obj.parent) if obj.parent else None,
             }
         return super().default(obj)
 
@@ -840,13 +1080,15 @@ def mapping_marital_status(marital, value=None):
         "Marié": "M",
     }
     if value and marital is None:
-        logger.info("mapping_marital_status passing value : ",
-                    list(mapping.keys())[list(mapping.values()).index(value)])
+        logger.info(
+            "mapping_marital_status passing value : ",
+            list(mapping.keys())[list(mapping.values()).index(value)],
+        )
         return list(mapping.keys())[list(mapping.values()).index(value)]
     elif marital in mapping:
         return mapping[marital]
     else:
-        ""
+        """"""
 
 
 def get_city(location_id):
@@ -866,15 +1108,15 @@ def get_department(location_id):
 
 
 def not_declared_policy_holder(request):
-    if request.method == 'GET':
-        declared = request.GET.get('declared', None)
-        contract_from_date = request.GET.get('from_date', None)
-        contract_to_date = request.GET.get('to_date', None)
-        camu_code = request.GET.get('camu_code', None)
-        trade_name = request.GET.get('trade_name', None)
-        department = request.GET.get('department', None)
+    if request.method == "GET":
+        declared = request.GET.get("declared", None)
+        contract_from_date = request.GET.get("from_date", None)
+        contract_to_date = request.GET.get("to_date", None)
+        camu_code = request.GET.get("camu_code", None)
+        trade_name = request.GET.get("trade_name", None)
+        department = request.GET.get("department", None)
 
-        if declared and declared.lower() == 'true':
+        if declared and declared.lower() == "true":
             declared = True
         else:
             declared = False
@@ -885,7 +1127,9 @@ def not_declared_policy_holder(request):
 
         today = datetime.today()
         if contract_from_date:
-            contract_from_date = datetime.strptime(contract_from_date, "%Y-%m-%d").date()
+            contract_from_date = datetime.strptime(
+                contract_from_date, "%Y-%m-%d"
+            ).date()
         else:
             # if contract_from_date is None or contract_from_date == "":
             contract_from_date = today.replace(day=1)
@@ -905,16 +1149,27 @@ def not_declared_policy_holder(request):
             error = GraphQLError("Dates are not proper!", extensions={"code": 200})
             raise error
 
-        contract_list = list(set(Contract.objects.filter(
-            date_valid_from__date__gte=contract_from_date,
-            date_valid_to__date__lte=contract_to_date,
-            is_deleted=False).values_list('policy_holder__id', flat=True)))
+        contract_list = list(
+            set(
+                Contract.objects.filter(
+                    date_valid_from__date__gte=contract_from_date,
+                    date_valid_to__date__lte=contract_to_date,
+                    is_deleted=False,
+                ).values_list("policy_holder__id", flat=True)
+            )
+        )
         print(contract_list)
         ph_object = None
         if declared:
-            ph_object = PolicyHolder.objects.filter(id__in=contract_list, is_deleted=False).all()
+            ph_object = PolicyHolder.objects.filter(
+                id__in=contract_list, is_deleted=False
+            ).all()
         else:
-            ph_object = PolicyHolder.objects.filter(is_deleted=False).all().exclude(id__in=contract_list)
+            ph_object = (
+                PolicyHolder.objects.filter(is_deleted=False)
+                .all()
+                .exclude(id__in=contract_list)
+            )
 
         if camu_code:
             ph_object = ph_object.filter(code=camu_code)
@@ -923,28 +1178,52 @@ def not_declared_policy_holder(request):
             ph_object = ph_object.filter(trade_name=trade_name)
 
         if department:
-            ph_object = ph_object.filter(locations__parent__parent__parent__uuid=department)
+            ph_object = ph_object.filter(
+                locations__parent__parent__parent__uuid=department
+            )
 
-        columns = ['code', 'trade_name', 'contact_name', 'phone', 'email', 'locations_id']
+        columns = [
+            "code",
+            "trade_name",
+            "contact_name",
+            "phone",
+            "email",
+            "locations_id",
+        ]
 
         data_frame = pd.DataFrame.from_records(ph_object.values(*columns))
 
-        data_frame['Department'] = data_frame['locations_id'].apply(lambda location_id: get_department(location_id))
-        data_frame['City'] = data_frame['locations_id'].apply(lambda location_id: get_city(location_id))
+        data_frame["Department"] = data_frame["locations_id"].apply(
+            lambda location_id: get_department(location_id)
+        )
+        data_frame["City"] = data_frame["locations_id"].apply(
+            lambda location_id: get_city(location_id)
+        )
 
-        data_frame['contact_name'] = data_frame['contact_name'].apply(
-            lambda x: x['contactName'] if x is not None else ' ')
+        data_frame["contact_name"] = data_frame["contact_name"].apply(
+            lambda x: x["contactName"] if x is not None else " "
+        )
 
-        data_frame.rename(columns={'code': 'CAMU Number', 'trade_name': 'Trade Name', 'contact_name': 'Contact Name',
-                                   'phone': 'Phone', 'email': 'Email'}, inplace=True)
+        data_frame.rename(
+            columns={
+                "code": "CAMU Number",
+                "trade_name": "Trade Name",
+                "contact_name": "Contact Name",
+                "phone": "Phone",
+                "email": "Email",
+            },
+            inplace=True,
+        )
         # data_frame.rename(columns={'code':'CAMU temporaire', 'trade_name':'Nom ou Raison sociale', 'contact_name':'Nom du représentant', 'phone':'Téléphone', 'email':'E-mail','Department':'Département','City':'Ville'}, inplace=True)
 
-        data_frame.drop(columns=['locations_id'], inplace=True)
+        data_frame.drop(columns=["locations_id"], inplace=True)
         # data_frame
-        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        response['Content-Disposition'] = 'attachment; filename=policyholder.xlsx'
+        response = HttpResponse(
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        response["Content-Disposition"] = "attachment; filename=policyholder.xlsx"
 
-        data_frame.to_excel(response, index=False, engine='openpyxl')
+        data_frame.to_excel(response, index=False, engine="openpyxl")
         return response
 
     return True
@@ -953,7 +1232,7 @@ def not_declared_policy_holder(request):
 def get_emails_for_imis_administrators():
     try:
         # Fetch the role with the name 'IMIS Administrator'
-        imis_admin_role = Role.objects.get(name='IMIS Administrator')
+        imis_admin_role = Role.objects.get(name="IMIS Administrator")
 
         # Fetch all InteractiveUser objects with the specified role
         imis_admin_users = InteractiveUser.objects.filter(role_id=imis_admin_role.id)
@@ -977,7 +1256,7 @@ def get_emails_for_imis_administrators():
 
 @authentication_classes([])
 @permission_classes([AllowAny])
-@api_view(['GET'])
+@api_view(["GET"])
 def not_declared_ph_rest(request):
     today = datetime.today()
     # if contract_from_date is None or contract_from_date == "":
@@ -993,14 +1272,23 @@ def not_declared_ph_rest(request):
     # Example code structure for querying data from models
     try:
         # Query Contract model data for the previous month
-        contract_list = list(set(Contract.objects.filter(
-            date_valid_from__date__gte=contract_from_date,
-            date_valid_to__date__lte=contract_to_date,
-            is_deleted=False).values_list('policy_holder__id', flat=True)))
+        contract_list = list(
+            set(
+                Contract.objects.filter(
+                    date_valid_from__date__gte=contract_from_date,
+                    date_valid_to__date__lte=contract_to_date,
+                    is_deleted=False,
+                ).values_list("policy_holder__id", flat=True)
+            )
+        )
         print(contract_list)
 
         # Query PolicyHolder model data based on declared flag
-        ph_object = PolicyHolder.objects.filter(is_deleted=False).all().exclude(id__in=contract_list)
+        ph_object = (
+            PolicyHolder.objects.filter(is_deleted=False)
+            .all()
+            .exclude(id__in=contract_list)
+        )
 
         # Example code for additional filtering if needed
         # if camu_code:
@@ -1013,29 +1301,43 @@ def not_declared_ph_rest(request):
         #     ph_object = ph_object.filter(locations__parent__parent__parent__uuid=department)
 
         # Example code to extract required columns
-        columns = ['code', 'trade_name', 'contact_name', 'phone', 'email']
+        columns = ["code", "trade_name", "contact_name", "phone", "email"]
         data_frame = pd.DataFrame.from_records(ph_object.values(*columns))
-        data_frame['contact_name'] = data_frame['contact_name'].apply(
-            lambda x: x['contactName'] if x is not None else ' ')
+        data_frame["contact_name"] = data_frame["contact_name"].apply(
+            lambda x: x["contactName"] if x is not None else " "
+        )
 
-        data_frame.rename(columns={'code': 'CAMU Number', 'trade_name': 'Trade Name', 'contact_name': 'Contact Name',
-                                   'phone': 'Phone', 'email': 'Email'}, inplace=True)
+        data_frame.rename(
+            columns={
+                "code": "CAMU Number",
+                "trade_name": "Trade Name",
+                "contact_name": "Contact Name",
+                "phone": "Phone",
+                "email": "Email",
+            },
+            inplace=True,
+        )
 
         # Create Excel response
-        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        response['Content-Disposition'] = 'attachment; filename=policyholder.xlsx'
-        data_frame.to_excel(response, index=False, engine='openpyxl')
+        response = HttpResponse(
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        response["Content-Disposition"] = "attachment; filename=policyholder.xlsx"
+        data_frame.to_excel(response, index=False, engine="openpyxl")
 
         # Send email with attachment
-        subject = 'Non Declare Data'
-        message = 'Please find the attached non declared policyholder data.'
+        subject = "Non Declare Data"
+        message = "Please find the attached non declared policyholder data."
         from_email = settings.EMAIL_HOST_USER
         # recipient_list = ['lakshya.soni@walkingtree.tech']
         recipient_list = get_emails_for_imis_administrators()
 
         email = EmailMessage(subject, message, from_email, recipient_list)
-        email.attach('non declare.xlsx', response.content,
-                     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        email.attach(
+            "non declare.xlsx",
+            response.content,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
         email.send()
 
         return Response({"message": "Email sent successfully."})
@@ -1048,15 +1350,25 @@ def not_declared_ph_rest(request):
 def request_number_cc():
     try:
         current_date = datetime.now()
-        number = current_date.strftime('%m%d%H%M%S')
+        number = current_date.strftime("%m%d%H%M%S")
         return "CC{}".format(number)
     except Exception as e:
         print("Error in generating request number:", e)
         return None
 
 
-def create_dependent_category_change(user, code, insuree, old_category, new_category, policy_holder, request_type,
-                                     status, income=None, employer_number=None):
+def create_dependent_category_change(
+    user,
+    code,
+    insuree,
+    old_category,
+    new_category,
+    policy_holder,
+    request_type,
+    status,
+    income=None,
+    employer_number=None,
+):
     json_ext = {}
     if income and employer_number:
         json_ext = {"income": income, "employer_number": employer_number}
@@ -1070,53 +1382,85 @@ def create_dependent_category_change(user, code, insuree, old_category, new_cate
         status=status,
         created_by=user,
         modified_by=user,
-        json_ext=json_ext
+        json_ext=json_ext,
     )
     req_no = cc.code
     create_folder_for_cat_chnage_req(insuree, req_no, old_category, new_category)
-    logger.info(f"CategoryChange request created for Insuree {insuree} for {request_type.lower()} request")
+    logger.info(
+        f"CategoryChange request created for Insuree {insuree} for {request_type.lower()} request"
+    )
 
 
 def check_for_category_change_request(user, line, policy_holder, enrolment_type):
     try:
-        insuree_id = line.get(HEADER_INSUREE_ID, '')
-        camu_num = line.get(HEADER_INSUREE_CAMU_NO, '')
-        income = line.get(HEADER_INCOME, '')
-        employer_number = line.get(HEADER_EMPLOYER_NUMBER, '')
+        insuree_id = line.get(HEADER_INSUREE_ID, "")
+        camu_num = line.get(HEADER_INSUREE_CAMU_NO, "")
+        income = line.get(HEADER_INCOME, "")
+        employer_number = line.get(HEADER_EMPLOYER_NUMBER, "")
         insuree = None
 
         if insuree_id:
-            insuree = Insuree.objects.filter(validity_to__isnull=True, chf_id=insuree_id).first()
+            insuree = Insuree.objects.filter(
+                validity_to__isnull=True, chf_id=insuree_id
+            ).first()
 
         if not insuree and camu_num:
-            insuree = Insuree.objects.filter(validity_to__isnull=True, camu_number=camu_num).first()
+            insuree = Insuree.objects.filter(
+                validity_to__isnull=True, camu_number=camu_num
+            ).first()
 
         if insuree:
             new_category = map_enrolment_type_to_category(enrolment_type)
             code = request_number_cc()
-            old_category = insuree.json_ext.get('insureeEnrolmentType', '')
+            old_category = insuree.json_ext.get("insureeEnrolmentType", "")
             if code:
                 if insuree.family:
                     if insuree.head:
                         if new_category != old_category:
-                            create_dependent_category_change(user, code, insuree, old_category, new_category,
-                                                             policy_holder,
-                                                             'SELF_HEAD_REQ',
-                                                             CC_WAITING_FOR_DOCUMENT, income, employer_number)
+                            create_dependent_category_change(
+                                user,
+                                code,
+                                insuree,
+                                old_category,
+                                new_category,
+                                policy_holder,
+                                "SELF_HEAD_REQ",
+                                CC_WAITING_FOR_DOCUMENT,
+                                income,
+                                employer_number,
+                            )
                             return True
                         else:
                             return False
                     else:
-                        create_dependent_category_change(user, code, insuree, old_category, new_category, policy_holder,
-                                                         'DEPENDENT_REQ',
-                                                         CC_WAITING_FOR_DOCUMENT, income, employer_number)
-                        if new_category == 'students':
+                        create_dependent_category_change(
+                            user,
+                            code,
+                            insuree,
+                            old_category,
+                            new_category,
+                            policy_holder,
+                            "DEPENDENT_REQ",
+                            CC_WAITING_FOR_DOCUMENT,
+                            income,
+                            employer_number,
+                        )
+                        if new_category == "students":
                             send_notification_to_head(insuree)
                         return True
                 else:
-                    create_dependent_category_change(user, code, insuree, old_category, new_category, policy_holder,
-                                                     'INDIVIDUAL_REQ',
-                                                     CC_WAITING_FOR_DOCUMENT, income, employer_number)
+                    create_dependent_category_change(
+                        user,
+                        code,
+                        insuree,
+                        old_category,
+                        new_category,
+                        policy_holder,
+                        "INDIVIDUAL_REQ",
+                        CC_WAITING_FOR_DOCUMENT,
+                        income,
+                        employer_number,
+                    )
                     return True
         return False
     except Exception as e:
@@ -1124,14 +1468,22 @@ def check_for_category_change_request(user, line, policy_holder, enrolment_type)
         return False
 
 
-def manuall_check_for_category_change_request(user, insuree_id, policyholder_id, income, employer_number):
+def manuall_check_for_category_change_request(
+    user, insuree_id, policyholder_id, income, employer_number
+):
     try:
-        policy_holder = PolicyHolder.objects.filter(id=policyholder_id, is_deleted=False).first()
+        policy_holder = PolicyHolder.objects.filter(
+            id=policyholder_id, is_deleted=False
+        ).first()
         if not policy_holder:
             raise ValueError("Policy holder not found or deleted.")
-        ph_cpb = PolicyHolderContributionPlan.objects.filter(policy_holder=policy_holder, is_deleted=False).first()
+        ph_cpb = PolicyHolderContributionPlan.objects.filter(
+            policy_holder=policy_holder, is_deleted=False
+        ).first()
         if not ph_cpb:
-            raise ValueError("Contribution plan for the policy holder not found or deleted.")
+            raise ValueError(
+                "Contribution plan for the policy holder not found or deleted."
+            )
         cpb = ph_cpb.contribution_plan_bundle
         if not cpb:
             raise ValueError("Contribution plan bundle not found.")
@@ -1140,12 +1492,14 @@ def manuall_check_for_category_change_request(user, insuree_id, policyholder_id,
         if not insuree:
             raise ValueError("Insuree not found.")
         line = {
-            'insuree_id': insuree.chf_id,
-            'camu_number': insuree.camu_number,
-            'income': income,
-            'employer_number': employer_number
+            "insuree_id": insuree.chf_id,
+            "camu_number": insuree.camu_number,
+            "income": income,
+            "employer_number": employer_number,
         }
-        response = check_for_category_change_request(user, line, policy_holder, enrolment_type)
+        response = check_for_category_change_request(
+            user, line, policy_holder, enrolment_type
+        )
         return response
     except Exception as e:
         return False
@@ -1177,17 +1531,24 @@ def verify_email(request, uidb64, token, e_timestamp):
                 user.save()
                 logger.info("User verification successful.")
                 return redirect(
-                    settings.PORTAL_FRONTEND + '/portal/signupsuccess')  # open page after verified successfully
+                    settings.PORTAL_FRONTEND + "/portal/signupsuccess"
+                )  # open page after verified successfully
             else:
                 logger.info("User already verified.")
-                return redirect(settings.PORTAL_FRONTEND + '/portal/signupfailed')  # open page after already verified
+                return redirect(
+                    settings.PORTAL_FRONTEND + "/portal/signupfailed"
+                )  # open page after already verified
         else:
             logger.info("Token has expired.")
             user.delete_history()
-            return redirect(settings.PORTAL_FRONTEND + '/portal/signupfailed')  # open page when token has expired
+            return redirect(
+                settings.PORTAL_FRONTEND + "/portal/signupfailed"
+            )  # open page when token has expired
     else:
         logger.info("Invalid token.")
-        return redirect(settings.PORTAL_FRONTEND + '/portal/signupfailed')  # open page when token is invalid
+        return redirect(
+            settings.PORTAL_FRONTEND + "/portal/signupfailed"
+        )  # open page when token is invalid
 
 
 @authentication_classes([])
@@ -1210,10 +1571,14 @@ def portal_reset(request, uidb64, token, e_timestamp):
         logger.info(f"Current time: {current_time}")
 
         if current_time <= expiration_time:
-            return redirect(settings.PORTAL_FRONTEND + '/portal/set_password')  # open page after verified successfully
+            return redirect(
+                settings.PORTAL_FRONTEND + "/portal/set_password"
+            )  # open page after verified successfully
         else:
             logger.info("Token has expired.")
-            return redirect(settings.PORTAL_FRONTEND + '/portal/resetFailure')  # open page when token has expired
+            return redirect(
+                settings.PORTAL_FRONTEND + "/portal/resetFailure"
+            )  # open page when token has expired
     else:
         logger.info("Invalid token.")
         return redirect(settings.PORTAL_FRONTEND)  # open page when token is invalid
@@ -1224,16 +1589,28 @@ def portal_reset(request, uidb64, token, e_timestamp):
 def deactivate_not_submitted_request(request):
     logger.info("deactivate_not_submitted_request : Start")
     thirty_days_ago = timezone.now() - timedelta(days=30)
-    logger.info(f"deactivate_not_submitted_request : thirty_days_ago : {thirty_days_ago}")
+    logger.info(
+        f"deactivate_not_submitted_request : thirty_days_ago : {thirty_days_ago}"
+    )
     not_submitted_ph_ids = PolicyHolder.objects.filter(
-        form_ph_portal=True, is_submit=False,
-        status=PH_STATUS_CREATED, date_updated__lte=thirty_days_ago).values_list('id', flat=True)
-    logger.info(f"deactivate_not_submitted_request : not_submitted_ph_ids : {not_submitted_ph_ids}")
-    ph_user_ids = PolicyHolderUser.objects.filter(policy_holder__id__in=not_submitted_ph_ids).values_list(
-        'user__i_user__id', flat=True)
+        form_ph_portal=True,
+        is_submit=False,
+        status=PH_STATUS_CREATED,
+        date_updated__lte=thirty_days_ago,
+    ).values_list("id", flat=True)
+    logger.info(
+        f"deactivate_not_submitted_request : not_submitted_ph_ids : {not_submitted_ph_ids}"
+    )
+    ph_user_ids = PolicyHolderUser.objects.filter(
+        policy_holder__id__in=not_submitted_ph_ids
+    ).values_list("user__i_user__id", flat=True)
     logger.info(f"deactivate_not_submitted_request : ph_user_ids : {ph_user_ids}")
-    InteractiveUser.objects.filter(id__in=ph_user_ids).update(validity_to=timezone.now())
-    PolicyHolderUser.objects.filter(policy_holder__id__in=not_submitted_ph_ids).update(is_deleted=True)
+    InteractiveUser.objects.filter(id__in=ph_user_ids).update(
+        validity_to=timezone.now()
+    )
+    PolicyHolderUser.objects.filter(policy_holder__id__in=not_submitted_ph_ids).update(
+        is_deleted=True
+    )
     PolicyHolder.objects.filter(id__in=not_submitted_ph_ids).update(is_deleted=True)
     logger.info("deactivate_not_submitted_request : End")
     return Response({"message": "Script Successfully Run."})
@@ -1244,11 +1621,11 @@ def deactivate_not_submitted_request(request):
 def custom_policyholder_policies_expire(request):
     logger.info("====  expire_policies_manual_job  ====  start  ====")
 
-    custom_date_str = request.GET.get('custom_date')
-    policy_holder_code = request.GET.get('policy_holder_code')
+    custom_date_str = request.GET.get("custom_date")
+    policy_holder_code = request.GET.get("policy_holder_code")
 
     if not custom_date_str:
-        return JsonResponse({'error': 'custom_date parameter is required'}, status=400)
+        return JsonResponse({"error": "custom_date parameter is required"}, status=400)
 
     try:
         custom_date = parse_date(custom_date_str)
@@ -1256,43 +1633,51 @@ def custom_policyholder_policies_expire(request):
             raise ValueError("Invalid date format")
     except ValueError as e:
         logger.error(f"Invalid date format: {e}")
-        return JsonResponse({'error': 'Invalid date format. Use YYYY-MM-DD.'}, status=400)
+        return JsonResponse(
+            {"error": "Invalid date format. Use YYYY-MM-DD."}, status=400
+        )
 
     if not policy_holder_code:
-        return JsonResponse({'error': 'policy_holder_code parameter is required'}, status=400)
+        return JsonResponse(
+            {"error": "policy_holder_code parameter is required"}, status=400
+        )
 
-    policy_holder = PolicyHolder.objects.filter(code=policy_holder_code, is_deleted=False).first()
+    policy_holder = PolicyHolder.objects.filter(
+        code=policy_holder_code, is_deleted=False
+    ).first()
 
     if not policy_holder:
-        return JsonResponse({'error': 'Policy holder not found.'}, status=404)
+        return JsonResponse({"error": "Policy holder not found."}, status=404)
 
-    insuree_ids = PolicyHolderInsuree.objects.filter(
-        policy_holder=policy_holder,
-        policy_holder__date_valid_to__isnull=True,
-        policy_holder__is_deleted=False,
-        date_valid_to__isnull=True,
-        is_deleted=False
-    ).values_list('insuree_id', flat=True).distinct()
-
-    ips = InsureePolicy.objects.filter(
-        insuree_id__in=insuree_ids,
-        legacy_id__isnull=True,
-        validity_to__isnull=True
+    insuree_ids = (
+        PolicyHolderInsuree.objects.filter(
+            policy_holder=policy_holder,
+            policy_holder__date_valid_to__isnull=True,
+            policy_holder__is_deleted=False,
+            date_valid_to__isnull=True,
+            is_deleted=False,
+        )
+        .values_list("insuree_id", flat=True)
+        .distinct()
     )
 
-    policy_ids = ips.values_list('policy_id', flat=True)
+    ips = InsureePolicy.objects.filter(
+        insuree_id__in=insuree_ids, legacy_id__isnull=True, validity_to__isnull=True
+    )
+
+    policy_ids = ips.values_list("policy_id", flat=True)
 
     policies_to_expire = Policy.objects.filter(
-        id__in=policy_ids,
-        expiry_date__lt=custom_date,
-        status=Policy.STATUS_ACTIVE
+        id__in=policy_ids, expiry_date__lt=custom_date, status=Policy.STATUS_ACTIVE
     )
 
     expired_count = policies_to_expire.update(status=Policy.STATUS_EXPIRED)
 
-    logger.info(f"====  expire_policies_manual_job  ====  {expired_count} policies expired before {custom_date} ====")
+    logger.info(
+        f"====  expire_policies_manual_job  ====  {expired_count} policies expired before {custom_date} ===="
+    )
 
-    data = {'message': 'Success!', 'expired_count': expired_count}
+    data = {"message": "Success!", "expired_count": expired_count}
     logger.info("====  expire_policies_manual_job  ====  end  ====")
 
     return JsonResponse(data)
@@ -1301,13 +1686,18 @@ def custom_policyholder_policies_expire(request):
 def has_active_policy(insuree):
     current_date = datetime.now()
     current_date = current_date.date()
-    ins_pol = InsureePolicy.objects.filter(
-        insuree__chf_id=insuree.chf_id,
-        insuree__legacy_id__isnull=True,
-        policy__legacy_id__isnull=True,
-        start_date__lte=current_date,
-        expiry_date__gte=current_date,
-        legacy_id__isnull=True).order_by('-expiry_date').all()
+    ins_pol = (
+        InsureePolicy.objects.filter(
+            insuree__chf_id=insuree.chf_id,
+            insuree__legacy_id__isnull=True,
+            policy__legacy_id__isnull=True,
+            start_date__lte=current_date,
+            expiry_date__gte=current_date,
+            legacy_id__isnull=True,
+        )
+        .order_by("-expiry_date")
+        .all()
+    )
     latest_record = None
     if ins_pol and len(ins_pol) > 0:
         for pol in ins_pol:
@@ -1341,65 +1731,85 @@ def get_declaration_details(requests, policy_holder_code):
     policy_holder = get_policy_holder_from_code(policy_holder_code)
     if not policy_holder:
         logger.error(f"Unknown policy holder ({policy_holder_code})")
-        return JsonResponse({"errors": f"Unknown policy holder ({policy_holder_code})"}, status=404)
+        return JsonResponse(
+            {"errors": f"Unknown policy holder ({policy_holder_code})"}, status=404
+        )
 
     logger.info(f"Policy holder found: {policy_holder_code}")
 
     # Check if policy holder is locked or unlocked
     if policy_holder.status == PH_STATUS_LOCKED:
         logger.warning(f"Policy holder ({policy_holder_code}) is locked.")
-        return JsonResponse({"errors": f"({policy_holder_code}) Policy Holder is Locked."}, status=400)
+        return JsonResponse(
+            {"errors": f"({policy_holder_code}) Policy Holder is Locked."}, status=400
+        )
     else:
         policy_holder_status = "Unlocked"
         logger.info(f"Policy holder status: {policy_holder_status}")
 
     # Fetch policy holder insurees
-    ph_insuree_list = PolicyHolderInsuree.objects.filter(policy_holder=policy_holder, is_deleted=False)
+    ph_insuree_list = PolicyHolderInsuree.objects.filter(
+        policy_holder=policy_holder, is_deleted=False
+    )
     ph_insuree = ph_insuree_list.first()
 
     if not ph_insuree:
         logger.error(f"No insuree found for policy holder ({policy_holder_code})")
-        return JsonResponse({"errors": "No insuree found for this policy holder."}, status=404)
+        return JsonResponse(
+            {"errors": "No insuree found for this policy holder."}, status=404
+        )
 
     if ph_insuree_list.count() != 1:
-        logger.error(f"Multiple insurees attached to policy holder ({policy_holder_code})")
-        return JsonResponse({"errors": f"Multiple insurees attached with this policy holder ({policy_holder_code})"},
-                            status=400)
+        logger.error(
+            f"Multiple insurees attached to policy holder ({policy_holder_code})"
+        )
+        return JsonResponse(
+            {
+                "errors": f"Multiple insurees attached with this policy holder ({policy_holder_code})"
+            },
+            status=400,
+        )
 
     # Check insuree's active status
     is_active = has_active_policy(ph_insuree.insuree)
-    insuree_right_status = 'Active' if is_active else 'Inactive'
-    logger.info(f"Insuree status for policy holder {policy_holder_code}: {insuree_right_status}")
+    insuree_right_status = "Active" if is_active else "Inactive"
+    logger.info(
+        f"Insuree status for policy holder {policy_holder_code}: {insuree_right_status}"
+    )
 
     # Fetch executable contracts
     contracts = Contract.objects.filter(
-        state=Contract.STATE_EXECUTABLE,
-        policy_holder=policy_holder,
-        is_deleted=False
-    ).order_by('date_valid_from')
+        state=Contract.STATE_EXECUTABLE, policy_holder=policy_holder, is_deleted=False
+    ).order_by("date_valid_from")
 
     if not contracts:
         contract = {
-            'policy_holder_id': policy_holder.id,
+            "policy_holder_id": policy_holder.id,
         }
         # logger.error(f"No executable contracts found for policy holder ({policy_holder_code})")
         try:
             contract_service = ContractService(user=user)
             output_data = contract_service.tipl_contract_evaluation(contract=contract)
-            logger.info(f"Contract evaluation completed for policy holder {policy_holder.id}")
+            logger.info(
+                f"Contract evaluation completed for policy holder {policy_holder.id}"
+            )
         except Exception as e:
-            logger.error(f"Error during contract evaluation for policy holder {policy_holder.id}: {str(e)}")
+            logger.error(
+                f"Error during contract evaluation for policy holder {policy_holder.id}: {str(e)}"
+            )
             return JsonResponse({"errors": "Error evaluating contract."}, status=500)
         period = datetime.now().strftime("%m-%Y")
-        contract_data.append({
-            'policy_holder': getattr(policy_holder, 'trade_name', None),
-            'policy_holder_code': getattr(policy_holder, 'code', None),
-            'insuree_right_status': insuree_right_status,
-            'period': period,  # This will now show the next month's MM-YYYY
-            'label': 'declaration',
-            'total_amount': output_data  # Ensure this is always a Decimal (since no payment was found)
-        })
-        data['data'] = contract_data
+        contract_data.append(
+            {
+                "policy_holder": getattr(policy_holder, "trade_name", None),
+                "policy_holder_code": getattr(policy_holder, "code", None),
+                "insuree_right_status": insuree_right_status,
+                "period": period,  # This will now show the next month's MM-YYYY
+                "label": "declaration",
+                "total_amount": output_data,  # Ensure this is always a Decimal (since no payment was found)
+            }
+        )
+        data["data"] = contract_data
         logger.info(f"Returning data for policy holder: {policy_holder_code}")
         return JsonResponse(data, status=200)
 
@@ -1407,33 +1817,42 @@ def get_declaration_details(requests, policy_holder_code):
 
     for contract in contracts:
         # Fetch the first non-approved payment for each contract
-        payment = Payment.objects.filter(
-            contract=contract,
-            legacy_id__isnull=True,
-            validity_to__isnull=True,
-            status=Payment.STATUS_CREATED  # Exclude approved payments
-        ).order_by('validity_from').first()
+        payment = (
+            Payment.objects.filter(
+                contract=contract,
+                legacy_id__isnull=True,
+                validity_to__isnull=True,
+                status=Payment.STATUS_CREATED,  # Exclude approved payments
+            )
+            .order_by("validity_from")
+            .first()
+        )
 
         if payment:
-            logger.info(f"Found payment for contract: {contract.code} with amount {payment.expected_amount}")
+            logger.info(
+                f"Found payment for contract: {contract.code} with amount {payment.expected_amount}"
+            )
             # Check for the earliest payment
-            if earliest_payment is None or payment.validity_from < earliest_payment.validity_from:
+            if (
+                earliest_payment is None
+                or payment.validity_from < earliest_payment.validity_from
+            ):
                 earliest_payment = payment
                 earliest_contract = contract
 
     if earliest_payment and earliest_contract:
         # Fetch penalties related to the earliest payment
         penalty = PaymentPenaltyAndSanction.objects.filter(
-            outstanding_payment__isnull=True,
-            payment=earliest_payment,
-            is_deleted=False
+            outstanding_payment__isnull=True, payment=earliest_payment, is_deleted=False
         ).first()
 
         penalty_rate = None
         total_penalty_amount = Decimal(0)  # Default to 0 if no penalty
 
         if penalty:
-            logger.info(f"Penalty found for payment {earliest_payment.id} with level {penalty.penalty_level}")
+            logger.info(
+                f"Penalty found for payment {earliest_payment.id} with level {penalty.penalty_level}"
+            )
             product_config = get_payment_product_config(earliest_payment)
             if product_config:
                 if penalty.penalty_level == "1st":
@@ -1445,61 +1864,90 @@ def get_declaration_details(requests, policy_holder_code):
             total_penalty_amount = PaymentPenaltyAndSanction.objects.filter(
                 payment=earliest_payment,
                 outstanding_payment__isnull=True,
-                is_deleted=False
-            ).aggregate(Sum('amount'))['amount__sum'] or Decimal(0)
+                is_deleted=False,
+            ).aggregate(Sum("amount"))["amount__sum"] or Decimal(0)
             logger.info(f"Total penalty amount calculated: {total_penalty_amount}")
 
         total_amount = total_penalty_amount + earliest_payment.expected_amount
 
         # Collect contract and payment details
-        contract_data.append({
-            'policy_holder': getattr(policy_holder, 'trade_name', None),
-            'policy_holder_code': getattr(policy_holder, 'code', None),
-            'insuree_right_status': insuree_right_status,
-            'period': getattr(earliest_contract, 'date_valid_from', None).strftime(
-                "%m-%Y") if earliest_contract and earliest_contract.date_valid_from else None,
-            'label': f'declaration + {penalty_rate}% de penalité' if penalty_rate else 'declaration',
-            'total_amount': total_amount or Decimal(0)  # Ensure this is always a Decimal
-        })
-        logger.info(f"Contract and payment details collected for policy holder: {policy_holder_code}")
+        contract_data.append(
+            {
+                "policy_holder": getattr(policy_holder, "trade_name", None),
+                "policy_holder_code": getattr(policy_holder, "code", None),
+                "insuree_right_status": insuree_right_status,
+                "period": (
+                    getattr(earliest_contract, "date_valid_from", None).strftime(
+                        "%m-%Y"
+                    )
+                    if earliest_contract and earliest_contract.date_valid_from
+                    else None
+                ),
+                "label": (
+                    f"declaration + {penalty_rate}% de penalité"
+                    if penalty_rate
+                    else "declaration"
+                ),
+                "total_amount": total_amount
+                or Decimal(0),  # Ensure this is always a Decimal
+            }
+        )
+        logger.info(
+            f"Contract and payment details collected for policy holder: {policy_holder_code}"
+        )
     else:
         latest_executable_contract = contracts.last()
         if latest_executable_contract and latest_executable_contract.date_valid_from:
             date_valid_from = latest_executable_contract.date_valid_from
             # Calculate the first day of the next month
-            next_month = (date_valid_from.replace(day=1) + timedelta(days=32)).replace(day=1)
+            next_month = (date_valid_from.replace(day=1) + timedelta(days=32)).replace(
+                day=1
+            )
             period = next_month.strftime("%m-%Y")
-            logger.info(f"Calculated future period based on last executable contract: {period}")
+            logger.info(
+                f"Calculated future period based on last executable contract: {period}"
+            )
         else:
             period = None
             logger.warning(
-                f"No executable contracts available for policy holder {policy_holder_code} to calculate future period.")
+                f"No executable contracts available for policy holder {policy_holder_code} to calculate future period."
+            )
 
         contract = {
-            'policy_holder_id': policy_holder.id,
+            "policy_holder_id": policy_holder.id,
         }
-        logger.debug(f"Contract prepared for policy holder {policy_holder.id}: {contract}")
+        logger.debug(
+            f"Contract prepared for policy holder {policy_holder.id}: {contract}"
+        )
 
         try:
             contract_service = ContractService(user=user)
             output_data = contract_service.tipl_contract_evaluation(contract=contract)
-            logger.info(f"Contract evaluation completed for policy holder {policy_holder.id}")
+            logger.info(
+                f"Contract evaluation completed for policy holder {policy_holder.id}"
+            )
         except Exception as e:
-            logger.error(f"Error during contract evaluation for policy holder {policy_holder.id}: {str(e)}")
+            logger.error(
+                f"Error during contract evaluation for policy holder {policy_holder.id}: {str(e)}"
+            )
             return JsonResponse({"errors": "Error evaluating contract."}, status=500)
 
         # Append contract data with future period
-        contract_data.append({
-            'policy_holder': getattr(policy_holder, 'trade_name', None),
-            'policy_holder_code': getattr(policy_holder, 'code', None),
-            'insuree_right_status': insuree_right_status,
-            'period': period,  # This will now show the next month's MM-YYYY
-            'label': 'declaration',
-            'total_amount': output_data  # Ensure this is always a Decimal (since no payment was found)
-        })
-        logger.info(f"Future contract data appended for policy holder {policy_holder.id}")
+        contract_data.append(
+            {
+                "policy_holder": getattr(policy_holder, "trade_name", None),
+                "policy_holder_code": getattr(policy_holder, "code", None),
+                "insuree_right_status": insuree_right_status,
+                "period": period,  # This will now show the next month's MM-YYYY
+                "label": "declaration",
+                "total_amount": output_data,  # Ensure this is always a Decimal (since no payment was found)
+            }
+        )
+        logger.info(
+            f"Future contract data appended for policy holder {policy_holder.id}"
+        )
 
-    data['data'] = contract_data
+    data["data"] = contract_data
     logger.info(f"Returning data for policy holder: {policy_holder_code}")
     return JsonResponse(data, status=200)
 
@@ -1514,13 +1962,17 @@ def get_declaration_details(requests, policy_holder_code):
 )
 def paid_contract_payment(request):
     from policyholder.services import tipl_contract_scenarios, tipl_payment_scenarios
+
     try:
         username = request.user.username
 
         # Check if the request is PUT
-        if request.method != 'PUT':
+        if request.method != "PUT":
             logger.error("Invalid request method. Only PUT requests are allowed.")
-            return JsonResponse({"errors": "Invalid request method. Only PUT requests are allowed."}, status=405)
+            return JsonResponse(
+                {"errors": "Invalid request method. Only PUT requests are allowed."},
+                status=405,
+            )
 
         # Parse the request body
         try:
@@ -1530,32 +1982,46 @@ def paid_contract_payment(request):
             return JsonResponse({"errors": "Invalid JSON input."}, status=400)
 
         # Validate required fields
-        required_fields = ['policy_holder_code', 'payment_amount', 'period', 'mmp_identifier', 'payment_date',
-                           'payment_reference']
+        required_fields = [
+            "policy_holder_code",
+            "payment_amount",
+            "period",
+            "mmp_identifier",
+            "payment_date",
+            "payment_reference",
+        ]
         missing_fields = [field for field in required_fields if not data.get(field)]
         if missing_fields:
             logger.error(f"Required field(s) missing: {missing_fields}")
-            return JsonResponse({"errors": f"Missing fields: {', '.join(missing_fields)}"}, status=400)
+            return JsonResponse(
+                {"errors": f"Missing fields: {', '.join(missing_fields)}"}, status=400
+            )
 
-        policy_holder_code = data.get('policy_holder_code')
-        payment_amount = data.get('payment_amount')
-        period = data.get('period')
-        mmp_identifier = data.get('mmp_identifier')
-        payment_date = data.get('payment_date')
-        payment_reference = data.get('payment_reference')
+        policy_holder_code = data.get("policy_holder_code")
+        payment_amount = data.get("payment_amount")
+        period = data.get("period")
+        mmp_identifier = data.get("mmp_identifier")
+        payment_date = data.get("payment_date")
+        payment_reference = data.get("payment_reference")
 
         # Fetch Bank data using mmp_identifier
         bank = Banks.objects.filter(code=mmp_identifier, is_deleted=False).first()
         if not bank:
             logger.error(f"No bank found with MMP identifier: {mmp_identifier}")
-            return JsonResponse({"errors": f"No bank found with MMP identifier {mmp_identifier}."}, status=404)
+            return JsonResponse(
+                {"errors": f"No bank found with MMP identifier {mmp_identifier}."},
+                status=404,
+            )
 
         # Validate payment_date format (DD-MM-YYYY)
         try:
-            payment_date = datetime.strptime(payment_date, '%d-%m-%Y').date()
+            payment_date = datetime.strptime(payment_date, "%d-%m-%Y").date()
         except ValueError as e:
             logger.error(f"Invalid payment date format: {str(e)}")
-            return JsonResponse({"errors": "Invalid payment date format. Expected DD-MM-YYYY."}, status=400)
+            return JsonResponse(
+                {"errors": "Invalid payment date format. Expected DD-MM-YYYY."},
+                status=400,
+            )
 
         # Validate payment_amount and ensure it is a positive decimal
         try:
@@ -1568,22 +2034,31 @@ def paid_contract_payment(request):
 
         # Fetch the policy holder
         try:
-            policy_holder = PolicyHolder.objects.filter(code=policy_holder_code, is_deleted=False).first()
+            policy_holder = PolicyHolder.objects.filter(
+                code=policy_holder_code, is_deleted=False
+            ).first()
             if not policy_holder:
                 logger.error(f"No policy holder found for code: {policy_holder_code}")
                 return JsonResponse({"errors": "No policy holder found."}, status=404)
         except Exception as e:
             logger.error(f"Database error while fetching policy holder: {str(e)}")
-            return JsonResponse({"errors": "Internal server error while fetching policy holder."}, status=500)
+            return JsonResponse(
+                {"errors": "Internal server error while fetching policy holder."},
+                status=500,
+            )
 
         # Validate and parse period (MM-YYYY format)
         try:
             period_date = datetime.strptime(period, "%m-%Y")
             start_of_period = period_date.replace(day=1)
-            end_of_period = (start_of_period + relativedelta(months=1)) - timedelta(days=1)
+            end_of_period = (start_of_period + relativedelta(months=1)) - timedelta(
+                days=1
+            )
         except ValueError as e:
             logger.error(f"Invalid period format: {str(e)}")
-            return JsonResponse({"errors": "Invalid period format. Expected MM-YYYY."}, status=400)
+            return JsonResponse(
+                {"errors": "Invalid period format. Expected MM-YYYY."}, status=400
+            )
 
         # Fetch executable contracts for the policy holder that match the period
         try:
@@ -1592,63 +2067,93 @@ def paid_contract_payment(request):
                 state=Contract.STATE_EXECUTABLE,
                 is_deleted=False,
                 date_valid_from__gte=start_of_period,
-                date_valid_from__lte=end_of_period
-            ).order_by('date_valid_from')
+                date_valid_from__lte=end_of_period,
+            ).order_by("date_valid_from")
 
-            matching_contracts = [contract for contract in contracts if
-                                  contract.date_valid_from.strftime("%m-%Y") == period]
+            matching_contracts = [
+                contract
+                for contract in contracts
+                if contract.date_valid_from.strftime("%m-%Y") == period
+            ]
 
             # If no contracts are found, create a new contract
             if not matching_contracts:
-                logger.info(f"No executable contracts found for period {period}. Creating a new contract.")
+                logger.info(
+                    f"No executable contracts found for period {period}. Creating a new contract."
+                )
                 contract = {
-                    'policy_holder_id': policy_holder.id,
-                    'date_valid_from': start_of_period.strftime("%Y-%m-%d"),
-                    'date_valid_to': end_of_period.strftime("%Y-%m-%d"),
-                    'penalty_waive_off_contract': False,
-                    'penalty_waive_off_payment': False
+                    "policy_holder_id": policy_holder.id,
+                    "date_valid_from": start_of_period.strftime("%Y-%m-%d"),
+                    "date_valid_to": end_of_period.strftime("%Y-%m-%d"),
+                    "penalty_waive_off_contract": False,
+                    "penalty_waive_off_payment": False,
                 }
                 output = tipl_contract_scenarios(request.user, contract)
                 if output:
-                    payment_output = tipl_payment_scenarios(request.user, contract, payment_date, bank, payment_amount,
-                                                            payment_reference)
+                    payment_output = tipl_payment_scenarios(
+                        request.user,
+                        contract,
+                        payment_date,
+                        bank,
+                        payment_amount,
+                        payment_reference,
+                    )
                     if payment_output:
-                        logger.info(f"Payment scenario successfully executed for contract: {contract}")
+                        logger.info(
+                            f"Payment scenario successfully executed for contract: {contract}"
+                        )
                     else:
                         logger.error("Payment scenario failed after contract creation.")
-                        return JsonResponse({"errors": "Failed to approve payment after contract creation."},
-                                            status=400)
+                        return JsonResponse(
+                            {
+                                "errors": "Failed to approve payment after contract creation."
+                            },
+                            status=400,
+                        )
 
-                return JsonResponse({
-                    "success": f"Payment and contract created successfully for period {period}.",
-                    "payment_reference": payment_reference,
-                    "mmp_identifier": mmp_identifier,
-                    "payment_date": payment_date.strftime("%Y-%m-%d")
-                }, status=200)
+                return JsonResponse(
+                    {
+                        "success": f"Payment and contract created successfully for period {period}.",
+                        "payment_reference": payment_reference,
+                        "mmp_identifier": mmp_identifier,
+                        "payment_date": payment_date.strftime("%Y-%m-%d"),
+                    },
+                    status=200,
+                )
 
             # Find earliest payment for the matching contracts
             earliest_payment, earliest_contract = None, None
             for contract in matching_contracts:
-                payment = Payment.objects.filter(
-                    contract=contract,
-                    legacy_id__isnull=True,
-                    validity_to__isnull=True,
-                    status=Payment.STATUS_CREATED
-                ).order_by('validity_from').first()
+                payment = (
+                    Payment.objects.filter(
+                        contract=contract,
+                        legacy_id__isnull=True,
+                        validity_to__isnull=True,
+                        status=Payment.STATUS_CREATED,
+                    )
+                    .order_by("validity_from")
+                    .first()
+                )
 
-                if payment and (earliest_payment is None or payment.validity_from < earliest_payment.validity_from):
+                if payment and (
+                    earliest_payment is None
+                    or payment.validity_from < earliest_payment.validity_from
+                ):
                     earliest_payment = payment
                     earliest_contract = contract
 
             if not earliest_payment or not earliest_contract:
                 logger.error(f"No due payment found for the period {period}.")
-                return JsonResponse({"errors": f"No due payment found for the period {period}."}, status=404)
+                return JsonResponse(
+                    {"errors": f"No due payment found for the period {period}."},
+                    status=404,
+                )
 
             # Fetch and validate penalty
             penalty = PaymentPenaltyAndSanction.objects.filter(
                 outstanding_payment__isnull=True,
                 payment=earliest_payment,
-                is_deleted=False
+                is_deleted=False,
             ).first()
 
             total_expected_amount = earliest_payment.expected_amount
@@ -1661,15 +2166,20 @@ def paid_contract_payment(request):
                 penalty.save(username=username)
 
             # Validate payment amount against expected amount
-            if payment_amount not in [earliest_payment.expected_amount, total_expected_amount]:
+            if payment_amount not in [
+                earliest_payment.expected_amount,
+                total_expected_amount,
+            ]:
                 logger.error(
-                    f"Wrong amount entered: {payment_amount}. Expected: {earliest_payment.expected_amount} or {total_expected_amount}")
-                return JsonResponse({
-                    "errors": f"Invalid amount. Expected {total_expected_amount}."},
-                    status=400)
+                    f"Wrong amount entered: {payment_amount}. Expected: {earliest_payment.expected_amount} or {total_expected_amount}"
+                )
+                return JsonResponse(
+                    {"errors": f"Invalid amount. Expected {total_expected_amount}."},
+                    status=400,
+                )
 
             # Create json_ext data from the bank details
-            bank_encode_id = f'BanksType:{bank.id}'
+            bank_encode_id = f"BanksType:{bank.id}"
             json_ext_data = {
                 "bank": {
                     "id": base64_encode(bank_encode_id),
@@ -1679,8 +2189,16 @@ def paid_contract_payment(request):
                     "jsonExt": None,  # Assuming this is still None as per your example
                     "journauxId": bank.journaux_id,
                     "altLangName": bank.alt_lang_name,
-                    "dateCreated": bank.date_created.strftime("%Y-%m-%d %H:%M:%S") if bank.date_created else None,
-                    "dateUpdated": bank.date_updated.strftime("%Y-%m-%d %H:%M:%S") if bank.date_updated else None
+                    "dateCreated": (
+                        bank.date_created.strftime("%Y-%m-%d %H:%M:%S")
+                        if bank.date_created
+                        else None
+                    ),
+                    "dateUpdated": (
+                        bank.date_updated.strftime("%Y-%m-%d %H:%M:%S")
+                        if bank.date_updated
+                        else None
+                    ),
                 },
                 "amount": int(payment_amount),
                 "receiptNo": payment_reference,
@@ -1696,18 +2214,25 @@ def paid_contract_payment(request):
             earliest_payment.save()
 
             logger.info(
-                f"Payment updated for contract: {earliest_contract.code}, Amount: {earliest_payment.expected_amount}")
+                f"Payment updated for contract: {earliest_contract.code}, Amount: {earliest_payment.expected_amount}"
+            )
 
         except Exception as e:
             logger.error(f"Error during payment processing: {str(e)}", exc_info=True)
-            return JsonResponse({"errors": "Internal server error during payment processing."}, status=500)
+            return JsonResponse(
+                {"errors": "Internal server error during payment processing."},
+                status=500,
+            )
 
-        return JsonResponse({
-            "success": f"Payment and penalty updated successfully for period {period}.",
-            "payment_reference": payment_reference,
-            "mmp_identifier": mmp_identifier,
-            "payment_date": payment_date.strftime("%Y-%m-%d")
-        }, status=200)
+        return JsonResponse(
+            {
+                "success": f"Payment and penalty updated successfully for period {period}.",
+                "payment_reference": payment_reference,
+                "mmp_identifier": mmp_identifier,
+                "payment_date": payment_date.strftime("%Y-%m-%d"),
+            },
+            status=200,
+        )
 
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}", exc_info=True)
@@ -1724,6 +2249,4 @@ def paid_contract_payment(request):
 )
 def erp_sync_policy_holders(request):
     sync_policyholders_to_erp.delay()
-    return JsonResponse(
-        {"message": "Policyholders sync started"},
-        status=200)
+    return JsonResponse({"message": "Policyholders sync started"}, status=200)
