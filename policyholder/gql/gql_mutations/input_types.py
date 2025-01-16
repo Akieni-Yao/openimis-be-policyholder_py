@@ -87,6 +87,7 @@ class PolicyHolderContributionPlanInputType(OpenIMISMutation.Input):
     date_valid_from = graphene.Date(required=False)
     date_valid_to = graphene.Date(required=False)
     json_ext = graphene.types.json.JSONString(required=False)
+    skip_erp_update = graphene.Boolean(required=False)
 
 
 class PolicyHolderContributionPlanUpdateInputType(OpenIMISMutation.Input):
@@ -100,8 +101,10 @@ class PolicyHolderContributionPlanUpdateInputType(OpenIMISMutation.Input):
 
 class PolicyHolderContributionPlanReplaceInputType(ReplaceInputType):
     contribution_plan_bundle_id = graphene.UUID(requried=True, name="contributionPlanBundleId")
+    policy_holder_id = graphene.UUID(required=False)
     date_valid_from = graphene.Date(required=True)
     date_valid_to = graphene.Date(required=False)
+    skip_erp_update = graphene.Boolean(required=False)
 
 
 class PolicyHolderUserInputType(OpenIMISMutation.Input):
