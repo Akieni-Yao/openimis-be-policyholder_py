@@ -220,6 +220,7 @@ class CreatePolicyHolderContributionPlanMutation(
 
     @classmethod
     def _validate_mutation(cls, user, **data):
+        print(f"===> CreatePolicyHolderContributionPlanMutation : data : {data}")
         super()._validate_mutation(user, **data)
         PermissionValidation.validate_perms(
             user,
@@ -229,6 +230,7 @@ class CreatePolicyHolderContributionPlanMutation(
     @classmethod
     def async_mutate(cls, user, **data):
         try:
+            skipErpUpdate = data.pop("skip_erp_update", False)
             cls._validate_mutation(user, **data)
             mutation_result = cls._mutate(user, **data)
             logger.debug(
@@ -238,8 +240,8 @@ class CreatePolicyHolderContributionPlanMutation(
                 f"===> CreatePolicyHolderContributionPlanMutation : mutation_result : {mutation_result}"
             )
             try:
-                if data.get("skip_erp_update", False) is False:
-                    print("============================ create erp policyholder")
+                if skipErpUpdate is False:
+                    print("===================== create erp policyholder")
                     erp_create_update_policyholder(
                         data["policy_holder_id"],
                         data["contribution_plan_bundle_id"],
@@ -248,7 +250,7 @@ class CreatePolicyHolderContributionPlanMutation(
                     logger.info("ERP policyholder update/create was successful.")
                 else:
                     logger.info(
-                        "====================== ERP policyholder update/create was skipped."
+                        "======================= ERP policyholder update/create was skipped."
                     )
             except Exception as e:
                 logger.error(f"Failed to update/create ERP policyholder: {e}")
