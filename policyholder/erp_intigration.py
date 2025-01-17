@@ -22,8 +22,9 @@ logger = logging.getLogger(__name__)
 # erp_url = os.environ.get('ERP_HOST')
 erp_url = os.environ.get("ERP_HOST", "https://camu-staging-15480786.dev.odoo.com")
 erp_country_code = os.environ.get("ERP_COUNTRY_CODE", 42)
+tmr_api_key = os.environ.get("TMR_API_KEY", "test")
 
-headers = {"Content-Type": "application/json", "Tmr-Api-Key": "test"}
+headers = {"Content-Type": "application/json", "Tmr-Api-Key": tmr_api_key}
 
 
 def erp_mapping_data(phcp, bank_accounts, is_vendor, account_payable_id=None):
