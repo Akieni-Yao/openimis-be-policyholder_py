@@ -241,8 +241,9 @@ def get_or_create_insuree_from_line(
 
     if not insuree:
         insuree_dob = line[HEADER_INSUREE_DOB]
+        print(f"=================================== LINE 244 {type(insuree_dob)}===========================")
         if not isinstance(insuree_dob, datetime):
-            datetime_obj = datetime.strptime(insuree_dob, "%d/%m/%Y")
+            datetime_obj = datetime.strptime(f"{insuree_dob}", "%d/%m/%Y") if isinstance(insuree_dob, str) else datetime.combine(insuree_dob, datetime.min.time())
             line[HEADER_INSUREE_DOB] = timezone.make_aware(datetime_obj).date()
 
         insuree_id = generate_available_chf_id(
@@ -345,10 +346,14 @@ def import_phi(request, policy_holder_code):
     user_id = request.user.id_for_audit
     core_user_id = request.user.id
     logger.info("User (audit id %s) requested import of PolicyHolderInsurees", user_id)
+    
+    print("=================================== LINE 349 ===========================")
 
     policy_holder = get_policy_holder_from_code(policy_holder_code)
     if not policy_holder:
         return JsonResponse({"errors": f"Unknown policy holder ({policy_holder_code})"})
+    
+    print("=================================== LINE 354 ===========================")
 
     total_lines = 0
     total_insurees_created = 0
@@ -359,9 +364,13 @@ def import_phi(request, policy_holder_code):
     total_contribution_plan_not_found = 0
     total_validation_errors = 0
 
+    print("=================================== LINE 360 ===========================")
+
     df = pd.read_excel(file)
     df.columns = [col.strip() for col in df.columns]
     org_columns = df.columns
+    
+    print("=================================== LINE 366 ===========================")
     # Renaming the headers
     rename_columns = {
         "Numéro CAMU": HEADER_INSUREE_CAMU_NO,
@@ -389,19 +398,26 @@ def import_phi(request, policy_holder_code):
 
     df.rename(columns=rename_columns, inplace=True)
 
+    print("=================================== LINE 371 ===========================")
+
     errors = []
     logger.debug("Importing %s lines", len(df))
+
+    print("=================================== LINE 375 ===========================")
 
     # For output excel with error and success message
     output = io.BytesIO()
     writer = pd.ExcelWriter(output, engine="xlsxwriter")
     processed_data = pd.DataFrame()
 
+    print("=================================== LINE 380 ===========================")
+
     for index, line in df.iterrows():  # for each line in the Excel file
 
         total_lines += 1
         clean_line(line)
         logger.debug("Importing line %s: %s", total_lines, line)
+        print("=================================== LINE 419 ===========================")
 
         # List of possible date formats to try
         date_formats = [
@@ -411,10 +427,13 @@ def import_phi(request, policy_holder_code):
         ]  # Add more formats as needed
 
         dob_value = line[HEADER_INSUREE_DOB]
+        print("=================================== LINE 422 ===========================")
+
         # if not line.get(HEADER_INSUREE_ID) and line.get(HEADER_FAMILY_HEAD):
         if not line.get(HEADER_INSUREE_ID):
             if isinstance(dob_value, datetime):
                 dob = dob_value
+                print("=================================== LINE 435 ===========================")
             else:
                 dob = None
                 for date_format in date_formats:
@@ -469,8 +488,12 @@ def import_phi(request, policy_holder_code):
                     pd.Series(row_data), ignore_index=True
                 )
                 continue
+            
+            print("=================================== LINE 439 ===========================")
+
             force_value = str(line.get("Force", "")).strip().lower()
             if force_value not in ["yes", "Yes", "YES"]:
+                print("=================================== LINE 442 ===========================")
                 # Check if insuree with the same name and DOB already exists
                 insuree = validating_insuree_on_name_dob(line)
                 if insuree:
@@ -481,6 +504,8 @@ def import_phi(request, policy_holder_code):
                     logger.debug(
                         f"Error line {total_lines} - Un assuré ayant le même nom et la même date de naissance existe déjà. Si vous voulez l'ajouter, veuillez le faire de force en ajoutant une nouvelle colonne nommée 'Force' avec la valeur 'YES'."
                     )
+                    
+                    print("=================================== LINE 445 ===========================")
 
                     # Adding error in output excel
                     row_data = line.tolist()
@@ -494,6 +519,9 @@ def import_phi(request, policy_holder_code):
                         pd.Series(row_data), ignore_index=True
                     )
                     continue
+            
+            print("=================================== LINE 448 ===========================")
+
         validation_errors = validate_line(line)
         if validation_errors:
             errors.append(
@@ -502,6 +530,9 @@ def import_phi(request, policy_holder_code):
             logger.debug(
                 f"Error line {total_lines} - Problèmes de validation  ({validation_errors})"
             )
+            
+            print("=================================== LINE 452 ===========================")
+
             total_validation_errors += 1
 
             # Adding error in output excel
@@ -511,11 +542,15 @@ def import_phi(request, policy_holder_code):
                 pd.Series(row_data), ignore_index=True
             )
             continue
+        
+        print("=================================== LINE 455 ===========================")
 
         if line[HEADER_DELETE] and line[HEADER_DELETE].lower() == "yes":
             is_deleted = soft_delete_insuree(line, policy_holder_code, user_id)
             if is_deleted:
                 continue
+            
+            print("=================================== LINE 458 ===========================")
 
         village = get_village_from_line(line)
         if not village:
@@ -526,6 +561,8 @@ def import_phi(request, policy_holder_code):
                 f"Error line {total_lines} -Village inconnu ({line[HEADER_FAMILY_LOCATION_CODE]})"
             )
             total_locations_not_found += 1
+            
+            print("=================================== LINE 459 ===========================")
 
             # Adding error in output excel
             row_data = line.tolist()
@@ -549,6 +586,8 @@ def import_phi(request, policy_holder_code):
                     f"Error line {total_lines} - Pas de plans de cotisation avec ({policy_holder.trade_name})"
                 )
                 total_contribution_plan_not_found += 1
+                
+                print("=================================== LINE 460 ===========================")
 
                 # Adding error in output excel
                 row_data = line.tolist()
@@ -572,6 +611,8 @@ def import_phi(request, policy_holder_code):
                     f"Error line {total_lines} - Contribution plan inconnu ({ph_cpb.contribution_plan_bundle})"
                 )
                 total_locations_not_found += 1
+                
+                print("=================================== LINE 461 ===========================")
 
                 # Adding error in output excel
                 row_data = line.tolist()
@@ -592,6 +633,8 @@ def import_phi(request, policy_holder_code):
                 f"Error occurred while retrieving Contribution Plan Bundle: {e}"
             )
             enrolment_type = None
+            
+            print("=================================== LINE 462 ===========================")
 
         is_valid_enrolment = validate_enrolment_type(line, enrolment_type)
         if not is_valid_enrolment:
@@ -603,6 +646,8 @@ def import_phi(request, policy_holder_code):
                 pd.Series(row_data), ignore_index=True
             )
             continue
+        
+        print("=================================== LINE 463 ===========================")
 
         is_cc_request = check_for_category_change_request(
             request.user, line, policy_holder, enrolment_type
@@ -614,6 +659,8 @@ def import_phi(request, policy_holder_code):
                 pd.Series(row_data), ignore_index=True
             )
             # continue
+            
+        print("=================================== LINE 464 ===========================")
 
         family, family_created = get_or_create_family_from_line(
             line, village, user_id, enrolment_type
@@ -622,6 +669,9 @@ def import_phi(request, policy_holder_code):
         if family_created:
             total_families_created += 1
         elif not family_created and family is None:
+            
+            print("=================================== LINE 465 ===========================")
+
             # Adding error in output excel
             row_data = line.tolist()
             row_data.extend(["Échec", "ID du chef de famille inconnu."])
@@ -629,6 +679,8 @@ def import_phi(request, policy_holder_code):
                 pd.Series(row_data), ignore_index=True
             )
             continue
+        
+        print("=================================== LINE 466 ===========================")
 
         insuree, insuree_created = get_or_create_insuree_from_line(
             line, family, family_created, user_id, None, core_user_id, enrolment_type
@@ -636,6 +688,9 @@ def import_phi(request, policy_holder_code):
         logger.debug("insuree_created: %s", insuree_created)
         if insuree_created:
             total_insurees_created += 1
+            
+            print("=================================== LINE 467 ===========================")
+
             try:
                 logger.info(
                     "====  policyholder  ====  import_phi  ====  create_openKm_folder_for_bulkupload  ====  Start"
@@ -645,8 +700,14 @@ def import_phi(request, policy_holder_code):
                 logger.info(
                     "====  policyholder  ====  import_phi  ====  create_openKm_folder_for_bulkupload  ====  End"
                 )
+                
+                print("=================================== LINE 468 ===========================")
+
             except Exception as e:
                 logger.error(f"insuree bulk upload error for dms: {e}")
+            
+            print("=================================== LINE 469 ===========================")
+
             try:
                 logger.info(
                     "====  policyholder  ====  import_phi  ====  insuree_add_to_workflow  ====  Start"
@@ -668,6 +729,8 @@ def import_phi(request, policy_holder_code):
                 logger.error(f"insuree bulk upload error for abis or workflow : {e}")
         elif not insuree_created:
             reason = None
+            
+            print("=================================== LINE 470 ===========================")
 
             insuree_dob = line[HEADER_INSUREE_DOB]
             if not isinstance(insuree_dob, datetime):
@@ -684,7 +747,8 @@ def import_phi(request, policy_holder_code):
                 reason = "Le sexe de l'assuré ne correspond pas."
             elif insuree.marital != mapping_marital_status(line[HEADER_CIVILITY]):
                 reason = "L'état civil de l'assuré ne correspond pas."
-
+                
+            print("=================================== LINE 471 ===========================")
             if reason:
                 # Adding error in output excel
                 row_data = line.tolist()
@@ -693,11 +757,16 @@ def import_phi(request, policy_holder_code):
                     pd.Series(row_data), ignore_index=True
                 )
                 continue
+            
+            print("=================================== LINE 472 ===========================")
 
         if family_created:
             family.head_insuree = insuree
             family.save()
         phi_json_ext = {}
+        
+        print("=================================== LINE 473 ===========================")
+
         # if line[HEADER_INCOME]:
         #     phi_json_ext["calculation_rule"] = {"income": line[HEADER_INCOME]}
         employer_number = None
@@ -707,6 +776,9 @@ def import_phi(request, policy_holder_code):
         phi = PolicyHolderInsuree.objects.filter(
             insuree=insuree, policy_holder=policy_holder
         ).first()
+        
+        print("=================================== LINE 474 ===========================")
+
         if phi:
             phi._state.adding = True
             if (
@@ -720,6 +792,8 @@ def import_phi(request, policy_holder_code):
                 phi.json_ext = phi_json_ext
                 phi.save(username=request.user.username)
                 total_phi_updated += 1
+                
+                print("=================================== LINE 475 ===========================")
         else:
             phi = PolicyHolderInsuree(
                 insuree=insuree,
@@ -730,15 +804,23 @@ def import_phi(request, policy_holder_code):
             )
             total_phi_created += 1
             phi.save(username=request.user.username)
+            
+            print("=================================== LINE 476 ===========================")
         try:
             create_camu_notification(INS_ADDED_NT, phi)
             logger.info(
                 "Successfully created CAMU notification with INS_ADDED_NT and phi."
             )
+            
+            print("=================================== LINE 477 ===========================")
+
         except Exception as e:
             logger.error(
                 f"Failed to create CAMU notification with with INS_ADDED_NT : {e}"
             )
+            
+            print("=================================== LINE 478 ===========================")
+
         # Adding success entry in output Excel
         row_data = line.tolist()
         row_data.extend(["Réussite", ""])
@@ -757,6 +839,8 @@ def import_phi(request, policy_holder_code):
 
     # Set the appropriate status code based on the type of errors encountered
     status_code = 200  # Default success status
+    
+    print("=================================== LINE 479 ===========================")
 
     if total_locations_not_found > 0:
         status_code = 417  # Expectation Failed for unknown village
@@ -765,12 +849,16 @@ def import_phi(request, policy_holder_code):
     elif total_validation_errors > 0:
         status_code = 422  # Unprocessable Entity for general validation errors
 
+    print("=================================== LINE 480 ===========================")
+
     # Generate output Excel
     output_headers = list(org_columns) + ["Status", "Reason"]
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         processed_data.to_excel(
             writer, sheet_name="Processed Data", index=False, header=output_headers
         )
+
+    print("=================================== LINE 481 ===========================")
 
     output.seek(0)
     response = HttpResponse(
