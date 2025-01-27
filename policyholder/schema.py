@@ -104,6 +104,12 @@ class Query(graphene.ObjectType):
         contactName=graphene.String(),
         shortName=graphene.String(),
     )
+    
+    # can_unlock_policyholder = graphene.Field(
+    #     success=graphene.Boolean,
+    #     message=graphene.String,
+    #     policyholder_id=graphene.String(required=True),
+    # )
 
     policy_holder_by_family = OrderedDjangoFilterConnectionField(
         PolicyHolderInsureeGQLType,
@@ -112,6 +118,49 @@ class Query(graphene.ObjectType):
         # show_history=graphene.Boolean(),
         # order_by=graphene.String(),
     )
+    
+    # def resolve_can_unlock_policyholder(self, info, **kwargs):
+    #     # Fetch the policyholder
+    #     policyholder_id = kwargs.get("policyholder_id")
+    #     try:
+    #         policyholder = PolicyHolder.objects.get(id=policyholder_id)
+    #     except PolicyHolder.DoesNotExist:
+    #         return UnlockPolicyHolderMutation(
+    #             success=False, message="Policyholder does not exist."
+    #         )
+
+    #     # Query all payments associated with the policyholder's contracts
+    #     payments = Payment.objects.filter(Q(contract__policy_holder__id=policyholder_id))
+
+    #     # Check if any payments exist for the policyholder
+    #     if not payments.exists():
+    #         return UnlockPolicyHolderMutation(
+    #             success=False, message="No payments found for this policyholder."
+    #         )
+
+    #     if payments.filter(~Q(status=1) & ~Q(status=5)).exists():
+    #         return UnlockPolicyHolderMutation(
+    #             success=False, message="Not all payments are fully paid."
+    #         )
+
+    #     # Check penalties of those payments: should have status 3 or 4, penalty_type 'Penalty', and is_approved=True
+    #     penalties = PaymentPenaltyAndSanction.objects.filter(
+    #         Q(payment__in=payments) & ~Q(status__in=[PaymentPenaltyAndSanction.PENALTY_APPROVED, PaymentPenaltyAndSanction.PENALTY_CANCELED, PaymentPenaltyAndSanction.INSTALLMENT_APPROVED])
+    #     )
+
+    #     # If penalties exist that are unresolved or not approved
+    #     if penalties.exists():
+    #         if not penalties.filter(is_approved=True).exists():
+    #             return UnlockPolicyHolderMutation(
+    #                 success=False, message="Penalties are not approved."
+    #             )
+    #         return UnlockPolicyHolderMutation(
+    #             success=False, message="Penalties are not fully resolved."
+    #         )
+
+    #     return UnlockPolicyHolderMutation(
+    #         success=True, message="Policyholder can be unlocked."
+    #     )
 
     def resolve_policy_holder_by_family(self, info, **kwargs):
         # family_uuid=kwargs.get('family_uuid')
