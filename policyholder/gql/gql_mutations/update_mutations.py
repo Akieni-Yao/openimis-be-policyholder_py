@@ -343,6 +343,7 @@ class UnlockPolicyHolderMutation(graphene.Mutation):
                     PaymentPenaltyAndSanction.PENALTY_APPROVED,
                     PaymentPenaltyAndSanction.PENALTY_CANCELED,
                     PaymentPenaltyAndSanction.INSTALLMENT_APPROVED,
+                    PaymentPenaltyAndSanction.INSTALLMENT_AGREEMENT_PENDING,
                 ]
             )
         )
