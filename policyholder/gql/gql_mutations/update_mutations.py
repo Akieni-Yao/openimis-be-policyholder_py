@@ -163,7 +163,16 @@ class UpdatePolicyHolderInsureeDesignation(graphene.Mutation):
     success = graphene.Boolean()
     message = graphene.String()
 
-    def mutate(self, info, policy_holder_code, insuree_id, designation, flag, position_id=None, speciality_id=None):
+    def mutate(
+        self,
+        info,
+        policy_holder_code,
+        insuree_id,
+        designation,
+        flag,
+        position_id=None,
+        speciality_id=None,
+    ):
         try:
             username = info.context.user.username
             policy_holder = PolicyHolder.objects.get(code=policy_holder_code)
@@ -174,10 +183,10 @@ class UpdatePolicyHolderInsureeDesignation(graphene.Mutation):
             )
             json_ext_data = record.json_ext
             if flag:
-                json_ext_data['designation'] = designation
-                json_ext_data['position_id'] = position_id
-                json_ext_data['speciality_id'] = speciality_id
-                
+                json_ext_data["designation"] = designation
+                json_ext_data["position_id"] = position_id
+                json_ext_data["speciality_id"] = speciality_id
+
                 record.json_ext = json_ext_data
             else:
                 record.json_ext = json_ext_data
@@ -298,11 +307,12 @@ class PHApprovalMutation(graphene.Mutation):
 class UnlockPolicyHolderMutation(graphene.Mutation):
     class Arguments:
         policy_holder = graphene.String(required=True)
+        check_status = graphene.Boolean(required=False)
 
     success = graphene.Boolean()
     message = graphene.String()
 
-    def mutate(self, info, policy_holder):
+    def mutate(self, info, policy_holder, check_status=False):
         # Fetch the policyholder
         try:
             policyholder = PolicyHolder.objects.get(id=policy_holder)
@@ -327,7 +337,14 @@ class UnlockPolicyHolderMutation(graphene.Mutation):
 
         # Check penalties of those payments: should have status 3 or 4, penalty_type 'Penalty', and is_approved=True
         penalties = PaymentPenaltyAndSanction.objects.filter(
-            Q(payment__in=payments) & ~Q(status__in=[PaymentPenaltyAndSanction.PENALTY_APPROVED, PaymentPenaltyAndSanction.PENALTY_CANCELED, PaymentPenaltyAndSanction.INSTALLMENT_APPROVED])
+            Q(payment__in=payments)
+            & ~Q(
+                status__in=[
+                    PaymentPenaltyAndSanction.PENALTY_APPROVED,
+                    PaymentPenaltyAndSanction.PENALTY_CANCELED,
+                    PaymentPenaltyAndSanction.INSTALLMENT_APPROVED,
+                ]
+            )
         )
 
         # If penalties exist that are unresolved or not approved
@@ -338,6 +355,11 @@ class UnlockPolicyHolderMutation(graphene.Mutation):
                 )
             return UnlockPolicyHolderMutation(
                 success=False, message="Penalties are not fully resolved."
+            )
+
+        if check_status:
+            return UnlockPolicyHolderMutation(
+                success=True, message="Policyholder can be unlocked."
             )
 
         username = info.context.user.username
