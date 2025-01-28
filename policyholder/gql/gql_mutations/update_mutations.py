@@ -59,8 +59,11 @@ class UpdatePolicyHolderMutation(BaseHistoryModelUpdateMutationMixin, BaseMutati
         PolicyHolderValidation.validate_update(user, **data)
 
         print("********************** UPDATE POLICY HOLDER VALIDATION")
+        
 
         try:
+            
+            skip_erp_update = data.pop("skip_erp_update", False)
 
             print("********************** UPDATE POLICY HOLDER VALIDATION ERP")
             contributionPlan = PolicyHolderContributionPlan.objects.filter(
@@ -76,7 +79,10 @@ class UpdatePolicyHolderMutation(BaseHistoryModelUpdateMutationMixin, BaseMutati
 
                 print("********************** UPDATE POLICY HOLDER VALIDATION ERP 2")
 
-                erp_create_update_policyholder(data["id"], cpId, user)
+                if not skip_erp_update:
+                    erp_create_update_policyholder(data["id"], cpId, user)
+                else:
+                    print("********************** UPDATE POLICY HOLDER VALIDATION ERP SKIPPED")
 
             print("********************** UPDATE POLICY HOLDER VALIDATION ERP SUCCESS")
         except Exception as e:
