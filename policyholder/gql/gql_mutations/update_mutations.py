@@ -62,6 +62,8 @@ class UpdatePolicyHolderMutation(BaseHistoryModelUpdateMutationMixin, BaseMutati
 
         try:
 
+            skip_erp_update = data.pop("skip_erp_update", False)
+
             print("********************** UPDATE POLICY HOLDER VALIDATION ERP")
             contributionPlan = PolicyHolderContributionPlan.objects.filter(
                 policy_holder__id=data["id"], is_deleted=False
@@ -76,7 +78,12 @@ class UpdatePolicyHolderMutation(BaseHistoryModelUpdateMutationMixin, BaseMutati
 
                 print("********************** UPDATE POLICY HOLDER VALIDATION ERP 2")
 
-                erp_create_update_policyholder(data["id"], cpId, user)
+                if not skip_erp_update:
+                    erp_create_update_policyholder(data["id"], cpId, user)
+                else:
+                    print(
+                        "********************** UPDATE POLICY HOLDER VALIDATION ERP SKIPPED"
+                    )
 
             print("********************** UPDATE POLICY HOLDER VALIDATION ERP SUCCESS")
         except Exception as e:
@@ -209,6 +216,7 @@ class PHApprovalMutation(graphene.Mutation):
     def mutate(self, info, input):
         try:
             username = info.context.user.username
+            user = info.context.user
             success = True
             message = None
             subject = None
@@ -241,6 +249,30 @@ class PHApprovalMutation(graphene.Mutation):
                     subject = (
                         "CAMU, Your Policyholder Application request has been approved."
                     )
+
+                    # ERP CREATE UPDATE POLICY HOLDER
+                    print(
+                        "********************** UPDATE POLICY HOLDER VALIDATION ERP 2"
+                    )
+                    contributionPlan = PolicyHolderContributionPlan.objects.filter(
+                        policy_holder__id=ph_id, is_deleted=False
+                    ).first()
+
+                    if (
+                        contributionPlan is not None
+                        and contributionPlan.contribution_plan_bundle is not None
+                    ):
+
+                        cpId = contributionPlan.contribution_plan_bundle.id
+
+                        print(
+                            "********************** UPDATE POLICY HOLDER VALIDATION ERP 3"
+                        )
+
+                        erp_create_update_policyholder(ph_id, cpId, user)
+                        print(
+                            "********************** UPDATE POLICY HOLDER VALIDATION ERP 4"
+                        )
 
                 elif is_rejected:
                     ph_obj.is_rejected = True
