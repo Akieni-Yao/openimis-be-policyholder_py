@@ -46,6 +46,7 @@ class PolicyHolderUpdateInputType(OpenIMISMutation.Input):
     is_review = graphene.Boolean(required=False)
     is_submit = graphene.Boolean(required=False)
     status = graphene.String(required=False)
+    skip_erp_update = graphene.Boolean(required=False)
 
 
 class PolicyHolderInsureeInputType(OpenIMISMutation.Input):
