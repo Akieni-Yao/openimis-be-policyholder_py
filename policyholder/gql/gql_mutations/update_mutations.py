@@ -1,4 +1,5 @@
 import logging
+import re
 
 import graphene
 from django.db.models import Q
@@ -61,7 +62,6 @@ class UpdatePolicyHolderMutation(BaseHistoryModelUpdateMutationMixin, BaseMutati
         print("********************** UPDATE POLICY HOLDER VALIDATION")
 
         try:
-
             skip_erp_update = data.pop("skip_erp_update", False)
 
             print("********************** UPDATE POLICY HOLDER VALIDATION ERP")
@@ -73,7 +73,6 @@ class UpdatePolicyHolderMutation(BaseHistoryModelUpdateMutationMixin, BaseMutati
                 contributionPlan is not None
                 and contributionPlan.contribution_plan_bundle is not None
             ):
-
                 cpId = contributionPlan.contribution_plan_bundle.id
 
                 print("********************** UPDATE POLICY HOLDER VALIDATION ERP 2")
@@ -262,7 +261,6 @@ class PHApprovalMutation(graphene.Mutation):
                         contributionPlan is not None
                         and contributionPlan.contribution_plan_bundle is not None
                     ):
-
                         cpId = contributionPlan.contribution_plan_bundle.id
 
                         print(
@@ -404,3 +402,42 @@ class UnlockPolicyHolderMutation(graphene.Mutation):
         return UnlockPolicyHolderMutation(
             success=True, message="Policyholder unlocked successfully."
         )
+
+
+class VerifyUserAndUpdatePasswordMutation(graphene.Mutation):
+    class Arguments:
+        user_id = graphene.String(required=True)
+        token = graphene.String(required=True)
+        password = graphene.String(required=True)
+
+    success = graphene.Boolean()
+    message = graphene.String()
+
+    def mutate(self, info, user_id, token, password):
+        try:
+            i_user = InteractiveUser.objects.filter(
+                uuid=user_id, password_reset_token=token
+            ).first()
+
+            if not i_user:
+                return VerifyUserAndUpdatePasswordMutation(
+                    success=False, message="Invalid user or token"
+                )
+
+            # Validate password for string tag and sql injection
+            if not re.match(r"^[a-zA-Z0-9]+$", password):
+                return VerifyUserAndUpdatePasswordMutation(
+                    success=False, message="Invalid password"
+                )
+
+            i_user.is_verified = True
+            i_user.password = password
+            i_user.password_reset_token = None
+            i_user.save()
+
+            return VerifyUserAndUpdatePasswordMutation(
+                success=True, message="User verified and password updated successfully"
+            )
+
+        except Exception as e:
+            return VerifyUserAndUpdatePasswordMutation(success=False, message=str(e))

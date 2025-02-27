@@ -2341,15 +2341,13 @@ def erp_sync_policy_holders(request):
     return JsonResponse({"message": "Policyholders sync started"}, status=200)
 
 
-@api_view(["POST"])
+@api_view(["GET"])
 def verify_user_and_update_password(request):
-    user_id = request.POST.get("user_id")
-    token = request.POST.get("token")
-    username = request.POST.get("username")
-    password = request.POST.get("password")
+    user_id = request.GET.get("user_id")
+    token = request.GET.get("token")
+    password = request.GET.get("password")
     print(f"------------------------ user_id {user_id}")
     print(f"------------------------ token {token}")
-    print(f"------------------------ username {username}")
     print(f"------------------------ password {password}")
     
     i_user = InteractiveUser.objects.filter(uuid=user_id, password_reset_token=token).first()
