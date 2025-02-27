@@ -186,7 +186,7 @@ def send_approved_or_rejected_email(user, subject, message):
     logger.info("Verification email sent.")
 
 
-def send_verification_and_new_password_email(user, token):
+def send_verification_and_new_password_email(user, token, username):
     # uid = urlsafe_base64_encode(force_bytes(user.pk))
     uid = user.uuid
     logger.info(f"User ID encoded: {uid}")
@@ -195,11 +195,11 @@ def send_verification_and_new_password_email(user, token):
     # e_timestamp = urlsafe_base64_encode(force_bytes(timestamp))
     # logger.info(f"Timestamp: {timestamp}")
 
-    verification_url = f"{PORTAL_SUBSCRIBER_URL}/portal/verify-user-and-update-password?user_id={uid}&token={token}"
+    verification_url = f"{PORTAL_SUBSCRIBER_URL}/portal/verify-user-and-update-password?user_id={uid}&token={token}&username={username}"
 
     logger.info(f"Verification URL: {verification_url}")
 
-    subject = "Verify your email"
+    subject = "Verify your email and update your password"
 
     message = f"Hi {user.last_name}, Please click the link below to verify your email:\n\n{verification_url}"
     logger.info("Sending verification email...")

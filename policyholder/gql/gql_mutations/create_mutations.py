@@ -306,13 +306,12 @@ class CreatePolicyHolderUserMutation(BaseHistoryModelCreateMutationMixin, BaseMu
 
         # send email with password reset
         token=uuid.uuid4().hex[:8].upper()
-        i_user = InteractiveUser.objects.filter(id=object_data.get("user_id")).first()
-        print(f"------------------------ user found {user}")
-        print(f"------------------------ token {token}")
+        core_user = User.objects.filter(id=object_data.get("user_id")).first()
+        i_user = InteractiveUser.objects.filter(id=core_user.i_user.id).first()
         i_user.password_reset_token = token
         i_user.save()
         
-        send_verification_and_new_password_email(i_user, token)
+        send_verification_and_new_password_email(i_user, token, core_user.username)
         
         return obj
 
