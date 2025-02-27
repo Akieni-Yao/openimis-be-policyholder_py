@@ -25,7 +25,7 @@ from policyholder.dms_utils import (
     create_phi_for_cat_change,
     change_insuree_doc_status,
     validate_enrolment_type,
-    manual_validate_enrolment_type,
+    manual_validate_enrolment_type
 )
 from policyholder.gql import PolicyHolderExcptionType
 from policyholder.models import (
@@ -45,7 +45,7 @@ from policyholder.gql.gql_mutations import (
     PolicyHolderExcptionInput,
     PHPortalUserCreateInput,
 )
-from policyholder.portal_utils import send_verification_email
+from policyholder.portal_utils import send_verification_email, send_verification_and_new_password_email
 from policyholder.validation import PolicyHolderValidation
 from policyholder.validation.permission_validation import PermissionValidation
 from django.core.exceptions import ValidationError
@@ -303,6 +303,17 @@ class CreatePolicyHolderUserMutation(BaseHistoryModelCreateMutationMixin, BaseMu
     def create_policy_holder_user(cls, user, object_data):
         obj = cls._model(**object_data)
         obj.save(username=user.username)
+
+        # send email with password reset
+        token=uuid.uuid4().hex[:8].upper()
+        i_user = InteractiveUser.objects.filter(id=object_data.get("user_id")).first()
+        print(f"------------------------ user found {user}")
+        print(f"------------------------ token {token}")
+        i_user.password_reset_token = token
+        i_user.save()
+        
+        send_verification_and_new_password_email(i_user, token)
+        
         return obj
 
     class Input(PolicyHolderUserInputType):

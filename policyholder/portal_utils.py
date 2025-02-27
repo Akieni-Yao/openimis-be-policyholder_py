@@ -1,3 +1,7 @@
+
+from dotenv import load_dotenv
+import os
+
 from datetime import datetime, timedelta
 import logging
 
@@ -16,6 +20,9 @@ from gitdb.utils.encoding import force_text
 from core.models import InteractiveUser
 
 logger = logging.getLogger(__name__)
+load_dotenv()
+
+PORTAL_SUBSCRIBER_URL = os.getenv("PORTAL_SUBSCRIBER_URL", "https://dev-ims.akieni.tech")
 
 
 def send_verification_email(user):
@@ -51,9 +58,7 @@ def send_verification_email(user):
         <a href="{verification_url}">Verify Email</a>
     </body>
     </html>
-    """.format(
-        last_name=user.last_name, verification_url=verification_url
-    )
+    """.format(last_name=user.last_name, verification_url=verification_url)
 
     send_mail(
         subject,
@@ -169,15 +174,57 @@ def send_approved_or_rejected_email(user, subject, message):
         <p>{message}</p>
     </body>
     </html>
-    """.format(
-        last_name=user["last_name"], message=message
-    )
+    """.format(last_name=user["last_name"], message=message)
 
     send_mail(
         subject,
         body_message,
         settings.EMAIL_HOST_USER,
         [user["email"]],
+        html_message=html_message,
+    )
+    logger.info("Verification email sent.")
+
+
+def send_verification_and_new_password_email(user, token):
+    # uid = urlsafe_base64_encode(force_bytes(user.pk))
+    uid = user.uuid
+    logger.info(f"User ID encoded: {uid}")
+
+    # timestamp = int(datetime.now().timestamp())
+    # e_timestamp = urlsafe_base64_encode(force_bytes(timestamp))
+    # logger.info(f"Timestamp: {timestamp}")
+
+    verification_url = f"{PORTAL_SUBSCRIBER_URL}/portal/verify-user-and-update-password?user_id={uid}&token={token}"
+
+    logger.info(f"Verification URL: {verification_url}")
+
+    subject = "Verify your email"
+
+    message = f"Hi {user.last_name}, Please click the link below to verify your email:\n\n{verification_url}"
+    logger.info("Sending verification email...")
+
+    html_message = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Email Verification</title>
+    </head>
+    <body>
+        <p>Hi {last_name},</p>
+        <p>Please click the link below to verify your email:</p>
+        <a href="{verification_url}">Verify Email</a>
+    </body>
+    </html>
+    """.format(last_name=user.last_name, verification_url=verification_url)
+
+    send_mail(
+        subject,
+        message,
+        settings.EMAIL_HOST_USER,
+        [user.email],
         html_message=html_message,
     )
     logger.info("Verification email sent.")
