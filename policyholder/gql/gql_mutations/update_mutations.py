@@ -431,7 +431,7 @@ class VerifyUserAndUpdatePasswordMutation(graphene.Mutation):
                 )
 
             i_user.is_verified = True
-            i_user.password = password
+            i_user.set_password(password)
             i_user.password_reset_token = None
             i_user.save()
 
