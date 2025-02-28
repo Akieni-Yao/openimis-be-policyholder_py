@@ -49,6 +49,7 @@ from policyholder.gql.gql_mutations.update_mutations import (
     UpdatePolicyHolderInsureeDesignation,
     PHApprovalMutation,
     UnlockPolicyHolderMutation,
+    VerifyUserAndUpdatePasswordMutation,
 )
 from policyholder.gql.gql_mutations.replace_mutation import (
     ReplacePolicyHolderInsureeMutation,
@@ -547,6 +548,7 @@ class Mutation(graphene.ObjectType):
     create_ph_portal_user = CreatePHPortalUserMutation.Field()
     policyholder_approval = PHApprovalMutation.Field()
     unlock_policyholder = UnlockPolicyHolderMutation.Field()
+    verify_user_and_update_password = VerifyUserAndUpdatePasswordMutation.Field()
 
 
 def on_policy_holder_mutation(sender, **kwargs):
