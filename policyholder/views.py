@@ -4,6 +4,7 @@ import math
 import io
 import calendar
 from datetime import datetime, timedelta
+import re
 
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
@@ -2337,4 +2338,30 @@ def paid_contract_payment(request):
 )
 def erp_sync_policy_holders(request):
     sync_policyholders_to_erp.delay()
+    return JsonResponse({"message": "Policyholders sync started"}, status=200)
+
+
+@api_view(["GET"])
+def verify_user_and_update_password(request):
+    user_id = request.GET.get("user_id")
+    token = request.GET.get("token")
+    password = request.GET.get("password")
+    print(f"------------------------ user_id {user_id}")
+    print(f"------------------------ token {token}")
+    print(f"------------------------ password {password}")
+    
+    i_user = InteractiveUser.objects.filter(uuid=user_id, password_reset_token=token).first()
+    
+    if not i_user:
+        return JsonResponse({"message": "Invalid user or token"}, status=400)
+    
+    # string tag and sql injection password 
+    if not re.match(r'^[a-zA-Z0-9]+$', password):
+        return JsonResponse({"message": "Invalid password"}, status=400)
+    
+    i_user.is_verified = True
+    i_user.password = password
+    i_user.password_reset_token = None
+    i_user.save()
+    
     return JsonResponse({"message": "Policyholders sync started"}, status=200)

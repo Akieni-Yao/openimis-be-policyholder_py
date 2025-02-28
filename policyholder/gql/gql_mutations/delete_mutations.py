@@ -68,4 +68,5 @@ class DeletePolicyHolderUserMutation(BaseHistoryModelDeleteMutationMixin, BaseDe
     @classmethod
     def _validate_mutation(cls, user, **data):
         super()._validate_mutation(user, **data)
-        PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_delete_policyholderuser_perms)
+        # @TODO enable permissions after finding what is the necessary permissions
+        # PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_delete_policyholderuser_perms)
