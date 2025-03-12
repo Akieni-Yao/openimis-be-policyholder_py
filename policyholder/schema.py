@@ -50,6 +50,7 @@ from policyholder.gql.gql_mutations.update_mutations import (
     PHApprovalMutation,
     UnlockPolicyHolderMutation,
     VerifyUserAndUpdatePasswordMutation,
+    NewPasswordRequestMutation,
 )
 from policyholder.gql.gql_mutations.replace_mutation import (
     ReplacePolicyHolderInsureeMutation,
@@ -105,7 +106,7 @@ class Query(graphene.ObjectType):
         contactName=graphene.String(),
         shortName=graphene.String(),
     )
-    
+
     # can_unlock_policyholder = graphene.Field(
     #     success=graphene.Boolean,
     #     message=graphene.String,
@@ -119,7 +120,7 @@ class Query(graphene.ObjectType):
         # show_history=graphene.Boolean(),
         # order_by=graphene.String(),
     )
-    
+
     # def resolve_can_unlock_policyholder(self, info, **kwargs):
     #     # Fetch the policyholder
     #     policyholder_id = kwargs.get("policyholder_id")
@@ -415,7 +416,7 @@ class Query(graphene.ObjectType):
             ).values_list("insuree_id", flat=True)
             if insuree_ids:
                 query = query.exclude(insuree_id__in=insuree_ids)
-                
+
         # # check validity_to is null
         # if kwargs.get("insuree__validity_to__isnull") is not None:
         #     print(f"******************* display kwargs : {kwargs} *******************")
@@ -549,6 +550,7 @@ class Mutation(graphene.ObjectType):
     policyholder_approval = PHApprovalMutation.Field()
     unlock_policyholder = UnlockPolicyHolderMutation.Field()
     verify_user_and_update_password = VerifyUserAndUpdatePasswordMutation.Field()
+    new_password_request = NewPasswordRequestMutation.Field()
 
 
 def on_policy_holder_mutation(sender, **kwargs):
