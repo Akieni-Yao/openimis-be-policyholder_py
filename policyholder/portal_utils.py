@@ -276,7 +276,7 @@ def new_forgot_password_email(user, verification_url):
 
     subject = "New Password Request"
 
-    message = f"Hi {user.last_name}, Please click the link below to confirm your email address and update your password:\n\n{verification_url}"
+    message = f"Hi {user.last_name}, Please click the link below to confirm your email address and update your password:\n\n{verification_url}\n\n if you did not request this, please ignore this email"
     logger.info("Sending verification email...")
 
     html_message = """
@@ -291,6 +291,7 @@ def new_forgot_password_email(user, verification_url):
         <p>Hi {last_name},</p>
         <p>Please click the link below to confirm your email address and update your password:</p>
         <a href="{verification_url}">Update Password</a>
+        <p>if you did not request this, please ignore this email</p>
     </body>
     </html>
     """.format(last_name=user.last_name, verification_url=verification_url)

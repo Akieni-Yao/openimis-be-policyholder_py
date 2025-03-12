@@ -3,6 +3,10 @@ import re
 
 import graphene
 from django.db.models import Q
+import uuid
+
+from dotenv import load_dotenv
+import os
 
 from core.constants import POLICYHOLDER_UPDATE_NT
 from core.gql.gql_mutations.base_mutation import (
@@ -36,9 +40,18 @@ from django.core.mail import EmailMessage
 from django.conf import settings
 from django.utils import timezone
 from policyholder.erp_intigration import erp_create_update_policyholder
-from policyholder.portal_utils import send_approved_or_rejected_email
+from policyholder.portal_utils import (
+    send_approved_or_rejected_email,
+    new_forgot_password_email,
+)
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+PORTAL_SUBSCRIBER_URL = os.getenv("PORTAL_SUBSCRIBER_URL", "")
+PORTAL_FOSA_URL = os.getenv("PORTAL_FOSA_URL", "")
+IMIS_URL = os.getenv("IMIS_URL", "")
 
 
 class UpdatePolicyHolderMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
@@ -441,3 +454,46 @@ class VerifyUserAndUpdatePasswordMutation(graphene.Mutation):
 
         except Exception as e:
             return VerifyUserAndUpdatePasswordMutation(success=False, message=str(e))
+
+
+class NewPasswordRequestMutation(graphene.Mutation):
+    class Arguments:
+        email = graphene.String(required=True)
+        from_what_env = graphene.String(required=True)
+
+    success = graphene.Boolean()
+    message = graphene.String()
+
+    def mutate(self, info, email, from_what_env):
+        try:
+            i_user = InteractiveUser.objects.filter(email=email).first()
+
+            if not i_user:
+                return NewPasswordRequestMutation(
+                    success=False, message="Invalid email"
+                )
+
+            i_user.is_verified = True
+            i_user.password_reset_token = uuid.uuid4().hex[:16].upper()
+            i_user.save()
+
+            verification_url = ""
+            if from_what_env == "subscriber":
+                verification_url = f"{PORTAL_SUBSCRIBER_URL}/reset-password/{i_user.password_reset_token}"
+            elif from_what_env == "fosa":
+                verification_url = (
+                    f"{PORTAL_FOSA_URL}/reset-password/{i_user.password_reset_token}"
+                )
+            elif from_what_env == "imis":
+                verification_url = (
+                    f"{IMIS_URL}/reset-password/{i_user.password_reset_token}"
+                )
+
+            new_forgot_password_email(i_user, verification_url)
+
+            return NewPasswordRequestMutation(
+                success=True, message="Email sent successfully"
+            )
+
+        except Exception as e:
+            return NewPasswordRequestMutation(success=False, message=str(e))
