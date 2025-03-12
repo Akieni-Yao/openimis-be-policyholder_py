@@ -1,4 +1,3 @@
-
 from dotenv import load_dotenv
 import os
 
@@ -22,7 +21,9 @@ from core.models import InteractiveUser
 logger = logging.getLogger(__name__)
 load_dotenv()
 
-PORTAL_SUBSCRIBER_URL = os.getenv("PORTAL_SUBSCRIBER_URL", "https://dev-ims.akieni.tech")
+PORTAL_SUBSCRIBER_URL = os.getenv(
+    "PORTAL_SUBSCRIBER_URL", "https://dev-ims.akieni.tech"
+)
 
 
 def send_verification_email(user):
@@ -216,6 +217,80 @@ def send_verification_and_new_password_email(user, token, username):
         <p>Hi {last_name},</p>
         <p>Please click the link below to verify your email:</p>
         <a href="{verification_url}">Verify Email</a>
+    </body>
+    </html>
+    """.format(last_name=user.last_name, verification_url=verification_url)
+
+    send_mail(
+        subject,
+        message,
+        settings.EMAIL_HOST_USER,
+        [user.email],
+        html_message=html_message,
+    )
+    logger.info("Verification email sent.")
+
+
+def new_user_welcome_email(user, verification_url):
+    uid = user.uuid
+    logger.info(f"User ID encoded: {uid}")
+
+    logger.info(f"Verification URL: {verification_url}")
+
+    subject = "Welcome to CAMU IMIS"
+
+    message = f"Hi {user.last_name}, Please click the link below to set your password:\n\n{verification_url}"
+    logger.info("Sending verification email...")
+
+    html_message = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Welcome to CAMU IMIS</title>
+    </head>
+    <body>
+        <p>Hi {last_name},</p>
+        <p>Please click the link below to set your password:</p>
+        <a href="{verification_url}">Set Password</a>
+    </body>
+    </html>
+    """.format(last_name=user.last_name, verification_url=verification_url)
+
+    send_mail(
+        subject,
+        message,
+        settings.EMAIL_HOST_USER,
+        [user.email],
+        html_message=html_message,
+    )
+    logger.info("Verification email sent.")
+
+
+def new_forgot_password_email(user, verification_url):
+    uid = user.uuid
+    logger.info(f"User ID encoded: {uid}")
+
+    logger.info(f"Verification URL: {verification_url}")
+
+    subject = "New Password Request"
+
+    message = f"Hi {user.last_name}, Please click the link below to confirm your email address and update your password:\n\n{verification_url}"
+    logger.info("Sending verification email...")
+
+    html_message = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>New Password Request</title>
+    </head>
+    <body>
+        <p>Hi {last_name},</p>
+        <p>Please click the link below to confirm your email address and update your password:</p>
+        <a href="{verification_url}">Update Password</a>
     </body>
     </html>
     """.format(last_name=user.last_name, verification_url=verification_url)
