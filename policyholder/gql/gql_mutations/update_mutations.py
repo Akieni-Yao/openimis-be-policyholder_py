@@ -479,15 +479,11 @@ class NewPasswordRequestMutation(graphene.Mutation):
 
             verification_url = ""
             if from_what_env == "subscriber":
-                verification_url = f"{PORTAL_SUBSCRIBER_URL}/reset-password/{i_user.password_reset_token}"
+                verification_url = f"{PORTAL_SUBSCRIBER_URL}/portal/verify-user-and-update-password?token={i_user.password_reset_token}&user_id={i_user.uuid}&username={i_user.username}"
             elif from_what_env == "fosa":
-                verification_url = (
-                    f"{PORTAL_FOSA_URL}/reset-password/{i_user.password_reset_token}"
-                )
+                verification_url = f"{PORTAL_FOSA_URL}/fosa/verify-user-and-update-password?token={i_user.password_reset_token}&user_id={i_user.uuid}&username={i_user.username}"
             elif from_what_env == "imis":
-                verification_url = (
-                    f"{IMIS_URL}/reset-password/{i_user.password_reset_token}"
-                )
+                verification_url = f"{IMIS_URL}/front/verify-user-and-update-password?token={i_user.password_reset_token}&user_id={i_user.uuid}&username={i_user.username}"
 
             new_forgot_password_email(i_user, verification_url)
 
