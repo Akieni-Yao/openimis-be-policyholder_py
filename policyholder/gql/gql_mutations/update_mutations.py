@@ -366,12 +366,12 @@ class UnlockPolicyHolderMutation(graphene.Mutation):
         payments_with_penalties = (
             Payment.objects.filter(
                 contract__policy_holder=policy_holder,
-                status=Payment.STATUS_APPROVED,
                 payments_penalty__isnull=False,  # Ensures there are penalties
             )
             .distinct()
             .order_by("contract__date_valid_from")[:3]
             # .order_by("-payment_date")[:3]
+            # status=Payment.STATUS_APPROVED,
         )
 
         if payments_with_penalties.count() == 0:
