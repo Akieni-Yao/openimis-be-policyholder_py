@@ -25,7 +25,7 @@ from policyholder.dms_utils import (
     create_phi_for_cat_change,
     change_insuree_doc_status,
     validate_enrolment_type,
-    manual_validate_enrolment_type
+    manual_validate_enrolment_type,
 )
 from policyholder.gql import PolicyHolderExcptionType
 from policyholder.models import (
@@ -45,7 +45,10 @@ from policyholder.gql.gql_mutations import (
     PolicyHolderExcptionInput,
     PHPortalUserCreateInput,
 )
-from policyholder.portal_utils import send_verification_email, send_verification_and_new_password_email
+from policyholder.portal_utils import (
+    send_verification_email,
+    send_verification_and_new_password_email,
+)
 from policyholder.validation import PolicyHolderValidation
 from policyholder.validation.permission_validation import PermissionValidation
 from django.core.exceptions import ValidationError
@@ -282,6 +285,31 @@ def add_i_user_permission(core_user):
     i_user.save()
 
 
+def create_audit_user_service(user, i_user, data):
+    from core.models import UserAuditLog
+
+    print("=====> create_audit_user_service Start")
+
+    policy_holder_user = PolicyHolderUser.objects.filter(user_id=i_user.id).first()
+    audit_data = data.copy()
+
+    # convert json to text
+    user = InteractiveUser.objects.filter(
+        validity_to__isnull=True, user__id=data["audit_user_id"]
+    ).first()
+
+    data = {
+        "user": user,
+        "details": json.dumps(audit_data),
+        "action": "Création d'un utilisateur",
+        "policy_holder": policy_holder_user.policy_holder,
+    }
+
+    print("=====> data : ", data)
+    UserAuditLog.objects.create(**data)
+    print("=====> UserAuditLog created")
+
+
 class CreatePolicyHolderUserMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
     _mutation_class = "PolicyHolderUserMutation"
     _mutation_module = "policyholder"
@@ -305,14 +333,32 @@ class CreatePolicyHolderUserMutation(BaseHistoryModelCreateMutationMixin, BaseMu
         obj.save(username=user.username)
 
         # send email with password reset
-        token=uuid.uuid4().hex[:8].upper()
+        token = uuid.uuid4().hex[:8].upper()
         core_user = User.objects.filter(id=object_data.get("user_id")).first()
         i_user = InteractiveUser.objects.filter(id=core_user.i_user.id).first()
         i_user.password_reset_token = token
         i_user.save()
-        
+
         send_verification_and_new_password_email(i_user, token, core_user.username)
-        
+
+        create_audit_user_service(
+            user,
+            i_user,
+            {
+                "username": core_user.username,
+                "email": i_user.email,
+                "other_names": i_user.other_names,
+                "last_name": i_user.last_name,
+                "phone": i_user.phone,
+                "language": i_user.language,
+                "roles": i_user.roles,
+                "validity_from": i_user.validity_from.isoformat()
+                if i_user.validity_from
+                else None,
+                "audit_user_id": user.id,
+            },
+        )
+
         return obj
 
     class Input(PolicyHolderUserInputType):
