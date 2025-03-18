@@ -285,13 +285,16 @@ def add_i_user_permission(core_user):
     i_user.save()
 
 
-def create_audit_user_service(user, i_user, data):
+def create_audit_user_service(user, data):
     from core.models import UserAuditLog
 
     print("=====> create_audit_user_service Start")
 
-    policy_holder_user = PolicyHolderUser.objects.filter(user_id=i_user.id).first()
+    policy_holder = PolicyHolder.objects.filter(id=data["policy_holder_id"]).first()
     audit_data = data.copy()
+
+    if not policy_holder:
+        raise ValidationError("Policy holder not found")
 
     # convert json to text
     user = InteractiveUser.objects.filter(
@@ -302,10 +305,10 @@ def create_audit_user_service(user, i_user, data):
         "user": user,
         "details": json.dumps(audit_data),
         "action": "Création d'un utilisateur",
-        "policy_holder": policy_holder_user.policy_holder,
+        "policy_holder": policy_holder,
     }
 
-    print("=====> data : ", data)
+    print(f"=====> data : {data}")
     UserAuditLog.objects.create(**data)
     print("=====> UserAuditLog created")
 
@@ -340,24 +343,25 @@ class CreatePolicyHolderUserMutation(BaseHistoryModelCreateMutationMixin, BaseMu
         i_user.save()
 
         send_verification_and_new_password_email(i_user, token, core_user.username)
+        # "roles": core_user.roles,
 
-        create_audit_user_service(
-            user,
-            i_user,
-            {
-                "username": core_user.username,
-                "email": i_user.email,
-                "other_names": i_user.other_names,
-                "last_name": i_user.last_name,
-                "phone": i_user.phone,
-                "language": i_user.language,
-                "roles": i_user.roles,
-                "validity_from": i_user.validity_from.isoformat()
-                if i_user.validity_from
-                else None,
-                "audit_user_id": user.id,
-            },
-        )
+        data = {
+            "username": core_user.username,
+            "email": i_user.email,
+            "other_names": i_user.other_names,
+            "last_name": i_user.last_name,
+            "phone": i_user.phone,
+            "language": i_user.language,
+            "audit_user_id": user.id,
+            "policy_holder_id": object_data.get("policy_holder_id"),
+            "validity_from": i_user.validity_from.isoformat()
+            if i_user.validity_from
+            else None,
+        }
+
+        print(f"==========================> data : {data}")
+
+        create_audit_user_service(user, data)
 
         return obj
 
