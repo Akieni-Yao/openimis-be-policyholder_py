@@ -510,7 +510,8 @@ class Query(graphene.ObjectType):
                 payments_penalty__isnull=False,  # Ensures there are penalties
             )
             .distinct()
-            .order_by("-payment_date")[:3]
+            .order_by("contract__date_valid_from")[:3]
+            # .order_by("-payment_date")[:3]
         )
 
         return gql_optimizer.query(payments_with_penalties, info)
