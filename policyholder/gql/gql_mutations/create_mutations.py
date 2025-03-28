@@ -25,7 +25,7 @@ from policyholder.dms_utils import (
     create_phi_for_cat_change,
     change_insuree_doc_status,
     validate_enrolment_type,
-    manual_validate_enrolment_type
+    manual_validate_enrolment_type,
 )
 from policyholder.gql import PolicyHolderExcptionType
 from policyholder.models import (
@@ -45,7 +45,10 @@ from policyholder.gql.gql_mutations import (
     PolicyHolderExcptionInput,
     PHPortalUserCreateInput,
 )
-from policyholder.portal_utils import send_verification_email, send_verification_and_new_password_email
+from policyholder.portal_utils import (
+    send_verification_email,
+    send_verification_and_new_password_email,
+)
 from policyholder.validation import PolicyHolderValidation
 from policyholder.validation.permission_validation import PermissionValidation
 from django.core.exceptions import ValidationError
@@ -62,9 +65,71 @@ from workflow.constants import *
 from policyholder.erp_intigration import erp_create_update_policyholder
 from insuree.models import Insuree
 from product.models import Product
-from contribution_plan.models import ContributionPlanBundle
+from contribution_plan.models import (
+    ContributionPlanBundle,
+    ContributionPlanBundleDetails,
+    ContributionPlan,
+)
+from contract.models import InsureeWaitingPeriod
 
 logger = logging.getLogger(__name__)
+
+
+def get_and_set_waiting_period_for_insuree(insuree_id, policyholder_id):
+    try:
+        logger.info("============get_and_set_waiting_period_for_insuree=============")
+
+        policy_holder_contribution_plan = PolicyHolderContributionPlan.objects.filter(
+            policy_holder_id=policyholder_id, is_deleted=False
+        ).first()
+        logger.info(
+            f"policy_holder_contribution_plan: {policy_holder_contribution_plan}"
+        )
+
+        contribution_plan_bundle = (
+            policy_holder_contribution_plan.contribution_plan_bundle
+        )
+
+        logger.info(f"contribution_plan_bundle: {contribution_plan_bundle}")
+
+        contributionPlanBundleDetails = ContributionPlanBundleDetails.objects.filter(
+            contribution_plan_bundle=contribution_plan_bundle
+        ).first()
+
+        logger.info(f"contributionPlanBundleDetails: {contributionPlanBundleDetails}")
+
+        contribution_plan = ContributionPlan.objects.filter(
+            id=contributionPlanBundleDetails.contribution_plan.id
+        ).first()
+
+        logger.info(f"contribution_plan: {contribution_plan}")
+
+        # benefit_plan equal product
+
+        product = Product.objects.filter(
+            id=contribution_plan.benefit_plan.id, validity_to=None, legacy_id=None
+        ).first()
+
+        logger.info(f"product: {product}")
+        logger.info(f"product.policy_waiting_period: {product.policy_waiting_period}")
+
+        insuree = Insuree.objects.filter(id=insuree_id).first()
+        
+        logger.info(f"insuree: {insuree}")
+
+        if policy_holder_contribution_plan:
+            insuree_waiting_period = InsureeWaitingPeriod.objects.filter(
+                insuree=insuree,
+                policy_holder_contribution_plan=policy_holder_contribution_plan,
+            ).first()
+            if not insuree_waiting_period:
+                InsureeWaitingPeriod.objects.create(
+                    insuree=insuree,
+                    policy_holder_contribution_plan=policy_holder_contribution_plan,
+                    waiting_period=product.policy_waiting_period,
+                )
+    except Exception as e:
+        logger.error(f"Failed to get waiting period: {e}")
 
 
 class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
@@ -172,6 +237,7 @@ class CreatePolicyHolderInsureeMutation(
 
     @classmethod
     def _validate_mutation(cls, user, **data):
+        logger.info(f"-------------CreatePolicyHolderInsureeMutation : data : {data}")
         insuree_id = data.get("insuree_id")
         contribution_plan_bundle_id = data.get("contribution_plan_bundle_id")
         policyholder_id = data.get("policy_holder_id")
@@ -202,6 +268,9 @@ class CreatePolicyHolderInsureeMutation(
         manuall_check_for_category_change_request(
             user, insuree_id, policyholder_id, income, employer_number
         )
+        # Get the waiting period for the insuree
+        get_and_set_waiting_period_for_insuree(insuree_id, policyholder_id)
+
         super()._validate_mutation(user, **data)
         PermissionValidation.validate_perms(
             user, PolicyholderConfig.gql_mutation_create_policyholderinsuree_perms
@@ -305,14 +374,14 @@ class CreatePolicyHolderUserMutation(BaseHistoryModelCreateMutationMixin, BaseMu
         obj.save(username=user.username)
 
         # send email with password reset
-        token=uuid.uuid4().hex[:8].upper()
+        token = uuid.uuid4().hex[:8].upper()
         core_user = User.objects.filter(id=object_data.get("user_id")).first()
         i_user = InteractiveUser.objects.filter(id=core_user.i_user.id).first()
         i_user.password_reset_token = token
         i_user.save()
-        
+
         send_verification_and_new_password_email(i_user, token, core_user.username)
-        
+
         return obj
 
     class Input(PolicyHolderUserInputType):
