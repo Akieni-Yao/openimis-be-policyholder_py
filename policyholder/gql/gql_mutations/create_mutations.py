@@ -127,6 +127,7 @@ def get_and_set_waiting_period_for_insuree(insuree_id, policyholder_id):
                     insuree=insuree,
                     policy_holder_contribution_plan=policy_holder_contribution_plan,
                     waiting_period=product.policy_waiting_period,
+                    contribution_periodicity=contribution_plan.periodicity,
                 )
     except Exception as e:
         logger.error(f"Failed to get waiting period: {e}")
