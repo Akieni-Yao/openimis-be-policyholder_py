@@ -40,9 +40,9 @@ def send_verification_email(user):
     verification_url = f"{settings.BACKEND_URL}/api/policyholder/verify-email/{uid}/{token}/{e_timestamp}/"
     logger.info(f"Verification URL: {verification_url}")
 
-    subject = "Verify your email"
+    subject = "Vérification de votre email"
 
-    message = f"Hi {user.last_name}, Please click the link below to verify your email:\n\n{verification_url}"
+    message = f"Bonjour {user.last_name}, Veuillez cliquer sur le lien ci-dessous pour vérifier votre email:\n\n{verification_url}"
     logger.info("Sending verification email...")
 
     html_message = """
@@ -54,9 +54,9 @@ def send_verification_email(user):
         <title>Email Verification</title>
     </head>
     <body>
-        <p>Hi {last_name},</p>
-        <p>Please click the link below to verify your email:</p>
-        <a href="{verification_url}">Verify Email</a>
+        <p>Bonjour {last_name},</p>
+        <p>Veuillez cliquer sur le lien ci-dessous pour vérifier votre email:</p>
+        <a href="{verification_url}">Vérifier Email</a>
     </body>
     </html>
     """.format(last_name=user.last_name, verification_url=verification_url)
@@ -171,7 +171,7 @@ def send_approved_or_rejected_email(user, subject, message):
         <title>Email Verification</title>
     </head>
     <body>
-        <p>Hi {last_name},</p>
+        <p>Bonjour {last_name},</p>
         <p>{message}</p>
     </body>
     </html>
@@ -200,9 +200,9 @@ def send_verification_and_new_password_email(user, token, username):
 
     logger.info(f"Verification URL: {verification_url}")
 
-    subject = "Verify your email and update your password"
+    subject = "Vérification de votre email et mise à jour de votre mot de passe"
 
-    message = f"Hi {user.last_name}, Please click the link below to verify your email:\n\n{verification_url}"
+    message = f"Bonjour {user.last_name}, Veuillez cliquer sur le lien ci-dessous pour vérifier votre email et mettre à jour votre mot de passe:\n\n{verification_url}"
     logger.info("Sending verification email...")
 
     html_message = """
@@ -211,12 +211,12 @@ def send_verification_and_new_password_email(user, token, username):
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Email Verification</title>
+        <title>Vérification de votre email et mise à jour de votre mot de passe</title>
     </head>
     <body>
-        <p>Hi {last_name},</p>
-        <p>Please click the link below to verify your email:</p>
-        <a href="{verification_url}">Verify Email</a>
+        <p>Bonjour {last_name},</p>
+        <p>Veuillez cliquer sur le lien ci-dessous pour vérifier votre email et mettre à jour votre mot de passe:</p>
+        <a href="{verification_url}">Vérifier Email</a>
     </body>
     </html>
     """.format(last_name=user.last_name, verification_url=verification_url)
@@ -237,9 +237,9 @@ def new_user_welcome_email(user, verification_url):
 
     logger.info(f"Verification URL: {verification_url}")
 
-    subject = "Welcome to CAMU IMIS"
+    subject = "Bienvenue sur CAMU IMIS"
 
-    message = f"Hi {user.last_name}, Please click the link below to set your password:\n\n{verification_url}"
+    message = f"Bonjour {user.last_name}, Veuillez cliquer sur le lien ci-dessous pour définir votre mot de passe:\n\n{verification_url}"
     logger.info("Sending verification email...")
 
     html_message = """
@@ -248,12 +248,12 @@ def new_user_welcome_email(user, verification_url):
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Welcome to CAMU IMIS</title>
+        <title>Bienvenue sur CAMU IMIS</title>
     </head>
     <body>
-        <p>Hi {last_name},</p>
-        <p>Please click the link below to set your password:</p>
-        <a href="{verification_url}">Set Password</a>
+        <p>Bonjour {last_name},</p>
+        <p>Veuillez cliquer sur le lien ci-dessous pour définir votre mot de passe:</p>
+        <a href="{verification_url}">Définir Mot de Passe</a>
     </body>
     </html>
     """.format(last_name=user.last_name, verification_url=verification_url)
@@ -274,9 +274,9 @@ def new_forgot_password_email(user, verification_url):
 
     logger.info(f"Verification URL: {verification_url}")
 
-    subject = "New Password Request"
+    subject = "Demande de nouveau mot de passe"
 
-    message = f"Hi {user.last_name}, Please click the link below to confirm your email address and update your password:\n\n{verification_url}\n\n if you did not request this, please ignore this email"
+    message = f"Bonjour {user.last_name}, Veuillez cliquer sur le lien ci-dessous pour confirmer votre email et mettre à jour votre mot de passe:\n\n{verification_url}\n\n Si vous n'avez pas demandé cette opération, veuillez ignorer cet email"
     logger.info("Sending verification email...")
 
     html_message = """
@@ -285,13 +285,13 @@ def new_forgot_password_email(user, verification_url):
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>New Password Request</title>
+        <title>Demande de nouveau mot de passe</title>
     </head>
     <body>
-        <p>Hi {last_name},</p>
-        <p>Please click the link below to confirm your email address and update your password:</p>
-        <a href="{verification_url}">Update Password</a>
-        <p>if you did not request this, please ignore this email</p>
+        <p>Bonjour {last_name},</p>
+        <p>Veuillez cliquer sur le lien ci-dessous pour confirmer votre email et mettre à jour votre mot de passe:</p>
+        <a href="{verification_url}">Mettre à Jour Mot de Passe</a>
+        <p>Si vous n'avez pas demandé cette opération, veuillez ignorer cet email</p>
     </body>
     </html>
     """.format(last_name=user.last_name, verification_url=verification_url)
