@@ -387,7 +387,28 @@ class UnlockPolicyHolderMutation(graphene.Mutation):
                 all_payments_approved = False
 
             for penality in payment.payments_penalty.all():
+                # check if payment is oustanding then check if there are similar to pick up the last one with the highest status
+                if penality.status == PaymentPenaltyAndSanction.PENALTY_OUTSTANDING:
+                    payment_penalty_and_sanction = (
+                        PaymentPenaltyAndSanction.objects.filter(
+                            amount=penality.amount,
+                            date_valid_from=penality.date_valid_from,
+                            payment=payment,
+                            payment__contract__policy_holder=policy_holder,
+                        )
+                        .order_by("-status")
+                        .first()
+                    )
+
+                    print(
+                        f"=============== payment_penalty_and_sanction {payment_penalty_and_sanction.id} {payment_penalty_and_sanction.status}"
+                    )
+
+                    if payment_penalty_and_sanction:
+                        penality = payment_penalty_and_sanction
+
                 if penality.status not in [
+                    PaymentPenaltyAndSanction.PENALTY_PAID,
                     PaymentPenaltyAndSanction.PENALTY_APPROVED,
                     PaymentPenaltyAndSanction.PENALTY_CANCELED,
                     PaymentPenaltyAndSanction.INSTALLMENT_AGREEMENT_PENDING,
