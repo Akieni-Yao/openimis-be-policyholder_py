@@ -416,7 +416,9 @@ class Query(graphene.ObjectType):
             ).values_list("insuree_id", flat=True)
             if insuree_ids:
                 query = query.exclude(insuree_id__in=insuree_ids)
-
+                
+        if kwargs.get("insuree__id") is not None:
+            query = query.filter(insuree__id=kwargs.get("insuree__id"))
         # # check validity_to is null
         # if kwargs.get("insuree__validity_to__isnull") is not None:
         #     print(f"******************* display kwargs : {kwargs} *******************")
