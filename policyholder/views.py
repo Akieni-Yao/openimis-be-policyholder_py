@@ -717,6 +717,7 @@ def import_phi(request, policy_holder_code):
         family, family_created = get_or_create_family_from_line(
             line, village, user_id, enrolment_type
         )
+        # family
         logger.debug("family_created: %s", family_created)
         if family_created:
             total_families_created += 1
@@ -789,11 +790,16 @@ def import_phi(request, policy_holder_code):
             except Exception as e:
                 logger.error(f"insuree bulk upload error for abis or workflow : {e}")
         elif not insuree_created:
+            family.delete()
             reason = None
 
             logger.info(
                 "=================================== LINE 470 ==========================="
             )
+
+            other_policyholder_connected = PolicyHolderInsuree.objects.filter(
+                insuree=insuree, policy_holder__id__ne=policy_holder.id
+            ).first()
 
             insuree_dob = line[HEADER_INSUREE_DOB]
             if not isinstance(insuree_dob, datetime):
@@ -810,6 +816,8 @@ def import_phi(request, policy_holder_code):
                 reason = "Le sexe de l'assuré ne correspond pas."
             elif insuree.marital != mapping_marital_status(line[HEADER_CIVILITY]):
                 reason = "L'état civil de l'assuré ne correspond pas."
+            elif other_policyholder_connected: 
+                reason = "L'assuré est deja lié a un autre souscripteur."
 
             logger.info(
                 "=================================== LINE 471 ==========================="
@@ -827,7 +835,7 @@ def import_phi(request, policy_holder_code):
                 "=================================== LINE 472 ==========================="
             )
 
-        if family_created:
+        if family_created and insuree_created:
             family.head_insuree = insuree
             family.save()
         phi_json_ext = {}
