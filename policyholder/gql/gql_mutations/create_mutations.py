@@ -80,7 +80,7 @@ def get_and_set_waiting_period_for_insuree(insuree_id, policyholder_id):
         logger.info("============get_and_set_waiting_period_for_insuree=============")
 
         policy_holder_contribution_plan = PolicyHolderContributionPlan.objects.filter(
-            policy_holder_id=policyholder_id, is_deleted=False
+            policy_holder_id=policyholder_id, is_deleted=False, date_valid_to__isnull=True
         ).first()
         logger.info(
             f"policy_holder_contribution_plan: {policy_holder_contribution_plan}"
@@ -243,7 +243,10 @@ class CreatePolicyHolderInsureeMutation(
         contribution_plan_bundle_id = data.get("contribution_plan_bundle_id")
         policyholder_id = data.get("policy_holder_id")
         is_insuree = PolicyHolderInsuree.objects.filter(
-            policy_holder__id=policyholder_id, insuree__id=insuree_id, is_deleted=False
+            policy_holder__id=policyholder_id, 
+            insuree__id=insuree_id, 
+            is_deleted=False,
+            date_valid_to__isnull=True
         ).first()
         insurees = Insuree.objects.filter(id=insuree_id).first()
         products = ContributionPlanBundle.objects.filter(
