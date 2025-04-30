@@ -565,10 +565,10 @@ class CategoryChangeStatusChange(graphene.Mutation):
                     insuree_status = insuree.status
 
                     if insuree_status == STATUS_PRE_REGISTERED and not insuree.biometrics_status:
-                        insuree_status = WAITING_FOR_BIOMETRIC
+                        insuree_status = STATUS_WAITING_FOR_BIOMETRIC
 
-                    if insuree_status == WAITING_FOR_DOCUMENT:
-                        insuree_status = WAITING_FOR_APPROVAL
+                    if insuree_status == STATUS_WAITING_FOR_DOCUMENT:
+                        insuree_status = STATUS_WAITING_FOR_APPROVAL
 
 
                     # insuree.document_status = True
@@ -594,11 +594,11 @@ class CategoryChangeStatusChange(graphene.Mutation):
                     insuree.document_status = True
 
                     if insuree_status == STATUS_PRE_REGISTERED and not insuree.biometrics_status:
-                        insuree_status = WAITING_FOR_BIOMETRIC
+                        insuree_status = STATUS_WAITING_FOR_BIOMETRIC
 
-                    if insuree_status == WAITING_FOR_DOCUMENT:
-                        insuree_status = WAITING_FOR_APPROVAL
-                        
+                    if insuree_status == STATUS_WAITING_FOR_DOCUMENT:
+                        insuree_status = STATUS_WAITING_FOR_APPROVAL
+
                     # elif not insuree.biometrics_status:
                     #     insuree_status = STATUS_WAITING_FOR_BIOMETRIC
                     insuree.status = insuree_status
