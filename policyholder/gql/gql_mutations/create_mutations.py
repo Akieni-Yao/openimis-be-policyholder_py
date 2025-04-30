@@ -562,12 +562,22 @@ class CategoryChangeStatusChange(graphene.Mutation):
                     logger.info(f"new_family id: {new_family.id}")
                     insuree.family = new_family
                     insuree.head = True
-                    insuree_status = STATUS_WAITING_FOR_BIOMETRIC
-                    insuree.document_status = True
-                    if insuree.biometrics_is_master:
-                        insuree_status = STATUS_APPROVED
+                    insuree_status = insuree.status
+
+                    if insuree_status == STATUS_PRE_REGISTERED and not insuree.biometrics_status:
+                        insuree_status = WAITING_FOR_BIOMETRIC
+
+                    if insuree_status == WAITING_FOR_DOCUMENT:
+                        insuree_status = WAITING_FOR_APPROVAL
+
+
+                    # insuree.document_status = True
+                    # if insuree.biometrics_is_master:
+                    #     insuree_status = STATUS_APPROVED
                     # elif not insuree.biometrics_status:
                     #     insuree_status = STATUS_WAITING_FOR_BIOMETRIC
+
+
                     insuree.status = insuree_status
                     logger.info(f"insuree_status: {insuree_status}")
                     insuree.json_ext["insureeEnrolmentType"] = new_category
@@ -580,10 +590,15 @@ class CategoryChangeStatusChange(graphene.Mutation):
                 elif cc.request_type == "SELF_HEAD_REQ":
                     logger.info("Processing self head request")
                     insuree.save_history()
-                    insuree_status = STATUS_WAITING_FOR_BIOMETRIC
+                    insuree_status = insuree.status
                     insuree.document_status = True
-                    if insuree.biometrics_is_master:
-                        insuree_status = STATUS_APPROVED
+
+                    if insuree_status == STATUS_PRE_REGISTERED and not insuree.biometrics_status:
+                        insuree_status = WAITING_FOR_BIOMETRIC
+
+                    if insuree_status == WAITING_FOR_DOCUMENT:
+                        insuree_status = WAITING_FOR_APPROVAL
+                        
                     # elif not insuree.biometrics_status:
                     #     insuree_status = STATUS_WAITING_FOR_BIOMETRIC
                     insuree.status = insuree_status
