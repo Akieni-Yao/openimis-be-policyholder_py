@@ -522,10 +522,10 @@ class VerifyUserAndUpdatePasswordMutation(graphene.Mutation):
                 )
 
             # Validate password for string tag and sql injection
-            if not re.match(r"^[a-zA-Z0-9]+$", password):
-                return VerifyUserAndUpdatePasswordMutation(
-                    success=False, message="Invalid password"
-                )
+            # if not re.match(r"^[a-zA-Z0-9]+$", password): ### Deactivating password validation step
+            #     return VerifyUserAndUpdatePasswordMutation(
+            #         success=False, message="Invalid password"
+            #     )
 
             i_user.is_verified = True
             i_user.set_password(password)

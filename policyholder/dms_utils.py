@@ -383,7 +383,7 @@ def validate_enrolment_type(line, new_enrolment_type):
 def manual_validate_enrolment_type(insuree_id, policyholder_id):
     try:
         policy_holder = PolicyHolder.objects.get(id=policyholder_id, is_deleted=False)
-        ph_cpb = PolicyHolderContributionPlan.objects.get(policy_holder=policy_holder, is_deleted=False)
+        ph_cpb = PolicyHolderContributionPlan.objects.get(policy_holder=policy_holder, is_deleted=False, date_valid_to__isnull=True)
         cpb = ph_cpb.contribution_plan_bundle
         if not cpb:
             raise ValueError("Contribution plan bundle not found.")

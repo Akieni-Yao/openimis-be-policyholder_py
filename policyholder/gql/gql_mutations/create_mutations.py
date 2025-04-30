@@ -80,7 +80,7 @@ def get_and_set_waiting_period_for_insuree(insuree_id, policyholder_id):
         logger.info("============get_and_set_waiting_period_for_insuree=============")
 
         policy_holder_contribution_plan = PolicyHolderContributionPlan.objects.filter(
-            policy_holder_id=policyholder_id, is_deleted=False
+            policy_holder_id=policyholder_id, is_deleted=False, date_valid_to__isnull=True
         ).first()
         logger.info(
             f"policy_holder_contribution_plan: {policy_holder_contribution_plan}"
@@ -243,7 +243,10 @@ class CreatePolicyHolderInsureeMutation(
         contribution_plan_bundle_id = data.get("contribution_plan_bundle_id")
         policyholder_id = data.get("policy_holder_id")
         is_insuree = PolicyHolderInsuree.objects.filter(
-            policy_holder__id=policyholder_id, insuree__id=insuree_id, is_deleted=False
+            policy_holder__id=policyholder_id, 
+            insuree__id=insuree_id, 
+            is_deleted=False,
+            date_valid_to__isnull=True
         ).first()
         insurees = Insuree.objects.filter(id=insuree_id).first()
         products = ContributionPlanBundle.objects.filter(
@@ -559,12 +562,22 @@ class CategoryChangeStatusChange(graphene.Mutation):
                     logger.info(f"new_family id: {new_family.id}")
                     insuree.family = new_family
                     insuree.head = True
-                    insuree_status = STATUS_WAITING_FOR_BIOMETRIC
-                    insuree.document_status = True
-                    if insuree.biometrics_is_master:
-                        insuree_status = STATUS_APPROVED
+                    insuree_status = insuree.status
+
+                    if insuree_status == STATUS_PRE_REGISTERED and not insuree.biometrics_status:
+                        insuree_status = STATUS_WAITING_FOR_BIOMETRIC
+
+                    if insuree_status == STATUS_WAITING_FOR_DOCUMENT:
+                        insuree_status = STATUS_WAITING_FOR_APPROVAL
+
+
+                    # insuree.document_status = True
+                    # if insuree.biometrics_is_master:
+                    #     insuree_status = STATUS_APPROVED
                     # elif not insuree.biometrics_status:
                     #     insuree_status = STATUS_WAITING_FOR_BIOMETRIC
+
+
                     insuree.status = insuree_status
                     logger.info(f"insuree_status: {insuree_status}")
                     insuree.json_ext["insureeEnrolmentType"] = new_category
@@ -577,10 +590,15 @@ class CategoryChangeStatusChange(graphene.Mutation):
                 elif cc.request_type == "SELF_HEAD_REQ":
                     logger.info("Processing self head request")
                     insuree.save_history()
-                    insuree_status = STATUS_WAITING_FOR_BIOMETRIC
+                    insuree_status = insuree.status
                     insuree.document_status = True
-                    if insuree.biometrics_is_master:
-                        insuree_status = STATUS_APPROVED
+
+                    if insuree_status == STATUS_PRE_REGISTERED and not insuree.biometrics_status:
+                        insuree_status = STATUS_WAITING_FOR_BIOMETRIC
+
+                    if insuree_status == STATUS_WAITING_FOR_DOCUMENT:
+                        insuree_status = STATUS_WAITING_FOR_APPROVAL
+
                     # elif not insuree.biometrics_status:
                     #     insuree_status = STATUS_WAITING_FOR_BIOMETRIC
                     insuree.status = insuree_status
