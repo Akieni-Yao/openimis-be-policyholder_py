@@ -114,7 +114,7 @@ def get_and_set_waiting_period_for_insuree(insuree_id, policyholder_id):
         logger.info(f"product.policy_waiting_period: {product.policy_waiting_period}")
 
         insuree = Insuree.objects.filter(id=insuree_id).first()
-        
+
         logger.info(f"insuree: {insuree}")
 
         if policy_holder_contribution_plan:
@@ -129,6 +129,12 @@ def get_and_set_waiting_period_for_insuree(insuree_id, policyholder_id):
                     waiting_period=product.policy_waiting_period,
                     contribution_periodicity=contribution_plan.periodicity,
                 )
+            else:
+                insuree_waiting_period.waiting_period = product.policy_waiting_period
+                insuree_waiting_period.contribution_periodicity = (
+                    contribution_plan.periodicity
+                )
+                insuree_waiting_period.save()
     except Exception as e:
         logger.error(f"Failed to get waiting period: {e}")
 
