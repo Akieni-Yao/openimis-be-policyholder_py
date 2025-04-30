@@ -1757,7 +1757,7 @@ def manuall_check_for_category_change_request(
         if not policy_holder:
             raise ValueError("Policy holder not found or deleted.")
         ph_cpb = PolicyHolderContributionPlan.objects.filter(
-            policy_holder=policy_holder, is_deleted=False
+            policy_holder=policy_holder, is_deleted=False, date_valid_to__isnull=True
         ).first()
         if not ph_cpb:
             raise ValueError(
