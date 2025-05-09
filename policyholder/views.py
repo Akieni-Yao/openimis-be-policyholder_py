@@ -1336,6 +1336,7 @@ def map_enrolment_type_to_category(enrolment_type):
         "Agents de l'Etat": "public_Employees",
         "Salariés du privé": "private_sector_employees",
         "Travailleurs indépendants et professions libérales": "Selfemployed_and_liberal_professions",
+        "TIPL": "Selfemployed_and_liberal_professions",
         "Pensionnés CRF et CNSS": "CRF_and_CNSS_pensioners",
         "Personnes vulnérables": "vulnerable_Persons",
         "Etudiants": "students",
