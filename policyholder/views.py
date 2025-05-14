@@ -46,6 +46,10 @@ from policy.models import Policy
 from policyholder.apps import *
 from policyholder.constants import (
     CC_WAITING_FOR_DOCUMENT,
+    CC_APPROVED,
+    CC_PENDING,
+    CC_WAITING_FOR_APPROVAL,
+    CC_PROCESSING,
     PH_STATUS_CREATED,
     PH_STATUS_LOCKED,
     TIPL_PAYMENT_METHOD_ID,
@@ -1698,18 +1702,25 @@ def check_for_category_change_request(user, line, policy_holder, enrolment_type)
                 if insuree.family:
                     if insuree.head:
                         if new_category != old_category:
-                            create_dependent_category_change(
-                                user,
-                                code,
-                                insuree,
-                                old_category,
-                                new_category,
-                                policy_holder,
-                                "SELF_HEAD_REQ",
-                                CC_WAITING_FOR_DOCUMENT,
-                                income,
-                                employer_number,
-                            )
+                            # Check if there's an existing category change request
+                            existing_request = CategoryChange.objects.filter(
+                                insuree=insuree,
+                                status__in=[CC_PENDING, CC_WAITING_FOR_DOCUMENT, CC_PROCESSING, CC_WAITING_FOR_APPROVAL]
+                            ).first()
+
+                            if not existing_request:
+                                create_dependent_category_change(
+                                    user,
+                                    code,
+                                    insuree,
+                                    old_category,
+                                    new_category,
+                                    policy_holder,
+                                    "SELF_HEAD_REQ",
+                                    CC_WAITING_FOR_DOCUMENT,
+                                    income,
+                                    employer_number,
+                                )
                             return True
                         else:
                             return False
