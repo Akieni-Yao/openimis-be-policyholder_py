@@ -347,97 +347,99 @@ class PHApprovalMutation(graphene.Mutation):
             return PHApprovalMutation(success=success, message=message)
 
 
-class UnlockPolicyHolderMutation(graphene.Mutation):
-    class Arguments:
-        policy_holder = graphene.String(required=True)
-        check_status = graphene.Boolean(required=False)
+# @TODO not used anymore, the current field has been moved to payment module
+# class UnlockPolicyHolderMutation(graphene.Mutation):
+#     class Arguments:
+#         policy_holder = graphene.String(required=True)
+#         check_status = graphene.Boolean(required=False)
 
-    success = graphene.Boolean()
-    message = graphene.String()
+#     success = graphene.Boolean()
+#     message = graphene.String()
 
-    def mutate(self, info, policy_holder, check_status=False):
-        try:
-            policyholder = PolicyHolder.objects.get(id=policy_holder)
-        except PolicyHolder.DoesNotExist:
-            return UnlockPolicyHolderMutation(
-                success=False, message="Policyholder does not exist."
-            )
+#     def mutate(self, info, policy_holder, check_status=False):
+#         try:
+#             policyholder = PolicyHolder.objects.get(id=policy_holder)
+#         except PolicyHolder.DoesNotExist:
+#             return UnlockPolicyHolderMutation(
+#                 success=False, message="Policyholder does not exist."
+#             )
 
-        payments_with_penalties = (
-            Payment.objects.filter(
-                contract__policy_holder=policy_holder,
-                payments_penalty__isnull=False,  # Ensures there are penalties
-            )
-            .distinct()
-            .order_by("contract__date_valid_from")[:3]
-            # .order_by("-payment_date")[:3]
-            # status=Payment.STATUS_APPROVED,
-        )
+#         payments_with_penalties = (
+#             Payment.objects.filter(
+#                 contract__policy_holder=policy_holder,
+#                 payments_penalty__isnull=False,  # Ensures there are penalties
+#             )
+#             .distinct()
+#             .order_by("contract__date_valid_from")
+#             # [:3]
+#             # .order_by("-payment_date")[:3]
+#             # status=Payment.STATUS_APPROVED,
+#         )
 
-        if payments_with_penalties.count() == 0:
-            return UnlockPolicyHolderMutation(
-                success=False, message="No penalties found for this policyholder."
-            )
+#         if payments_with_penalties.count() == 0:
+#             return UnlockPolicyHolderMutation(
+#                 success=False, message="No penalties found for this policyholder."
+#             )
 
-        all_payments_approved = True
-        all_penalities_approved_or_canceled_or_installment = True
+#         all_payments_approved = True
+#         all_penalities_approved_or_canceled_or_installment = True
 
-        for payment in payments_with_penalties:
-            if payment.status != Payment.STATUS_APPROVED:
-                all_payments_approved = False
+#         for payment in payments_with_penalties:
+#             if payment.status != Payment.STATUS_APPROVED:
+#                 all_payments_approved = False
 
-            for penality in payment.payments_penalty.all():
-                # check if payment is oustanding then check if there are similar to pick up the last one with the highest status
-                if penality.status == PaymentPenaltyAndSanction.PENALTY_OUTSTANDING:
-                    payment_penalty_and_sanction = (
-                        PaymentPenaltyAndSanction.objects.filter(
-                            amount=penality.amount,
-                            date_valid_from=penality.date_valid_from,
-                            payment=payment,
-                            payment__contract__policy_holder=policy_holder,
-                        )
-                        .order_by("-status")
-                        .first()
-                    )
+#             for penality in payment.payments_penalty.all():
+#                 # check if payment is oustanding then check if there are similar to pick up the last one with the highest status
+#                 if penality.status == PaymentPenaltyAndSanction.PENALTY_OUTSTANDING:
+#                     payment_penalty_and_sanction = (
+#                         PaymentPenaltyAndSanction.objects.filter(
+#                             amount=penality.amount,
+#                             date_valid_from=penality.date_valid_from,
+#                             payment=payment,
+#                             payment__contract__policy_holder=policy_holder,
+#                         )
+#                         .order_by("-status")
+#                         .first()
+#                     )
 
-                    print(
-                        f"=============== payment_penalty_and_sanction {payment_penalty_and_sanction.id} {payment_penalty_and_sanction.status}"
-                    )
+#                     print(
+#                         f"=============== payment_penalty_and_sanction {payment_penalty_and_sanction.id} {payment_penalty_and_sanction.status}"
+#                     )
 
-                    if payment_penalty_and_sanction:
-                        penality = payment_penalty_and_sanction
+#                     if payment_penalty_and_sanction:
+#                         penality = payment_penalty_and_sanction
 
-                if penality.status not in [
-                    PaymentPenaltyAndSanction.PENALTY_PAID,
-                    PaymentPenaltyAndSanction.PENALTY_APPROVED,
-                    PaymentPenaltyAndSanction.PENALTY_CANCELED,
-                    PaymentPenaltyAndSanction.INSTALLMENT_AGREEMENT_PENDING,
-                    PaymentPenaltyAndSanction.INSTALLMENT_APPROVED,
-                ]:
-                    all_penalities_approved_or_canceled_or_installment = False
+#                 if penality.status not in [
+#                     PaymentPenaltyAndSanction.PENALTY_PAID,
+#                     PaymentPenaltyAndSanction.PENALTY_APPROVED,
+#                     PaymentPenaltyAndSanction.PENALTY_CANCELED,
+#                     PaymentPenaltyAndSanction.INSTALLMENT_AGREEMENT_PENDING,
+#                     PaymentPenaltyAndSanction.INSTALLMENT_APPROVED,
+#                 ]:
+#                     all_penalities_approved_or_canceled_or_installment = False
 
-        if (
-            all_payments_approved is False
-            or all_penalities_approved_or_canceled_or_installment is False
-        ):
-            return UnlockPolicyHolderMutation(
-                success=False,
-                message="Policyholder can not be unlocked. There are payments or penalities that are not approved.",
-            )
+#         if (
+#             all_payments_approved is False
+#             or all_penalities_approved_or_canceled_or_installment is False
+#         ):
+#             return UnlockPolicyHolderMutation(
+#                 success=False,
+#                 message="Policyholder can not be unlocked. There are payments or penalities that are not approved.",
+#             )
 
-        if check_status:
-            return UnlockPolicyHolderMutation(
-                success=True, message="Policyholder can be unlocked."
-            )
+#         if check_status:
+#             return UnlockPolicyHolderMutation(
+#                 success=True, message="Policyholder can be unlocked."
+#             )
 
-        username = info.context.user.username
+#         username = info.context.user.username
 
-        policyholder.status = "Approved"
-        policyholder.save(username=username)
+#         policyholder.status = "Approved"
+#         policyholder.save(username=username)
 
-        return UnlockPolicyHolderMutation(
-            success=True, message="Policyholder unlocked successfully."
-        )
+#         return UnlockPolicyHolderMutation(
+#             success=True, message="Policyholder unlocked successfully."
+#         )
 
     # def old_mutate(self, info, policy_holder, check_status=False):
     #     # Fetch the policyholder

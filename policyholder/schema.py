@@ -551,7 +551,7 @@ class Mutation(graphene.ObjectType):
     category_change_status_change = CategoryChangeStatusChange.Field()
     create_ph_portal_user = CreatePHPortalUserMutation.Field()
     policyholder_approval = PHApprovalMutation.Field()
-    unlock_policyholder = UnlockPolicyHolderMutation.Field()
+    # unlock_policyholder = UnlockPolicyHolderMutation.Field()
     verify_user_and_update_password = VerifyUserAndUpdatePasswordMutation.Field()
     new_password_request = NewPasswordRequestMutation.Field()
 
