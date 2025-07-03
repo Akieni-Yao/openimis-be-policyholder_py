@@ -1,75 +1,74 @@
+import calendar
+import io
 import json
 import logging
 import math
-import io
-import calendar
-from datetime import datetime, timedelta
 import re
+from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation
 
+import pandas as pd
+from contract.models import Contract
+from contract.services import Contract as ContractService
+from contribution_plan.models import ContributionPlan, ContributionPlanBundleDetails
+from core.constants import *
+from core.models import Banks, InteractiveUser, Role
+from core.notification_service import base64_encode, create_camu_notification
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import EmailMessage
 from django.db.models import Q, Sum
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.utils import timezone
-import pandas as pd
-from django.http import JsonResponse, HttpResponse
 from django.utils.dateparse import parse_date
 from django.utils.encoding import force_text
 from django.utils.http import urlsafe_base64_decode
 from graphql import GraphQLError
-
-from rest_framework.decorators import (
-    permission_classes,
-    api_view,
-    authentication_classes,
-)
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework.response import Response
-
-from contract.models import Contract
-from contract.services import Contract as ContractService
-from core.constants import *
-from core.models import Role, InteractiveUser, Banks
-from core.notification_service import create_camu_notification, base64_encode
+from insuree.abis_api import create_abis_insuree
 from insuree.dms_utils import (
     create_openKm_folder_for_bulkupload,
     send_mail_to_temp_insuree_with_pdf,
 )
 from insuree.gql_mutations import temp_generate_employee_camu_registration_number
-from insuree.models import Insuree, Gender, Family, InsureePolicy
+from insuree.models import Family, Gender, Insuree, InsureePolicy
 from location.models import Location
 from payment.models import Payment, PaymentPenaltyAndSanction
 from payment.views import get_payment_product_config
 from policy.models import Policy
+from rest_framework.decorators import (
+    api_view,
+    authentication_classes,
+    permission_classes,
+)
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from workflow.workflow_stage import insuree_add_to_workflow
+
 from policyholder.apps import *
 from policyholder.constants import (
-    CC_WAITING_FOR_DOCUMENT,
     CC_APPROVED,
     CC_PENDING,
-    CC_WAITING_FOR_APPROVAL,
     CC_PROCESSING,
+    CC_WAITING_FOR_APPROVAL,
+    CC_WAITING_FOR_DOCUMENT,
     PH_STATUS_CREATED,
     PH_STATUS_LOCKED,
     TIPL_PAYMENT_METHOD_ID,
 )
 from policyholder.dms_utils import (
     create_folder_for_cat_chnage_req,
-    validate_enrolment_type,
     send_notification_to_head,
+    validate_enrolment_type,
 )
 from policyholder.models import (
-    PolicyHolder,
-    PolicyHolderInsuree,
-    PolicyHolderContributionPlan,
     CategoryChange,
+    PolicyHolder,
+    PolicyHolderContributionPlan,
+    PolicyHolderInsuree,
     PolicyHolderUser,
 )
-from contribution_plan.models import ContributionPlanBundleDetails
-from workflow.workflow_stage import insuree_add_to_workflow
-from insuree.abis_api import create_abis_insuree
-from decimal import Decimal, InvalidOperation
 from policyholder.tasks import sync_policyholders_to_erp
 
 logger = logging.getLogger(__name__)
@@ -151,7 +150,8 @@ def clean_line(line):
         elif math.isnan(value):
             logger.info(f" ======    value is nan : {value}   =======")
             line[header] = None
-            logger.info(f" ======    after change value is : {line[header]}   =======")
+            logger.info(
+                f" ======    after change value is : {line[header]}   =======")
         elif header == HEADER_PHONE and isinstance(value, float):
             line[header] = int(value)
 
@@ -195,7 +195,8 @@ def get_or_create_family_from_line(
             audit_user_id=audit_user_id,
             status="PRE_REGISTERED",
             address=line[HEADER_ADDRESS],
-            json_ext={"enrolmentType": map_enrolment_type_to_category(enrolment_type)},
+            json_ext={"enrolmentType": map_enrolment_type_to_category(
+                enrolment_type)},
         )
         created = True
 
@@ -231,7 +232,8 @@ def get_or_create_insuree_from_line(
     camu_num = line[HEADER_INSUREE_CAMU_NO]
     insuree = None
     if id:
-        insuree = Insuree.objects.filter(validity_to__isnull=True, chf_id=id).first()
+        insuree = Insuree.objects.filter(
+            validity_to__isnull=True, chf_id=id).first()
     if not insuree and camu_num:
         insuree = Insuree.objects.filter(
             validity_to__isnull=True, camu_number=camu_num
@@ -321,7 +323,8 @@ def soft_delete_insuree(line, policy_holder_code, user_id):
     camu_num = line[HEADER_INSUREE_CAMU_NO]
     insuree = None
     if id:
-        insuree = Insuree.objects.filter(validity_to__isnull=True, chf_id=id).first()
+        insuree = Insuree.objects.filter(
+            validity_to__isnull=True, chf_id=id).first()
     if not insuree:
         insuree = Insuree.objects.filter(
             validity_to__isnull=True, camu_number=camu_num
@@ -356,7 +359,8 @@ def import_phi(request, policy_holder_code):
     file = request.FILES["file"]
     user_id = request.user.id_for_audit
     core_user_id = request.user.id
-    logger.info("User (audit id %s) requested import of PolicyHolderInsurees", user_id)
+    logger.info(
+        "User (audit id %s) requested import of PolicyHolderInsurees", user_id)
 
     logger.info(
         "=================================== LINE 349 ==========================="
@@ -613,7 +617,8 @@ def import_phi(request, policy_holder_code):
             # Adding error in output excel
             row_data = line.tolist()
             row_data.extend(
-                ["Échec", f"Village inconnu - {line[HEADER_FAMILY_LOCATION_CODE]}"]
+                ["Échec",
+                    f"Village inconnu - {line[HEADER_FAMILY_LOCATION_CODE]}"]
             )
             processed_data = processed_data.append(
                 pd.Series(row_data), ignore_index=True
@@ -708,7 +713,8 @@ def import_phi(request, policy_holder_code):
         )
         if is_cc_request:
             row_data = line.tolist()
-            row_data.extend(["Réussite", "Demande de changement de catégorie Créé."])
+            row_data.extend(
+                ["Réussite", "Demande de changement de catégorie Créé."])
             processed_data = processed_data.append(
                 pd.Series(row_data), ignore_index=True
             )
@@ -792,7 +798,8 @@ def import_phi(request, policy_holder_code):
                     "====  policyholder  ====  import_phi  ====  create_abis_insuree  ====  End"
                 )
             except Exception as e:
-                logger.error(f"insuree bulk upload error for abis or workflow : {e}")
+                logger.error(
+                    f"insuree bulk upload error for abis or workflow : {e}")
         elif not insuree_created:
             family.delete()
             reason = None
@@ -808,7 +815,8 @@ def import_phi(request, policy_holder_code):
             insuree_dob = line[HEADER_INSUREE_DOB]
             if not isinstance(insuree_dob, datetime):
                 datetime_obj = datetime.strptime(insuree_dob, "%d/%m/%Y")
-                line[HEADER_INSUREE_DOB] = timezone.make_aware(datetime_obj).date()
+                line[HEADER_INSUREE_DOB] = timezone.make_aware(
+                    datetime_obj).date()
 
             if insuree.other_names != line[HEADER_INSUREE_OTHER_NAMES]:
                 reason = "Le prénom de l'assuré ne correspond pas."
@@ -820,7 +828,7 @@ def import_phi(request, policy_holder_code):
                 reason = "Le sexe de l'assuré ne correspond pas."
             elif insuree.marital != mapping_marital_status(line[HEADER_CIVILITY]):
                 reason = "L'état civil de l'assuré ne correspond pas."
-            elif other_policyholder_connected: 
+            elif other_policyholder_connected:
                 reason = "L'assuré est deja lié a un autre souscripteur."
 
             logger.info(
@@ -915,16 +923,20 @@ def import_phi(request, policy_holder_code):
         # Adding success entry in output Excel
         row_data = line.tolist()
         row_data.extend(["Réussite", ""])
-        processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
+        processed_data = processed_data.append(
+            pd.Series(row_data), ignore_index=True)
 
         try:
-            logger.info("---------------   if insuree have email   -------------------")
+            logger.info(
+                "---------------   if insuree have email   -------------------")
             if insuree.email:
                 insuree_enrolment_type = insuree.json_ext[
                     "insureeEnrolmentType"
                 ].lower()
-                send_mail_to_temp_insuree_with_pdf(insuree, insuree_enrolment_type)
-                logger.info("---------------  email is sent   -------------------")
+                send_mail_to_temp_insuree_with_pdf(
+                    insuree, insuree_enrolment_type)
+                logger.info(
+                    "---------------  email is sent   -------------------")
         except Exception as e:
             logger.error(f"Fail to send auto mail : {e}")
 
@@ -1061,7 +1073,8 @@ def export_phi(request, policy_holder_code):
         def extract_birth_place(json_data):
             return json_data.get("BirthPlace", None) if json_data else None
 
-        birth_place = [extract_birth_place(json_data) for json_data in df["json_ext"]]
+        birth_place = [extract_birth_place(json_data)
+                       for json_data in df["json_ext"]]
 
         def extract_civility(marital):
             return mapping_marital_status(None, marital)
@@ -1106,7 +1119,8 @@ def export_phi(request, policy_holder_code):
             if phn_json:
                 json_data = phn_json.json_ext
                 if json_data:
-                    ei = json_data.get("calculation_rule", None).get("income", None)
+                    ei = json_data.get("calculation_rule",
+                                       None).get("income", None)
                     employee_income.update({insuree_id: ei})
                     return ei
             return None
@@ -1134,7 +1148,8 @@ def export_phi(request, policy_holder_code):
             if conti_plan:
                 json_data = conti_plan.json_ext if conti_plan.json_ext else None
                 calculation_rule = (
-                    json_data.get("calculation_rule", None) if json_data else None
+                    json_data.get("calculation_rule",
+                                  None) if json_data else None
                 )
                 ercp = (
                     calculation_rule.get("employerContribution", None)
@@ -1165,7 +1180,8 @@ def export_phi(request, policy_holder_code):
             except Exception as e:
                 return None
 
-        employer_share = [extract_employer_share(insuree_id) for insuree_id in df["id"]]
+        employer_share = [extract_employer_share(
+            insuree_id) for insuree_id in df["id"]]
 
         employee_contri_per = dict()
 
@@ -1173,7 +1189,8 @@ def export_phi(request, policy_holder_code):
             if conti_plan:
                 json_data = conti_plan.json_ext if conti_plan.json_ext else None
                 calculation_rule = (
-                    json_data.get("calculation_rule", None) if json_data else None
+                    json_data.get("calculation_rule",
+                                  None) if json_data else None
                 )
                 eecp = (
                     calculation_rule.get("employeeContribution", None)
@@ -1204,20 +1221,23 @@ def export_phi(request, policy_holder_code):
             except Exception as e:
                 return None
 
-        employee_share = [extract_employee_share(insuree_id) for insuree_id in df["id"]]
+        employee_share = [extract_employee_share(
+            insuree_id) for insuree_id in df["id"]]
 
         def extract_total_share(insuree_id):
             try:
                 if employee_contri[insuree_id] and employer_contri[insuree_id]:
                     total_contri = (
-                        employee_contri[insuree_id] + employer_contri[insuree_id]
+                        employee_contri[insuree_id] +
+                        employer_contri[insuree_id]
                     )
                     return total_contri
                 return None
             except Exception as e:
                 return None
 
-        total_share = [extract_total_share(insuree_id) for insuree_id in df["id"]]
+        total_share = [extract_total_share(insuree_id)
+                       for insuree_id in df["id"]]
 
         df2.drop(
             columns=[
@@ -1277,7 +1297,7 @@ def export_phi(request, policy_holder_code):
         # df.insert(loc=18, column="Part Salariale %", value=employee_percentage)
         # df.insert(loc=19, column="Part Salariale", value=employee_share)
         # df.insert(loc=20, column="Cotisation total", value=total_share)
-        
+
         df2.insert(
             loc=8,
             column="Status d'enregistrement",
@@ -1335,6 +1355,24 @@ class LocationEncoder(json.JSONEncoder):
 
 
 def map_enrolment_type_to_category(enrolment_type):
+    """
+    Map enrolment type to category using dynamic mapping from ContributionPlan.
+    Falls back to hardcoded mapping if no dynamic mapping is found.
+    """
+    try:
+        # Get the first active contribution plan with mapping_value
+        contribution_plan = ContributionPlan.objects.filter(
+            name=enrolment_type,
+            is_deleted=False,
+            mapping_value__isnull=False
+        ).exclude(mapping_value='').first()
+        if contribution_plan and contribution_plan.mapping_value:
+            # mapping_value is a direct string (category value)
+            return contribution_plan.mapping_value
+    except Exception as e:
+        logger.warning(f"Failed to get dynamic mapping: {e}")
+
+    # Fallback to hardcoded mapping if dynamic mapping fails or is not found
     # Define the mapping from input values to categories
     enrolment_type_mapping = {
         "Agents de l'Etat": "public_Employees",
@@ -1422,7 +1460,8 @@ def not_declared_policy_holder(request):
         logger.info("contract_from_date : ", contract_from_date)
 
         if contract_to_date:
-            contract_to_date = datetime.strptime(contract_to_date, "%Y-%m-%d").date()
+            contract_to_date = datetime.strptime(
+                contract_to_date, "%Y-%m-%d").date()
         else:
             # if contract_to_date is None or contract_to_date == "":
             _, last_day = calendar.monthrange(today.year, today.month)
@@ -1431,7 +1470,8 @@ def not_declared_policy_holder(request):
         logger.info("contract_to_date : ", contract_to_date)
 
         if contract_from_date > contract_to_date:
-            error = GraphQLError("Dates are not proper!", extensions={"code": 200})
+            error = GraphQLError("Dates are not proper!",
+                                 extensions={"code": 200})
             raise error
 
         contract_list = list(
@@ -1520,7 +1560,8 @@ def get_emails_for_imis_administrators():
         imis_admin_role = Role.objects.get(name="IMIS Administrator")
 
         # Fetch all InteractiveUser objects with the specified role
-        imis_admin_users = InteractiveUser.objects.filter(role_id=imis_admin_role.id)
+        imis_admin_users = InteractiveUser.objects.filter(
+            role_id=imis_admin_role.id)
 
         # Extract the emails from the InteractiveUser objects, skipping records without email
         emails = [user.email for user in imis_admin_users if user.email]
@@ -1670,7 +1711,8 @@ def create_dependent_category_change(
         json_ext=json_ext,
     )
     req_no = cc.code
-    create_folder_for_cat_chnage_req(insuree, req_no, old_category, new_category)
+    create_folder_for_cat_chnage_req(
+        insuree, req_no, old_category, new_category)
     logger.info(
         f"CategoryChange request created for Insuree {insuree} for {request_type.lower()} request"
     )
@@ -1705,7 +1747,8 @@ def check_for_category_change_request(user, line, policy_holder, enrolment_type)
                             # Check if there's an existing category change request
                             existing_request = CategoryChange.objects.filter(
                                 insuree=insuree,
-                                status__in=[CC_PENDING, CC_WAITING_FOR_DOCUMENT, CC_PROCESSING, CC_WAITING_FOR_APPROVAL]
+                                status__in=[
+                                    CC_PENDING, CC_WAITING_FOR_DOCUMENT, CC_PROCESSING, CC_WAITING_FOR_APPROVAL]
                             ).first()
 
                             if not existing_request:
@@ -1812,7 +1855,8 @@ def verify_email(request, uidb64, token, e_timestamp):
     if default_token_generator.check_token(user, token):
         timestamp = int(timestamp)
         logger.info("Timestamp decoded successfully.")
-        expiration_time = datetime.fromtimestamp(timestamp) + timedelta(hours=24)
+        expiration_time = datetime.fromtimestamp(
+            timestamp) + timedelta(hours=24)
         logger.info(f"Expiration time calculated: {expiration_time}")
         current_time = datetime.now()
         logger.info(f"Current time: {current_time}")
@@ -1857,7 +1901,8 @@ def portal_reset(request, uidb64, token, e_timestamp):
     if default_token_generator.check_token(user, token):
         timestamp = int(timestamp)
         logger.info("Timestamp decoded successfully.")
-        expiration_time = datetime.fromtimestamp(timestamp) + timedelta(hours=24)
+        expiration_time = datetime.fromtimestamp(
+            timestamp) + timedelta(hours=24)
         logger.info(f"Expiration time calculated: {expiration_time}")
         current_time = datetime.now()
         logger.info(f"Current time: {current_time}")
@@ -1873,7 +1918,8 @@ def portal_reset(request, uidb64, token, e_timestamp):
             )  # open page when token has expired
     else:
         logger.info("Invalid token.")
-        return redirect(settings.PORTAL_FRONTEND)  # open page when token is invalid
+        # open page when token is invalid
+        return redirect(settings.PORTAL_FRONTEND)
 
 
 @authentication_classes([])
@@ -1896,14 +1942,16 @@ def deactivate_not_submitted_request(request):
     ph_user_ids = PolicyHolderUser.objects.filter(
         policy_holder__id__in=not_submitted_ph_ids
     ).values_list("user__i_user__id", flat=True)
-    logger.info(f"deactivate_not_submitted_request : ph_user_ids : {ph_user_ids}")
+    logger.info(
+        f"deactivate_not_submitted_request : ph_user_ids : {ph_user_ids}")
     InteractiveUser.objects.filter(id__in=ph_user_ids).update(
         validity_to=timezone.now()
     )
     PolicyHolderUser.objects.filter(policy_holder__id__in=not_submitted_ph_ids).update(
         is_deleted=True
     )
-    PolicyHolder.objects.filter(id__in=not_submitted_ph_ids).update(is_deleted=True)
+    PolicyHolder.objects.filter(
+        id__in=not_submitted_ph_ids).update(is_deleted=True)
     logger.info("deactivate_not_submitted_request : End")
     return Response({"message": "Script Successfully Run."})
 
@@ -2046,7 +2094,8 @@ def get_declaration_details(requests, policy_holder_code):
     ph_insuree = ph_insuree_list.first()
 
     if not ph_insuree:
-        logger.error(f"No insuree found for policy holder ({policy_holder_code})")
+        logger.error(
+            f"No insuree found for policy holder ({policy_holder_code})")
         return JsonResponse(
             {"errors": "No insuree found for this policy holder."}, status=404
         )
@@ -2081,7 +2130,8 @@ def get_declaration_details(requests, policy_holder_code):
         # logger.error(f"No executable contracts found for policy holder ({policy_holder_code})")
         try:
             contract_service = ContractService(user=user)
-            output_data = contract_service.tipl_contract_evaluation(contract=contract)
+            output_data = contract_service.tipl_contract_evaluation(
+                contract=contract)
             logger.info(
                 f"Contract evaluation completed for policy holder {policy_holder.id}"
             )
@@ -2098,14 +2148,16 @@ def get_declaration_details(requests, policy_holder_code):
                 "insuree_right_status": insuree_right_status,
                 "period": period,  # This will now show the next month's MM-YYYY
                 "label": "declaration",
-                "total_amount": output_data,  # Ensure this is always a Decimal (since no payment was found)
+                # Ensure this is always a Decimal (since no payment was found)
+                "total_amount": output_data,
             }
         )
         data["data"] = contract_data
         logger.info(f"Returning data for policy holder: {policy_holder_code}")
         return JsonResponse(data, status=200)
 
-    logger.info(f"Executable contracts found for policy holder: {policy_holder_code}")
+    logger.info(
+        f"Executable contracts found for policy holder: {policy_holder_code}")
 
     for contract in contracts:
         # Fetch the first non-approved payment for each contract
@@ -2150,7 +2202,8 @@ def get_declaration_details(requests, policy_holder_code):
                 if penalty.penalty_level == "1st":
                     penalty_rate = product_config.get("firstPenaltyRate", None)
                 elif penalty.penalty_level == "2nd":
-                    penalty_rate = product_config.get("secondPenaltyRate", None)
+                    penalty_rate = product_config.get(
+                        "secondPenaltyRate", None)
 
             # Aggregate penalty amount
             total_penalty_amount = PaymentPenaltyAndSanction.objects.filter(
@@ -2158,7 +2211,8 @@ def get_declaration_details(requests, policy_holder_code):
                 outstanding_payment__isnull=True,
                 is_deleted=False,
             ).aggregate(Sum("amount"))["amount__sum"] or Decimal(0)
-            logger.info(f"Total penalty amount calculated: {total_penalty_amount}")
+            logger.info(
+                f"Total penalty amount calculated: {total_penalty_amount}")
 
         total_amount = total_penalty_amount + earliest_payment.expected_amount
 
@@ -2214,7 +2268,8 @@ def get_declaration_details(requests, policy_holder_code):
 
         try:
             contract_service = ContractService(user=user)
-            output_data = contract_service.tipl_contract_evaluation(contract=contract)
+            output_data = contract_service.tipl_contract_evaluation(
+                contract=contract)
             logger.info(
                 f"Contract evaluation completed for policy holder {policy_holder.id}"
             )
@@ -2232,7 +2287,8 @@ def get_declaration_details(requests, policy_holder_code):
                 "insuree_right_status": insuree_right_status,
                 "period": period,  # This will now show the next month's MM-YYYY
                 "label": "declaration",
-                "total_amount": output_data,  # Ensure this is always a Decimal (since no payment was found)
+                # Ensure this is always a Decimal (since no payment was found)
+                "total_amount": output_data,
             }
         )
         logger.info(
@@ -2260,7 +2316,8 @@ def paid_contract_payment(request):
 
         # Check if the request is PUT
         if request.method != "PUT":
-            logger.error("Invalid request method. Only PUT requests are allowed.")
+            logger.error(
+                "Invalid request method. Only PUT requests are allowed.")
             return JsonResponse(
                 {"errors": "Invalid request method. Only PUT requests are allowed."},
                 status=405,
@@ -2282,7 +2339,8 @@ def paid_contract_payment(request):
             "payment_date",
             "payment_reference",
         ]
-        missing_fields = [field for field in required_fields if not data.get(field)]
+        missing_fields = [
+            field for field in required_fields if not data.get(field)]
         if missing_fields:
             logger.error(f"Required field(s) missing: {missing_fields}")
             return JsonResponse(
@@ -2297,9 +2355,11 @@ def paid_contract_payment(request):
         payment_reference = data.get("payment_reference")
 
         # Fetch Bank data using mmp_identifier
-        bank = Banks.objects.filter(code=mmp_identifier, is_deleted=False).first()
+        bank = Banks.objects.filter(
+            code=mmp_identifier, is_deleted=False).first()
         if not bank:
-            logger.error(f"No bank found with MMP identifier: {mmp_identifier}")
+            logger.error(
+                f"No bank found with MMP identifier: {mmp_identifier}")
             return JsonResponse(
                 {"errors": f"No bank found with MMP identifier {mmp_identifier}."},
                 status=404,
@@ -2330,10 +2390,12 @@ def paid_contract_payment(request):
                 code=policy_holder_code, is_deleted=False
             ).first()
             if not policy_holder:
-                logger.error(f"No policy holder found for code: {policy_holder_code}")
+                logger.error(
+                    f"No policy holder found for code: {policy_holder_code}")
                 return JsonResponse({"errors": "No policy holder found."}, status=404)
         except Exception as e:
-            logger.error(f"Database error while fetching policy holder: {str(e)}")
+            logger.error(
+                f"Database error while fetching policy holder: {str(e)}")
             return JsonResponse(
                 {"errors": "Internal server error while fetching policy holder."},
                 status=500,
@@ -2395,7 +2457,8 @@ def paid_contract_payment(request):
                             f"Payment scenario successfully executed for contract: {contract}"
                         )
                     else:
-                        logger.error("Payment scenario failed after contract creation.")
+                        logger.error(
+                            "Payment scenario failed after contract creation.")
                         return JsonResponse(
                             {
                                 "errors": "Failed to approve payment after contract creation."
@@ -2510,7 +2573,8 @@ def paid_contract_payment(request):
             )
 
         except Exception as e:
-            logger.error(f"Error during payment processing: {str(e)}", exc_info=True)
+            logger.error(
+                f"Error during payment processing: {str(e)}", exc_info=True)
             return JsonResponse(
                 {"errors": "Internal server error during payment processing."},
                 status=500,
