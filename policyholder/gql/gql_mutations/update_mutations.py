@@ -17,7 +17,9 @@ from core.models import InteractiveUser
 from core.notification_service import create_camu_notification
 from payment.models import Payment, PaymentPenaltyAndSanction
 from policyholder.apps import PolicyholderConfig
+from policyholder.gql.gql_mutations.input_types import ExceptionReasonInputType
 from policyholder.models import (
+    ExceptionReason,
     PolicyHolder,
     PolicyHolderInsuree,
     PolicyHolderContributionPlan,
@@ -53,6 +55,35 @@ PORTAL_SUBSCRIBER_URL = os.getenv("PORTAL_SUBSCRIBER_URL", "")
 PORTAL_FOSA_URL = os.getenv("PORTAL_FOSA_URL", "")
 IMIS_URL = os.getenv("IMIS_URL", "")
 
+
+class UpdateExceptionReasonMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
+    _mutation_class = "ExceptionReasonMutation"
+    _mutation_module = "exception_reason"
+    _model = ExceptionReason
+
+    class Input(ExceptionReasonInputType):
+        pass
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        super()._validate_mutation(user, **data)
+        PermissionValidation.validate_perms(
+            user, PolicyholderConfig.gql_mutation_create_exception_reason_perms
+        )
+
+    @classmethod
+    def _mutate(cls, user, data):
+        obj = cls._model.objects.filter(id=data["id"]).first()
+        if not obj:
+            raise Exception("Exception Reason not found")
+        [setattr(obj, key, data[key]) for key in data if key != "id"]
+        if "client_mutation_id" in data:
+            data.pop("client_mutation_id")
+        if "client_mutation_label" in data:
+            data.pop("client_mutation_label")
+        obj.save(username=user.username)
+        
+        return obj
 
 class UpdatePolicyHolderMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
     _mutation_class = "PolicyHolderMutation"

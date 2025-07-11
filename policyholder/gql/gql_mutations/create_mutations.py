@@ -28,7 +28,9 @@ from policyholder.dms_utils import (
     manual_validate_enrolment_type,
 )
 from policyholder.gql import PolicyHolderExcptionType
+from policyholder.gql.gql_mutations.input_types import ExceptionReasonInputType
 from policyholder.models import (
+    ExceptionReason,
     PolicyHolder,
     PolicyHolderInsuree,
     PolicyHolderContributionPlan,
@@ -131,7 +133,31 @@ def get_and_set_waiting_period_for_insuree(insuree_id, policyholder_id):
                 )
     except Exception as e:
         logger.error(f"Failed to get waiting period: {e}")
+        
+        
+class CreateExceptionReasonMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
+    _mutation_class = "ExceptionReasonMutation"
+    _mutation_module = "policyholder"
+    _model = ExceptionReason
 
+    class Input(ExceptionReasonInputType):
+        pass
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        super()._validate_mutation(user, **data)
+        PermissionValidation.validate_perms(
+            user, PolicyholderConfig.gql_mutation_create_exception_reason_perms
+        )
+
+    @classmethod
+    def _mutate(cls, user, data):
+        obj = cls._model(**data)
+        obj.save(username=user.username)
+        
+        return obj
+    
+    
 
 class CreatePolicyHolderMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
     _mutation_class = "PolicyHolderMutation"

@@ -23,6 +23,13 @@ class PolicyHolderInputType(OpenIMISMutation.Input):
     date_valid_from = graphene.Date(required=False)
     date_valid_to = graphene.Date(required=False)
     json_ext = graphene.types.json.JSONString(required=False)
+    
+    
+class ExceptionReasonInputType(OpenIMISMutation.Input):
+    id = graphene.Int(required=False)
+    except_reason = graphene.String(required=True, max_length=255)
+    period = graphene.Int(required=True, name="period")
+    scope = graphene.String(required=True, max_length=50)
 
 
 class PolicyHolderUpdateInputType(OpenIMISMutation.Input):
