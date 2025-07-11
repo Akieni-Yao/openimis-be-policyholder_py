@@ -1,10 +1,22 @@
 from core.gql.gql_mutations import DeleteInputType
 from core.gql.gql_mutations.base_mutation import BaseDeleteMutation, BaseHistoryModelDeleteMutationMixin
 from policyholder.apps import PolicyholderConfig
-from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, PolicyHolderUser
+from policyholder.models import ExceptionReason, PolicyHolder, PolicyHolderInsuree, PolicyHolderContributionPlan, PolicyHolderUser
 from policyholder.validation.permission_validation import PermissionValidation
 from policyholder.erp_intigration import erp_delete_policyholder
 
+class DeleteExceptionReasonMutation(BaseHistoryModelDeleteMutationMixin, BaseDeleteMutation):
+    _mutation_class = "ExceptionReasonMutation"
+    _mutation_module = "exception_reason"
+    _model = ExceptionReason
+
+    class Input(DeleteInputType):
+        pass
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        super()._validate_mutation(user, **data)
+        PermissionValidation.validate_perms(user, PolicyholderConfig.gql_mutation_delete_exceptionreason_perms)
 
 class DeletePolicyHolderMutation(BaseHistoryModelDeleteMutationMixin, BaseDeleteMutation):
     _mutation_class = "PolicyHolderMutation"
