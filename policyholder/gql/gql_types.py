@@ -8,7 +8,7 @@ from graphene_django import DjangoObjectType
 from insuree.schema import InsureeGQLType
 from location.gql_queries import LocationGQLType
 
-from policyholder.models import PolicyHolder, PolicyHolderInsuree, PolicyHolderUser, PolicyHolderContributionPlan, \
+from policyholder.models import ExceptionReason, PolicyHolder, PolicyHolderInsuree, PolicyHolderUser, PolicyHolderContributionPlan, \
     PolicyHolderMutation, PolicyHolderExcption, CategoryChange
 
 
@@ -47,6 +47,21 @@ class PolicyHolderGQLType(DjangoObjectType):
     @classmethod
     def get_queryset(cls, queryset, info):
         return PolicyHolder.get_queryset(queryset, info)
+    
+class ExceptionReasonGQLType(DjangoObjectType):
+    class Meta:
+        model = ExceptionReason
+        interfaces = (graphene.relay.Node,)
+        filter_fields = {
+            "id": ["exact"],
+            "reason": ["exact", "istartswith", "icontains", "iexact"],
+            "period": ["exact"],
+            "scope": ["exact", "istartswith", "icontains", "iexact"],
+            "created_at": ["exact", "lt", "lte", "gt", "gte"],
+            "modified_at": ["exact", "lt", "lte", "gt", "gte"]
+        }
+
+        connection_class = ExtendedConnection
 
 
 class PolicyHolderByFamilyGQLType(DjangoObjectType):

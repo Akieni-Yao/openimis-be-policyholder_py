@@ -1,6 +1,8 @@
 import logging
 import re
 
+from django.forms import ValidationError
+
 import graphene
 from django.db.models import Q
 import uuid
@@ -17,7 +19,9 @@ from core.models import InteractiveUser
 from core.notification_service import create_camu_notification
 from payment.models import Payment, PaymentPenaltyAndSanction
 from policyholder.apps import PolicyholderConfig
+from policyholder.gql.gql_mutations.input_types import ExceptionReasonInputType
 from policyholder.models import (
+    ExceptionReason,
     PolicyHolder,
     PolicyHolderInsuree,
     PolicyHolderContributionPlan,
@@ -53,6 +57,40 @@ PORTAL_SUBSCRIBER_URL = os.getenv("PORTAL_SUBSCRIBER_URL", "")
 PORTAL_FOSA_URL = os.getenv("PORTAL_FOSA_URL", "")
 IMIS_URL = os.getenv("IMIS_URL", "")
 
+
+class UpdateExceptionReasonMutation(graphene.Mutation):
+    success = graphene.Boolean()
+    message = graphene.String()
+
+    class Arguments:
+        input = graphene.Argument(ExceptionReasonInputType, required=True)
+
+    @classmethod
+    def mutate(cls, root, info, input):
+        print(f"updateExceptionReasonMutation : input : {input}")
+
+        try:
+            scope = input.pop("scope")
+            id = input.pop("id")
+            if scope not in ["POLICY_HOLDER", "INSUREE"]:
+                raise ValidationError(
+                    "Invalid scope provided. Must be 'POLICY_HOLDER' or 'INSUREE'."
+                )
+            obj = ExceptionReason.objects.filter(id=id).first()
+            if not obj:
+                raise ValidationError("ExceptionReason with this ID does not exist.")
+            
+            obj.reason = input.get("reason")
+            obj.period = input.get("period")
+            obj.scope = scope
+            obj.save()
+            
+            logger.info(f"ExceptionReason updated successfully: {obj.id}")
+
+            return cls(success=True, message="Mutation successful!")
+        except Exception as e:
+            logger.error(f"Failed to create exception reason: {e}")
+            return cls(success=False, message=str(e))
 
 class UpdatePolicyHolderMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
     _mutation_class = "PolicyHolderMutation"

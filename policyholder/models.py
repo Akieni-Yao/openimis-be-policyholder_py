@@ -316,6 +316,23 @@ class PolicyHolderExcption(models.Model):
         db_table = "tblPolicyHolderException"
 
 
+class ExceptionReason(models.Model):
+    id = models.AutoField(db_column="ID", primary_key=True)
+    reason = models.CharField(
+        db_column="reason", max_length=255, null=True
+    )
+    period = models.IntegerField(db_column="period")
+    # scope could be insuree or policy holder
+    scope = models.CharField(db_column="scopeReason", max_length=50, null=True)
+
+    created_at = models.DateTimeField(db_column="CreatedTime", auto_now_add=True)
+    modified_at = models.DateTimeField(db_column="ModifiedTime", auto_now=True)
+
+    class Meta:
+        managed = True
+        db_table = "tblExceptionReason"
+
+
 class CategoryChange(models.Model):
     id = models.AutoField(db_column="ID", primary_key=True)
     code = models.CharField(db_column="Code", max_length=256)

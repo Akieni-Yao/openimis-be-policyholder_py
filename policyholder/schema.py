@@ -15,6 +15,7 @@ from core.utils import append_validity_filter
 from payment.gql_queries import PaymentPenaltyAndSanctionType, PaymentGQLType
 from payment.models import PaymentPenaltyAndSanction, Payment
 from policyholder.models import (
+    ExceptionReason,
     PolicyHolder,
     PolicyHolderInsuree,
     PolicyHolderUser,
@@ -27,6 +28,7 @@ from policyholder.models import (
     CategoryChange,
 )
 from policyholder.gql.gql_mutations.create_mutations import (
+    CreateExceptionReasonMutation,
     CreatePolicyHolderMutation,
     CreatePolicyHolderInsureeMutation,
     CreatePolicyHolderUserMutation,
@@ -36,12 +38,14 @@ from policyholder.gql.gql_mutations.create_mutations import (
     CreatePHPortalUserMutation,
 )
 from policyholder.gql.gql_mutations.delete_mutations import (
+    DeleteExceptionReasonMutation,
     DeletePolicyHolderMutation,
     DeletePolicyHolderInsureeMutation,
     DeletePolicyHolderUserMutation,
     DeletePolicyHolderContributionPlanMutation,
 )
 from policyholder.gql.gql_mutations.update_mutations import (
+    UpdateExceptionReasonMutation,
     UpdatePolicyHolderMutation,
     UpdatePolicyHolderInsureeMutation,
     UpdatePolicyHolderUserMutation,
@@ -64,6 +68,7 @@ from policyholder.services import (
     PolicyHolder as PolicyHolderServices,
 )
 from policyholder.gql.gql_types import (
+    ExceptionReasonGQLType,
     PolicyHolderUserGQLType,
     PolicyHolderGQLType,
     PolicyHolderInsureeGQLType,
@@ -105,6 +110,10 @@ class Query(graphene.ObjectType):
         applyDefaultValidityFilter=graphene.Boolean(),
         contactName=graphene.String(),
         shortName=graphene.String(),
+    )
+    
+    exception_reason = OrderedDjangoFilterConnectionField(
+        ExceptionReasonGQLType
     )
 
     # can_unlock_policyholder = graphene.Field(
@@ -163,6 +172,21 @@ class Query(graphene.ObjectType):
     #     return UnlockPolicyHolderMutation(
     #         success=True, message="Policyholder can be unlocked."
     #     )
+    
+    def resolve_exception_reason(self, info, **kwargs):
+        """
+        Resolve the exception reason query.
+        This method retrieves all exception reasons from the database.
+        """
+        
+        filters = {}
+        
+        for key, value in kwargs.items():
+            if value is not None:
+                filters[key] = value
+        
+        exception_reasons =  ExceptionReason.objects.filter(**filters).all()
+        return gql_optimizer.query(exception_reasons, info)
 
     def resolve_policy_holder_by_family(self, info, **kwargs):
         # family_uuid=kwargs.get('family_uuid')
@@ -553,6 +577,10 @@ class Mutation(graphene.ObjectType):
     policyholder_approval = PHApprovalMutation.Field()
     verify_user_and_update_password = VerifyUserAndUpdatePasswordMutation.Field()
     new_password_request = NewPasswordRequestMutation.Field()
+    
+    create_exception_reason = CreateExceptionReasonMutation.Field()
+    update_exception_reason = UpdateExceptionReasonMutation.Field()
+    delete_exception_reason = DeleteExceptionReasonMutation.Field()
 
 
 def on_policy_holder_mutation(sender, **kwargs):
