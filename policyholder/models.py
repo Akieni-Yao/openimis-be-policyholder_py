@@ -317,11 +317,12 @@ class PolicyHolderExcption(models.Model):
 
 
 class ExceptionReason(models.Model):
-    id = models.AutoField(db_column="ExceptionReasonID", primary_key=True)
-    exception_reason = models.CharField(
-        db_column="ExceptionReason", max_length=255, null=True
+    id = models.AutoField(db_column="ID", primary_key=True)
+    reason = models.CharField(
+        db_column="reason", max_length=255, null=True
     )
     period = models.IntegerField(db_column="period")
+    # scope could be insuree or policy holder
     scope = models.CharField(db_column="scopeReason", max_length=50, null=True)
 
     created_at = models.DateTimeField(db_column="CreatedTime", auto_now_add=True)

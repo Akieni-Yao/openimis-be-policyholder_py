@@ -23,13 +23,16 @@ class PolicyHolderInputType(OpenIMISMutation.Input):
     date_valid_from = graphene.Date(required=False)
     date_valid_to = graphene.Date(required=False)
     json_ext = graphene.types.json.JSONString(required=False)
-    
-    
-class ExceptionReasonInputType(OpenIMISMutation.Input):
+
+
+class ExceptionReasonInputType(graphene.InputObjectType):
     id = graphene.Int(required=False)
-    except_reason = graphene.String(required=True, max_length=255)
+    reason = graphene.String(required=True)
     period = graphene.Int(required=True, name="period")
-    scope = graphene.String(required=True, max_length=50)
+    scope = graphene.String(required=True)
+
+    class Meta:
+        name = "ExceptionReasonInputType"
 
 
 class PolicyHolderUpdateInputType(OpenIMISMutation.Input):
@@ -60,19 +63,23 @@ class PolicyHolderInsureeInputType(OpenIMISMutation.Input):
     id = graphene.UUID(required=False)
     policy_holder_id = graphene.UUID(required=False)
     insuree_id = graphene.Int(required=False, name="insureeId")
-    contribution_plan_bundle_id = graphene.UUID(requried=False, name="contributionPlanBundleId")
+    contribution_plan_bundle_id = graphene.UUID(
+        requried=False, name="contributionPlanBundleId"
+    )
     last_policy_id = graphene.Int(required=False, name="lastPolicyId")
     date_valid_from = graphene.Date(required=False)
     date_valid_to = graphene.Date(required=False)
     json_ext = graphene.types.json.JSONString(required=False)
-    employer_number = graphene.String(required =False, max_length=50)
+    employer_number = graphene.String(required=False, max_length=50)
 
 
 class PolicyHolderInsureeUpdateInputType(OpenIMISMutation.Input):
     id = graphene.UUID(required=True)
     policy_holder_id = graphene.UUID(required=False)
     insuree_id = graphene.Int(required=False, name="insureeId")
-    contribution_plan_bundle_id = graphene.UUID(requried=False, name="contributionPlanBundleId")
+    contribution_plan_bundle_id = graphene.UUID(
+        requried=False, name="contributionPlanBundleId"
+    )
     last_policy_id = graphene.Int(required=False, name="lastPolicyId")
     date_valid_from = graphene.Date(required=False)
     date_valid_to = graphene.Date(required=False)
@@ -82,7 +89,9 @@ class PolicyHolderInsureeUpdateInputType(OpenIMISMutation.Input):
 
 class PolicyHolderInsureeReplaceInputType(ReplaceInputType):
     insuree_id = graphene.Int(required=True, name="insureeId")
-    contribution_plan_bundle_id = graphene.UUID(requried=True, name="contributionPlanBundleId")
+    contribution_plan_bundle_id = graphene.UUID(
+        requried=True, name="contributionPlanBundleId"
+    )
     json_ext = graphene.types.json.JSONString(required=False)
     date_valid_from = graphene.Date(required=True)
     date_valid_to = graphene.Date(required=False)
@@ -91,7 +100,9 @@ class PolicyHolderInsureeReplaceInputType(ReplaceInputType):
 class PolicyHolderContributionPlanInputType(OpenIMISMutation.Input):
     id = graphene.UUID(required=False)
     policy_holder_id = graphene.UUID(required=False)
-    contribution_plan_bundle_id = graphene.UUID(requried=False, name="contributionPlanBundleId")
+    contribution_plan_bundle_id = graphene.UUID(
+        requried=False, name="contributionPlanBundleId"
+    )
     date_valid_from = graphene.Date(required=False)
     date_valid_to = graphene.Date(required=False)
     json_ext = graphene.types.json.JSONString(required=False)
@@ -101,14 +112,18 @@ class PolicyHolderContributionPlanInputType(OpenIMISMutation.Input):
 class PolicyHolderContributionPlanUpdateInputType(OpenIMISMutation.Input):
     id = graphene.UUID(required=True)
     policy_holder_id = graphene.UUID(required=False)
-    contribution_plan_bundle_id = graphene.UUID(requried=False, name="contributionPlanBundleId")
+    contribution_plan_bundle_id = graphene.UUID(
+        requried=False, name="contributionPlanBundleId"
+    )
     date_valid_from = graphene.Date(required=False)
     date_valid_to = graphene.Date(required=False)
     json_ext = graphene.types.json.JSONString(required=False)
 
 
 class PolicyHolderContributionPlanReplaceInputType(ReplaceInputType):
-    contribution_plan_bundle_id = graphene.UUID(requried=True, name="contributionPlanBundleId")
+    contribution_plan_bundle_id = graphene.UUID(
+        requried=True, name="contributionPlanBundleId"
+    )
     policy_holder_id = graphene.UUID(required=False)
     date_valid_from = graphene.Date(required=True)
     date_valid_to = graphene.Date(required=False)

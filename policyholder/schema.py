@@ -38,14 +38,14 @@ from policyholder.gql.gql_mutations.create_mutations import (
     CreatePHPortalUserMutation,
 )
 from policyholder.gql.gql_mutations.delete_mutations import (
-    DeleteExceptionReasonMutation,
+    # DeleteExceptionReasonMutation,
     DeletePolicyHolderMutation,
     DeletePolicyHolderInsureeMutation,
     DeletePolicyHolderUserMutation,
     DeletePolicyHolderContributionPlanMutation,
 )
 from policyholder.gql.gql_mutations.update_mutations import (
-    UpdateExceptionReasonMutation,
+    # UpdateExceptionReasonMutation,
     UpdatePolicyHolderMutation,
     UpdatePolicyHolderInsureeMutation,
     UpdatePolicyHolderUserMutation,
@@ -579,8 +579,8 @@ class Mutation(graphene.ObjectType):
     new_password_request = NewPasswordRequestMutation.Field()
     
     create_exception_reason = CreateExceptionReasonMutation.Field()
-    update_exception_reason = UpdateExceptionReasonMutation.Field()
-    delete_exception_reason = DeleteExceptionReasonMutation.Field()
+    # update_exception_reason = UpdateExceptionReasonMutation.Field()
+    # delete_exception_reason = DeleteExceptionReasonMutation.Field()
 
 
 def on_policy_holder_mutation(sender, **kwargs):

@@ -1,6 +1,8 @@
 import logging
 import re
 
+from django.forms import ValidationError
+
 import graphene
 from django.db.models import Q
 import uuid
@@ -56,34 +58,39 @@ PORTAL_FOSA_URL = os.getenv("PORTAL_FOSA_URL", "")
 IMIS_URL = os.getenv("IMIS_URL", "")
 
 
-class UpdateExceptionReasonMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
-    _mutation_class = "ExceptionReasonMutation"
-    _mutation_module = "exception_reason"
-    _model = ExceptionReason
+class UpdateExceptionReasonMutation(graphene.Mutation):
+    success = graphene.Boolean()
+    message = graphene.String()
 
-    class Input(ExceptionReasonInputType):
-        pass
-
-    @classmethod
-    def _validate_mutation(cls, user, **data):
-        super()._validate_mutation(user, **data)
-        PermissionValidation.validate_perms(
-            user, PolicyholderConfig.gql_mutation_create_exception_reason_perms
-        )
+    class Arguments:
+        input = graphene.Argument(ExceptionReasonInputType, required=True)
 
     @classmethod
-    def _mutate(cls, user, data):
-        obj = cls._model.objects.filter(id=data["id"]).first()
-        if not obj:
-            raise Exception("Exception Reason not found")
-        [setattr(obj, key, data[key]) for key in data if key != "id"]
-        if "client_mutation_id" in data:
-            data.pop("client_mutation_id")
-        if "client_mutation_label" in data:
-            data.pop("client_mutation_label")
-        obj.save(username=user.username)
-        
-        return obj
+    def mutate(cls, root, info, input):
+        print(f"updateExceptionReasonMutation : input : {input}")
+
+        try:
+            scope = input.pop("scope")
+            id = input.pop("id")
+            if scope not in ["POLICY_HOLDER", "INSUREE"]:
+                raise ValidationError(
+                    "Invalid scope provided. Must be 'POLICY_HOLDER' or 'INSUREE'."
+                )
+            obj = ExceptionReason.objects.filter(id=id).first()
+            if not obj:
+                raise ValidationError("ExceptionReason with this ID does not exist.")
+            
+            obj.reason = input.get("reason")
+            obj.period = input.get("period")
+            obj.scope = scope
+            obj.save()
+            
+            logger.info(f"ExceptionReason updated successfully: {obj.id}")
+
+            return cls(success=True, message="Mutation successful!")
+        except Exception as e:
+            logger.error(f"Failed to create exception reason: {e}")
+            return cls(success=False, message=str(e))
 
 class UpdatePolicyHolderMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
     _mutation_class = "PolicyHolderMutation"
