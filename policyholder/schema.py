@@ -113,7 +113,8 @@ class Query(graphene.ObjectType):
     )
     
     exception_reason = OrderedDjangoFilterConnectionField(
-        ExceptionReasonGQLType
+        ExceptionReasonGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
     )
 
     # can_unlock_policyholder = graphene.Field(
@@ -173,20 +174,20 @@ class Query(graphene.ObjectType):
     #         success=True, message="Policyholder can be unlocked."
     #     )
     
-    def resolve_exception_reason(self, info, **kwargs):
-        """
-        Resolve the exception reason query.
-        This method retrieves all exception reasons from the database.
-        """
+    # def resolve_exception_reason(self, info, **kwargs):
+    #     """
+    #     Resolve the exception reason query.
+    #     This method retrieves all exception reasons from the database.
+    #     """
         
-        filters = {}
+    #     filters = {}
         
-        for key, value in kwargs.items():
-            if value is not None:
-                filters[key] = value
+    #     for key, value in kwargs.items():
+    #         if value is not None:
+    #             filters[key] = value
         
-        exception_reasons =  ExceptionReason.objects.filter(**filters).all()
-        return gql_optimizer.query(exception_reasons, info)
+    #     exception_reasons =  ExceptionReason.objects.filter(**filters).all()
+    #     return gql_optimizer.query(exception_reasons, info)
 
     def resolve_policy_holder_by_family(self, info, **kwargs):
         # family_uuid=kwargs.get('family_uuid')
