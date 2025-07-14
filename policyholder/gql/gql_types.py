@@ -62,6 +62,10 @@ class ExceptionReasonGQLType(DjangoObjectType):
         }
 
         connection_class = ExtendedConnection
+        
+    # @classmethod
+    # def get_queryset(cls, queryset, info):
+    #     return ExceptionReason.get_queryset(queryset, info)
 
 
 class PolicyHolderByFamilyGQLType(DjangoObjectType):
