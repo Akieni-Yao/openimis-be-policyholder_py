@@ -11,6 +11,7 @@ from core.schema import (
     OrderedDjangoFilterConnectionField,
     signal_mutation_module_validate,
 )
+from dateutil.relativedelta import relativedelta
 from core.utils import append_validity_filter
 from payment.gql_queries import PaymentPenaltyAndSanctionType, PaymentGQLType
 from payment.models import PaymentPenaltyAndSanction, Payment
@@ -80,7 +81,14 @@ from policyholder.gql.gql_types import (
     CategoryChangeGQLType,
 )
 
-# from policy.models import Policy
+from contract.models import (
+    Contract,
+    ContractContributionPlanDetails,
+    ContractPolicy,
+    InsureeWaitingPeriod,
+)
+
+from policy.models import Policy
 
 from django.core.exceptions import PermissionDenied
 from django.utils.translation import gettext as _
@@ -113,7 +121,7 @@ class Query(graphene.ObjectType):
         contactName=graphene.String(),
         shortName=graphene.String(),
     )
-    
+
     exception_reason = OrderedDjangoFilterConnectionField(
         ExceptionReasonGQLType,
         orderBy=graphene.List(of_type=graphene.String),
@@ -175,19 +183,19 @@ class Query(graphene.ObjectType):
     #     return UnlockPolicyHolderMutation(
     #         success=True, message="Policyholder can be unlocked."
     #     )
-    
+
     # def resolve_exception_reason(self, info, **kwargs):
     #     """
     #     Resolve the exception reason query.
     #     This method retrieves all exception reasons from the database.
     #     """
-        
+
     #     filters = {}
-        
+
     #     for key, value in kwargs.items():
     #         if value is not None:
     #             filters[key] = value
-        
+
     #     exception_reasons =  ExceptionReason.objects.filter(**filters).all()
     #     return gql_optimizer.query(exception_reasons, info)
 
@@ -316,8 +324,30 @@ class Query(graphene.ObjectType):
     ):
         ph_exception = PolicyHolderExcption.objects.filter(id=id).first()
         if ph_exception:
+            reason = ExceptionReason.objects.filter(id=ph_exception.reason.id).first()
+            if not reason:
+                return ApprovePolicyholderExceptionType(
+                    success=False, message="Exception Reason Not Found!"
+                )
             ph_exception.status = "APPROVED" if is_approved else "REJECTED"
             if is_approved:
+                # approve exception
+                custom_filter = {"status": Policy.STATUS_ACTIVE, "is_valid": True}
+                _contractPolicy = ContractPolicy.objects.filter(
+                    policy_holder__id=ph_exception.policy_holder.id
+                ).all()
+                _all_policies_ids = _contractPolicy.values_list("policy__id", flat=True)
+                custom_filter["id__in"] = _all_policies_ids
+                policies = Policy.objects.filter(**custom_filter)
+
+                for policy in policies:
+                    policy.initial_expiry_date = policy.expiry_date
+                    policy.expiry_date = policy.expiry_date + relativedelta(
+                        months=reason.period
+                    )
+                    policy.save()
+                # approve exception
+
                 assign_ph_exception_policy(ph_exception)
             else:
                 ph_exception.rejection_reason = rejection_reason
@@ -443,7 +473,7 @@ class Query(graphene.ObjectType):
             ).values_list("insuree_id", flat=True)
             if insuree_ids:
                 query = query.exclude(insuree_id__in=insuree_ids)
-                
+
         if kwargs.get("insuree__id") is not None:
             query = query.filter(insuree__id=kwargs.get("insuree__id"))
         # # check validity_to is null
@@ -580,7 +610,7 @@ class Mutation(graphene.ObjectType):
     policyholder_approval = PHApprovalMutation.Field()
     verify_user_and_update_password = VerifyUserAndUpdatePasswordMutation.Field()
     new_password_request = NewPasswordRequestMutation.Field()
-    
+
     create_exception_reason = CreateExceptionReasonMutation.Field()
     update_exception_reason = UpdateExceptionReasonMutation.Field()
     delete_exception_reason = DeleteExceptionReasonMutation.Field()
