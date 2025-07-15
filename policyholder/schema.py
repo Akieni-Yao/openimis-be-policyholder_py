@@ -81,15 +81,6 @@ from policyholder.gql.gql_types import (
     CategoryChangeGQLType,
 )
 
-from contract.models import (
-    Contract,
-    ContractContributionPlanDetails,
-    ContractPolicy,
-    InsureeWaitingPeriod,
-)
-
-from policy.models import Policy
-
 from django.core.exceptions import PermissionDenied
 from django.utils.translation import gettext as _
 
@@ -322,6 +313,9 @@ class Query(graphene.ObjectType):
     def resolve_approve_policyholder_exception(
         self, info, id, is_approved, rejection_reason
     ):
+        from policy.models import Policy
+        from contract.models import ContractPolicy
+
         ph_exception = PolicyHolderExcption.objects.filter(id=id).first()
         if ph_exception:
             reason = ExceptionReason.objects.filter(id=ph_exception.reason.id).first()
