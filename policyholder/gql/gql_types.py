@@ -8,8 +8,16 @@ from graphene_django import DjangoObjectType
 from insuree.schema import InsureeGQLType
 from location.gql_queries import LocationGQLType
 
-from policyholder.models import ExceptionReason, PolicyHolder, PolicyHolderInsuree, PolicyHolderUser, PolicyHolderContributionPlan, \
-    PolicyHolderMutation, PolicyHolderExcption, CategoryChange
+from policyholder.models import (
+    ExceptionReason,
+    PolicyHolder,
+    PolicyHolderInsuree,
+    PolicyHolderUser,
+    PolicyHolderContributionPlan,
+    PolicyHolderMutation,
+    PolicyHolderExcption,
+    CategoryChange,
+)
 
 
 class PolicyHolderGQLType(DjangoObjectType):
@@ -39,7 +47,7 @@ class PolicyHolderGQLType(DjangoObjectType):
             "is_review": ["exact"],
             "is_submit": ["exact"],
             "is_rejected": ["exact"],
-            "is_rework": ["exact"]
+            "is_rework": ["exact"],
         }
 
         connection_class = ExtendedConnection
@@ -47,7 +55,8 @@ class PolicyHolderGQLType(DjangoObjectType):
     @classmethod
     def get_queryset(cls, queryset, info):
         return PolicyHolder.get_queryset(queryset, info)
-    
+
+
 class ExceptionReasonGQLType(DjangoObjectType):
     class Meta:
         model = ExceptionReason
@@ -58,11 +67,11 @@ class ExceptionReasonGQLType(DjangoObjectType):
             "period": ["exact"],
             "scope": ["exact", "istartswith", "icontains", "iexact"],
             "created_at": ["exact", "lt", "lte", "gt", "gte"],
-            "modified_at": ["exact", "lt", "lte", "gt", "gte"]
+            "modified_at": ["exact", "lt", "lte", "gt", "gte"],
         }
 
         connection_class = ExtendedConnection
-        
+
     # @classmethod
     # def get_queryset(cls, queryset, info):
     #     return ExceptionReason.get_queryset(queryset, info)
@@ -86,7 +95,7 @@ class PolicyHolderByFamilyGQLType(DjangoObjectType):
             "payment_reference": ["exact"],
             "date_created": ["exact", "lt", "lte", "gt", "gte"],
             "date_updated": ["exact", "lt", "lte", "gt", "gte"],
-            "is_deleted": ["exact"]
+            "is_deleted": ["exact"],
         }
 
         connection_class = ExtendedConnection
@@ -114,7 +123,7 @@ class PolicyHolderByInureeGQLType(DjangoObjectType):
             "payment_reference": ["exact"],
             "date_created": ["exact", "lt", "lte", "gt", "gte"],
             "date_updated": ["exact", "lt", "lte", "gt", "gte"],
-            "is_deleted": ["exact"]
+            "is_deleted": ["exact"],
         }
 
         connection_class = ExtendedConnection
@@ -125,16 +134,21 @@ class PolicyHolderByInureeGQLType(DjangoObjectType):
 
 
 class PolicyHolderInsureeFilter(FilterSet):
-    json_ext_contains = CharFilter(method='filter_json_ext_contains')
+    json_ext_contains = CharFilter(method="filter_json_ext_contains")
 
     class Meta:
         model = PolicyHolderInsuree
         fields = {
             "id": ["exact"],
             "version": ["exact"],
-            **prefix_filterset("policy_holder__", PolicyHolderGQLType._meta.filter_fields),
+            **prefix_filterset(
+                "policy_holder__", PolicyHolderGQLType._meta.filter_fields
+            ),
             **prefix_filterset("insuree__", InsureeGQLType._meta.filter_fields),
-            **prefix_filterset("contribution_plan_bundle__", ContributionPlanBundleGQLType._meta.filter_fields),
+            **prefix_filterset(
+                "contribution_plan_bundle__",
+                ContributionPlanBundleGQLType._meta.filter_fields,
+            ),
             "date_created": ["exact", "lt", "lte", "gt", "gte"],
             "date_updated": ["exact", "lt", "lte", "gt", "gte"],
             "user_created": ["exact"],
@@ -167,8 +181,13 @@ class PolicyHolderContributionPlanGQLType(DjangoObjectType):
         filter_fields = {
             "id": ["exact"],
             "version": ["exact"],
-            **prefix_filterset("policy_holder__", PolicyHolderGQLType._meta.filter_fields),
-            **prefix_filterset("contribution_plan_bundle__", ContributionPlanBundleGQLType._meta.filter_fields),
+            **prefix_filterset(
+                "policy_holder__", PolicyHolderGQLType._meta.filter_fields
+            ),
+            **prefix_filterset(
+                "contribution_plan_bundle__",
+                ContributionPlanBundleGQLType._meta.filter_fields,
+            ),
             "date_created": ["exact", "lt", "lte", "gt", "gte"],
             "date_updated": ["exact", "lt", "lte", "gt", "gte"],
             "user_created": ["exact"],
@@ -190,7 +209,9 @@ class PolicyHolderUserGQLType(DjangoObjectType):
         filter_fields = {
             "id": ["exact"],
             "user": ["exact"],
-            **prefix_filterset("policy_holder__", PolicyHolderGQLType._meta.filter_fields),
+            **prefix_filterset(
+                "policy_holder__", PolicyHolderGQLType._meta.filter_fields
+            ),
             **prefix_filterset("user__", UserGQLType._meta.filter_fields),
             "date_created": ["exact", "lt", "lte", "gt", "gte"],
             "date_updated": ["exact", "lt", "lte", "gt", "gte"],
@@ -230,7 +251,7 @@ class NotDeclaredPolicyHolderGQLType(DjangoObjectType):
             "payment_reference": ["exact"],
             "date_created": ["exact", "lt", "lte", "gt", "gte"],
             "date_updated": ["exact", "lt", "lte", "gt", "gte"],
-            "is_deleted": ["exact"]
+            "is_deleted": ["exact"],
         }
 
         connection_class = ExtendedConnection
@@ -247,7 +268,10 @@ class PolicyHolderExcptionType(DjangoObjectType):
             "id": ["exact"],
             "status": ["exact", "istartswith", "icontains", "iexact"],
             "exception_reason": ["exact", "istartswith", "icontains", "iexact"],
-            **prefix_filterset("policy_holder__", PolicyHolderGQLType._meta.filter_fields),
+            **prefix_filterset(
+                "policy_holder__", PolicyHolderGQLType._meta.filter_fields
+            ),
+            **prefix_filterset("reason__", ExceptionReasonGQLType._meta.filter_fields),
         }
         interfaces = (graphene.relay.Node,)
         connection_class = ExtendedConnection
@@ -263,7 +287,9 @@ class CategoryChangeGQLType(DjangoObjectType):
             "request_type": ["exact", "istartswith", "icontains", "iexact"],
             "status": ["exact", "istartswith", "icontains", "iexact"],
             **prefix_filterset("insuree__", InsureeGQLType._meta.filter_fields),
-            **prefix_filterset("policy_holder__", PolicyHolderGQLType._meta.filter_fields),
+            **prefix_filterset(
+                "policy_holder__", PolicyHolderGQLType._meta.filter_fields
+            ),
         }
         interfaces = (graphene.relay.Node,)
         connection_class = ExtendedConnection
