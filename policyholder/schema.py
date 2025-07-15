@@ -80,6 +80,8 @@ from policyholder.gql.gql_types import (
     CategoryChangeGQLType,
 )
 
+# from policy.models import Policy
+
 from django.core.exceptions import PermissionDenied
 from django.utils.translation import gettext as _
 
