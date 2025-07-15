@@ -414,9 +414,18 @@ class CreatePolicyHolderExcption(graphene.Mutation):
     def mutate(self, info, input_data):
         try:
             user = info.context.user
+            reason = ExceptionReason.objects.filter(
+                id=input_data.pop("reason_id")
+            ).first()
+            print(f"CreatePolicyHolderExcption : reason : {reason}")
+            if not reason:
+                return CreatePolicyHolderExcption(
+                    policy_holder_excption=None, errors=["Reason not found"]
+                )
             policy_holder = PolicyHolder.objects.filter(
                 id=input_data["policy_holder_id"]
             ).first()
+            print(f"CreatePolicyHolderExcption : policy_holder : {policy_holder}")
             if not policy_holder:
                 return CreatePolicyHolderExcption(
                     policy_holder_excption=None, errors=["Policy holder not found"]
@@ -425,6 +434,7 @@ class CreatePolicyHolderExcption(graphene.Mutation):
             phcp = PolicyHolderContributionPlan.objects.filter(
                 policy_holder=policy_holder, is_deleted=False
             ).order_by("-date_created")
+            print(f"CreatePolicyHolderExcption : phcp : {phcp}")
             if phcp:
                 periodicity = phcp[0].contribution_plan_bundle.periodicity
                 if periodicity != 1:
@@ -437,6 +447,8 @@ class CreatePolicyHolderExcption(graphene.Mutation):
                     policy_holder_excption=None,
                     message="PolicyHolder's contribution plan not found.",
                 )
+                
+            print(f"CreatePolicyHolderExcption : policy_holder 2: {policy_holder}")
 
             month = None
             contract_id = None
@@ -493,6 +505,7 @@ class CreatePolicyHolderExcption(graphene.Mutation):
                 modified_time=current_time,
                 month=month,
                 contract_id=contract_id,
+                reason=reason,
                 **input_data,
             )
             policy_holder_excption.save()
@@ -719,7 +732,7 @@ class CreateExceptionReasonMutation(graphene.Mutation):
                     "Invalid scope provided. Must be 'POLICY_HOLDER' or 'INSUREE'."
                 )
             obj = ExceptionReason.objects.create(
-                reason = input.get("reason"),
+                reason=input.get("reason"),
                 period=input.get("period"),
                 scope=scope,
             )

@@ -286,10 +286,28 @@ class PolicyHolderUserMutation(core_models.UUIDModel):
         db_table = "policy_holder_user_PolicyHolderUserMutation"
 
 
+class ExceptionReason(models.Model):
+    id = models.AutoField(db_column="ID", primary_key=True)
+    reason = models.CharField(db_column="reason", max_length=255, null=True)
+    period = models.IntegerField(db_column="period")
+    # scope could be insuree or policy holder
+    scope = models.CharField(db_column="scopeReason", max_length=50, null=True)
+
+    created_at = models.DateTimeField(db_column="CreatedTime", auto_now_add=True)
+    modified_at = models.DateTimeField(db_column="ModifiedTime", auto_now=True)
+
+    class Meta:
+        managed = True
+        db_table = "tblExceptionReason"
+
+
 class PolicyHolderExcption(models.Model):
     id = models.AutoField(db_column="InsureeExptionID", primary_key=True)
     policy_holder = models.ForeignKey(
         PolicyHolder, on_delete=models.DO_NOTHING, db_column="PolicyHolder"
+    )
+    reason = models.ForeignKey(
+        ExceptionReason, on_delete=models.DO_NOTHING, db_column="reason", null=True
     )
     code = models.CharField(db_column="ExceptionCode", max_length=255, null=True)
     status = models.CharField(db_column="Status", max_length=255, null=True)
@@ -314,23 +332,6 @@ class PolicyHolderExcption(models.Model):
     class Meta:
         managed = True
         db_table = "tblPolicyHolderException"
-
-
-class ExceptionReason(models.Model):
-    id = models.AutoField(db_column="ID", primary_key=True)
-    reason = models.CharField(
-        db_column="reason", max_length=255, null=True
-    )
-    period = models.IntegerField(db_column="period")
-    # scope could be insuree or policy holder
-    scope = models.CharField(db_column="scopeReason", max_length=50, null=True)
-
-    created_at = models.DateTimeField(db_column="CreatedTime", auto_now_add=True)
-    modified_at = models.DateTimeField(db_column="ModifiedTime", auto_now=True)
-
-    class Meta:
-        managed = True
-        db_table = "tblExceptionReason"
 
 
 class CategoryChange(models.Model):
