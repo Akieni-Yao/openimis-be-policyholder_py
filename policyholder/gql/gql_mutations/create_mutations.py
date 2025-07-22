@@ -501,7 +501,7 @@ class CreatePolicyHolderExcption(graphene.Mutation):
             current_time = datetime.datetime.now()
             # today_date = current_time.date().strftime("%d-%m-%Y")
             today_date = current_time.strftime("%d%m%y%H%M%S")
-            ph_exc_code = f"PE{policy_holder.code}{today_date}"
+            ph_exc_code = f"PE-{policy_holder.code}{today_date}"
             policy_holder_excption = PolicyHolderExcption(
                 code=ph_exc_code,
                 policy_holder=policy_holder,
