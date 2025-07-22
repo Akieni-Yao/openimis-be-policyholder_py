@@ -521,7 +521,7 @@ class CreatePolicyHolderExcption(graphene.Mutation):
                 f"PolicyHolderExcption created successfully: {policy_holder_excption.id}"
             )
             return CreatePolicyHolderExcption(
-                policy_holder_excption=policy_holder_excption, message=None
+                policy_holder_excption=policy_holder_excption, message="Exception created successfully!"
             )
 
         except Exception as e:
