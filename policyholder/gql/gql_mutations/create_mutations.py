@@ -499,8 +499,9 @@ class CreatePolicyHolderExcption(graphene.Mutation):
                 )
 
             current_time = datetime.datetime.now()
-            today_date = current_time.date().strftime("%d-%m-%Y")
-            ph_exc_code = f"{policy_holder.code}-({today_date})"
+            # today_date = current_time.date().strftime("%d-%m-%Y")
+            today_date = current_time.strftime("%d%m%y%H%M%S")
+            ph_exc_code = f"PE-{policy_holder.code}{today_date}"
             policy_holder_excption = PolicyHolderExcption(
                 code=ph_exc_code,
                 policy_holder=policy_holder,
@@ -520,7 +521,7 @@ class CreatePolicyHolderExcption(graphene.Mutation):
                 f"PolicyHolderExcption created successfully: {policy_holder_excption.id}"
             )
             return CreatePolicyHolderExcption(
-                policy_holder_excption=policy_holder_excption, message=None
+                policy_holder_excption=policy_holder_excption, message="Exception created successfully!"
             )
 
         except Exception as e:

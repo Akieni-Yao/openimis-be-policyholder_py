@@ -317,40 +317,41 @@ class Query(graphene.ObjectType):
         from contract.models import ContractPolicy
 
         ph_exception = PolicyHolderExcption.objects.filter(id=id).first()
-        if ph_exception:
-            reason = ExceptionReason.objects.filter(id=ph_exception.reason.id).first()
-            if not reason:
-                return ApprovePolicyholderExceptionType(
-                    success=False, message="Exception Reason Not Found!"
-                )
-            ph_exception.status = "APPROVED" if is_approved else "REJECTED"
-            if is_approved:
-                # approve exception
-                custom_filter = {"status": Policy.STATUS_ACTIVE, "is_valid": True}
-                _contractPolicy = ContractPolicy.objects.filter(
-                    policy_holder__id=ph_exception.policy_holder.id
-                ).all()
-                _all_policies_ids = _contractPolicy.values_list("policy__id", flat=True)
-                custom_filter["id__in"] = _all_policies_ids
-                policies = Policy.objects.filter(**custom_filter)
-
-                for policy in policies:
-                    policy.initial_expiry_date = policy.expiry_date
-                    policy.expiry_date = policy.expiry_date + relativedelta(
-                        months=reason.period
-                    )
-                    policy.save()
-                # approve exception
-
-                assign_ph_exception_policy(ph_exception)
-            else:
-                ph_exception.rejection_reason = rejection_reason
-            ph_exception.save()
+        if not ph_exception:
             return ApprovePolicyholderExceptionType(
-                success=True, message="Exception Approved!"
+                success=False, message="Exception Not Found!"
             )
+
+        reason = ExceptionReason.objects.filter(id=ph_exception.reason.id).first()
+        if not reason:
+            return ApprovePolicyholderExceptionType(
+                success=False, message="Exception Reason Not Found!"
+            )
+        ph_exception.status = "APPROVED" if is_approved else "REJECTED"
+        if is_approved:
+            # approve exception
+            custom_filter = {"status": Policy.STATUS_ACTIVE, "is_valid": True}
+            _contractPolicy = ContractPolicy.objects.filter(
+                policy_holder__id=ph_exception.policy_holder.id
+            ).all()
+            _all_policies_ids = _contractPolicy.values_list("policy__id", flat=True)
+            custom_filter["id__in"] = _all_policies_ids
+            policies = Policy.objects.filter(**custom_filter)
+
+            for policy in policies:
+                policy.initial_expiry_date = policy.expiry_date
+                policy.expiry_date = policy.expiry_date + relativedelta(
+                    months=reason.period
+                )
+                policy.save()
+            # approve exception
+
+            # assign_ph_exception_policy(ph_exception)
+        else:
+            ph_exception.rejection_reason = rejection_reason
+        ph_exception.save()
         return ApprovePolicyholderExceptionType(
-            success=False, message="Exception Not Found!"
+            success=True, message="Exception Approved!"
         )
 
     category_change_requests = OrderedDjangoFilterConnectionField(
