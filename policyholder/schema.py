@@ -328,6 +328,24 @@ class Query(graphene.ObjectType):
                 success=False, message="Exception Reason Not Found!"
             )
         ph_exception.status = "APPROVED" if is_approved else "REJECTED"
+
+        # get last policy active and valide not expired and initial_expiry_date is not null
+        last_policy_excepted = (
+            Policy.objects.filter(
+                policy_holder=ph_exception.policy_holder,
+                status=Policy.STATUS_ACTIVE,
+                is_valid=True,
+                initial_expiry_date__isnull=False,
+            )
+            .order_by("-expiry_date")
+            .first()
+        )
+
+        if last_policy_excepted:
+            return ApprovePolicyholderExceptionType(
+                success=False, message="Last policy excepted is not expired!"
+            )
+            
         if is_approved:
             # approve exception
             custom_filter = {"status": Policy.STATUS_ACTIVE, "is_valid": True}
