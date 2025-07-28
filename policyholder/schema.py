@@ -356,6 +356,8 @@ class Query(graphene.ObjectType):
                     .order_by("-expiry_date")
                     .first()
                 )
+                
+                print(f"=====> policy : {policy.uuid}")
 
                 check_insuree_exception = InsureeExcption.objects.filter(
                     insuree=ph_insuree.insuree, is_used=True
@@ -371,6 +373,7 @@ class Query(graphene.ObjectType):
                     )
                     policy.ph_exception = ph_exception
                     policy.save()
+                    print(f"=====> policy : {policy.uuid}")
 
             # custom_filter = {"status": Policy.STATUS_ACTIVE, "is_valid": True}
             # _contractPolicy = ContractPolicy.objects.filter(
