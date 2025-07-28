@@ -315,6 +315,8 @@ class Query(graphene.ObjectType):
     ):
         from policy.models import Policy
         from contract.models import ContractPolicy
+        from insuree.models import InsureeExcption
+        from insuree.models import Family
 
         ph_exception = PolicyHolderExcption.objects.filter(id=id).first()
         if not ph_exception:
@@ -329,27 +331,77 @@ class Query(graphene.ObjectType):
             )
         ph_exception.status = "APPROVED" if is_approved else "REJECTED"
         if is_approved:
+            ph_exception.is_used = True
             # approve exception
-            custom_filter = {"status": Policy.STATUS_ACTIVE, "is_valid": True}
-            _contractPolicy = ContractPolicy.objects.filter(
-                policy_holder__id=ph_exception.policy_holder.id
+            ph_insurees = PolicyHolderInsuree.objects.filter(
+                policy_holder=ph_exception.policy_holder,
+                is_deleted=False,
             ).all()
-            _all_policies_ids = _contractPolicy.values_list("policy__id", flat=True)
-            custom_filter["id__in"] = _all_policies_ids
-            policies = Policy.objects.filter(**custom_filter)
+            for ph_insuree in ph_insurees:
+                if not ph_insuree.insuree or not ph_insuree.insuree.family:
+                    continue
+                family = Family.objects.filter(id=ph_insuree.insuree.family.id).first()
 
-            for policy in policies:
-                policy.initial_expiry_date = policy.expiry_date
-                policy.expiry_date = policy.expiry_date + relativedelta(
-                    months=reason.period
+                if not family:
+                    continue
+
+                custom_filter = {
+                    "status": Policy.STATUS_ACTIVE,
+                    "is_valid": True,
+                    "family__id": family.id,
+                }
+
+                policy = (
+                    Policy.objects.filter(**custom_filter)
+                    .order_by("-expiry_date")
+                    .first()
                 )
-                policy.save()
-            # approve exception
+                
+                print(f"=====> policy : {policy.uuid}")
+
+                check_insuree_exception = InsureeExcption.objects.filter(
+                    insuree=ph_insuree.insuree, is_used=True
+                ).first()
+
+                if check_insuree_exception:
+                    continue
+
+                if policy:
+                    policy.initial_expiry_date = policy.expiry_date
+                    policy.expiry_date = policy.expiry_date + relativedelta(
+                        months=reason.period
+                    )
+                    policy.ph_exception = ph_exception
+                    policy.save()
+                    print(f"=====> policy : {policy.uuid}")
+
+            # custom_filter = {"status": Policy.STATUS_ACTIVE, "is_valid": True}
+            # _contractPolicy = ContractPolicy.objects.filter(
+            #     policy_holder__id=ph_exception.policy_holder.id
+            # ).all()
+            # _all_policies_ids = _contractPolicy.values_list("policy__id", flat=True)
+            # custom_filter["id__in"] = _all_policies_ids
+            # policies = Policy.objects.filter(**custom_filter)
+
+            # for policy in policies:
+            #     policy.initial_expiry_date = policy.expiry_date
+            #     policy.expiry_date = policy.expiry_date + relativedelta(
+            #         months=reason.period
+            #     )
+            #     policy.save()
+            # # approve exception
 
             # assign_ph_exception_policy(ph_exception)
         else:
             ph_exception.rejection_reason = rejection_reason
         ph_exception.save()
+
+        if is_approved:
+            # remove all pending exceptions for this policy holder
+            PolicyHolderExcption.objects.filter(
+                policy_holder=ph_exception.policy_holder, status="PENDING"
+            ).delete()
+
         return ApprovePolicyholderExceptionType(
             success=True, message="Exception Approved!"
         )

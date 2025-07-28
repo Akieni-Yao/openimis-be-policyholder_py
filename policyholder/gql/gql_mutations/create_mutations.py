@@ -435,7 +435,7 @@ class CreatePolicyHolderExcption(graphene.Mutation):
                 policy_holder=policy_holder, is_deleted=False
             ).order_by("-date_created")
             print(f"CreatePolicyHolderExcption : phcp : {phcp}")
-            
+
             if not phcp:
                 return CreatePolicyHolderExcption(
                     policy_holder_excption=None,
@@ -453,7 +453,7 @@ class CreatePolicyHolderExcption(graphene.Mutation):
             #         policy_holder_excption=None,
             #         message="PolicyHolder's contribution plan not found.",
             #     )
-                
+
             print(f"CreatePolicyHolderExcption : policy_holder 2: {policy_holder}")
 
             month = None
@@ -502,6 +502,15 @@ class CreatePolicyHolderExcption(graphene.Mutation):
             # today_date = current_time.date().strftime("%d-%m-%Y")
             today_date = current_time.strftime("%d%m%y%H%M%S")
             ph_exc_code = f"PE-{policy_holder.code}{today_date}"
+            check_if_exception_already_exists = PolicyHolderExcption.objects.filter(
+                is_used=True,
+                policy_holder=policy_holder,
+            ).first()
+            if check_if_exception_already_exists:
+                return CreatePolicyHolderExcption(
+                    policy_holder_excption=None,
+                    message="Exception already exists for this policy holder.",
+                )
             policy_holder_excption = PolicyHolderExcption(
                 code=ph_exc_code,
                 policy_holder=policy_holder,
@@ -521,7 +530,8 @@ class CreatePolicyHolderExcption(graphene.Mutation):
                 f"PolicyHolderExcption created successfully: {policy_holder_excption.id}"
             )
             return CreatePolicyHolderExcption(
-                policy_holder_excption=policy_holder_excption, message="Exception created successfully!"
+                policy_holder_excption=policy_holder_excption,
+                message="Exception created successfully!",
             )
 
         except Exception as e:
