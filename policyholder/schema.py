@@ -369,6 +369,7 @@ class Query(graphene.ObjectType):
                     policy.expiry_date = policy.expiry_date + relativedelta(
                         months=reason.period
                     )
+                    policy.ph_exception = ph_exception
                     policy.save()
 
             # custom_filter = {"status": Policy.STATUS_ACTIVE, "is_valid": True}
