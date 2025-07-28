@@ -505,7 +505,6 @@ class CreatePolicyHolderExcption(graphene.Mutation):
             check_if_exception_already_exists = PolicyHolderExcption.objects.filter(
                 is_used=True,
                 policy_holder=policy_holder,
-                is_deleted=False,
             ).first()
             if check_if_exception_already_exists:
                 return CreatePolicyHolderExcption(
