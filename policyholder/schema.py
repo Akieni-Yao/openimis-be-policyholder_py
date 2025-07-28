@@ -329,6 +329,7 @@ class Query(graphene.ObjectType):
             )
         ph_exception.status = "APPROVED" if is_approved else "REJECTED"
         if is_approved:
+            ph_exception.is_used = True
             # approve exception
             custom_filter = {"status": Policy.STATUS_ACTIVE, "is_valid": True}
             _contractPolicy = ContractPolicy.objects.filter(
@@ -350,6 +351,13 @@ class Query(graphene.ObjectType):
         else:
             ph_exception.rejection_reason = rejection_reason
         ph_exception.save()
+
+        if is_approved:
+            # remove all pending exceptions for this policy holder
+            PolicyHolderExcption.objects.filter(
+                policy_holder=ph_exception.policy_holder, status="PENDING"
+            ).delete()
+
         return ApprovePolicyholderExceptionType(
             success=True, message="Exception Approved!"
         )
