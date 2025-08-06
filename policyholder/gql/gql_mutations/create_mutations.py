@@ -726,7 +726,9 @@ class CreatePHPortalUserMutation(graphene.Mutation):
             phu_obj.save(username=core_user.username)
             logger.info(f"CreatePHPortalUserMutation : phu_obj : {phu_obj}")
 
-            send_verification_email(core_user.i_user)
+            # send_verification_email(core_user.i_user)
+            token = uuid.uuid4().hex[:8].upper()
+            send_verification_and_new_password_email(core_user.i_user, token, core_user.username)
 
             return CreatePHPortalUserMutation(success=True, message="Successful!")
         except Exception as exc:
