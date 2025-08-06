@@ -696,6 +696,8 @@ class CreatePHPortalUserMutation(graphene.Mutation):
 
             ph_trade_name = input.pop("trade_name")
             ph_json_ext = input.pop("json_ext")
+            
+            input['send_email'] = False
 
             core_user = update_or_create_user(input, user)
             core_user.is_portal_user = True
@@ -724,7 +726,14 @@ class CreatePHPortalUserMutation(graphene.Mutation):
             phu_obj.save(username=core_user.username)
             logger.info(f"CreatePHPortalUserMutation : phu_obj : {phu_obj}")
 
-            send_verification_email(core_user.i_user)
+            # send_verification_email(core_user.i_user)
+            token = uuid.uuid4().hex[:8].upper()
+            
+            # core_user = User.objects.filter(id=object_data.get("user_id")).first()
+            i_user = InteractiveUser.objects.filter(id=core_user.i_user.id).first()
+            i_user.password_reset_token = token
+            i_user.save()
+            send_verification_and_new_password_email(core_user.i_user, token, core_user.username)
 
             return CreatePHPortalUserMutation(success=True, message="Successful!")
         except Exception as exc:

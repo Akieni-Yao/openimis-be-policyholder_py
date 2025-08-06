@@ -557,20 +557,17 @@ class VerifyUserAndUpdatePasswordMutation(graphene.Mutation):
             ).first()
 
             if not i_user:
+                print("===> user token expired")
                 return VerifyUserAndUpdatePasswordMutation(
                     success=False, message="Invalid user or token"
                 )
 
-            # Validate password for string tag and sql injection
-            # if not re.match(r"^[a-zA-Z0-9]+$", password): ### Deactivating password validation step
-            #     return VerifyUserAndUpdatePasswordMutation(
-            #         success=False, message="Invalid password"
-            #     )
-
+            print(f"========> VerifyUserAndUpdatePasswordMutation : i_user : {i_user}")
             i_user.is_verified = True
             i_user.set_password(password)
             i_user.password_reset_token = None
             i_user.save()
+            print(f"========> VerifyUserAndUpdatePasswordMutation : i_user : {i_user}")
 
             return VerifyUserAndUpdatePasswordMutation(
                 success=True, message="User verified and password updated successfully"
