@@ -11,7 +11,11 @@ from core.gql.gql_mutations.base_mutation import (
     BaseHistoryModelCreateMutationMixin,
 )
 from core.notification_service import create_camu_notification
-from core.schema import OpenIMISMutation, update_or_create_user, update_or_create_ph_user
+from core.schema import (
+    OpenIMISMutation,
+    update_or_create_user,
+    update_or_create_ph_user,
+)
 from core.models import Role, User, InteractiveUser
 from insuree.models import Family
 from policyholder.apps import PolicyholderConfig
@@ -700,7 +704,8 @@ class CreatePHPortalUserMutation(graphene.Mutation):
             core_user = update_or_create_ph_user(input, user)
             core_user.is_portal_user = True
             core_user.save()
-            logger.info(f"====> CreatePHPortalUserMutation : core_user : {core_user}")
+
+            print(f"====> CreatePHPortalUserMutation : core_user : {core_user}")
 
             ph_obj = PolicyHolder()
             ph_obj.trade_name = ph_trade_name
@@ -709,7 +714,9 @@ class CreatePHPortalUserMutation(graphene.Mutation):
             ph_obj.request_number = uuid.uuid4().hex[:8].upper()
             ph_obj.status = PH_STATUS_CREATED
             ph_obj.save(username=core_user.username)
-            logger.info(f"====> CreatePHPortalUserMutation : ph_obj : {ph_obj}")
+
+            print(f"====> CreatePHPortalUserMutation : ph_obj : {ph_obj}")
+
             create_policyholder_openkmfolder({"request_number": ph_obj.request_number})
             try:
                 create_camu_notification(POLICYHOLDER_CREATION_NT, ph_obj)
@@ -719,12 +726,13 @@ class CreatePHPortalUserMutation(graphene.Mutation):
             except Exception as e:
                 logger.error(f"Failed to create CAMU notification: {e}")
                 print(f"========> Failed to create CAMU notification : exc : {e}")
+                
             phu_obj = PolicyHolderUser()
             phu_obj.user = core_user
             phu_obj.policy_holder = ph_obj
             phu_obj.save(username=core_user.username)
             logger.info(f"CreatePHPortalUserMutation : phu_obj : {phu_obj}")
-
+            print(f"========> send_verification_email : core_user : {core_user}")
             send_verification_email(core_user.i_user)
 
             return CreatePHPortalUserMutation(success=True, message="Successful!")
