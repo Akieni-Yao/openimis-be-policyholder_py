@@ -700,7 +700,7 @@ class CreatePHPortalUserMutation(graphene.Mutation):
             core_user = update_or_create_ph_user(input, user)
             core_user.is_portal_user = True
             core_user.save()
-            logger.info(f"CreatePHPortalUserMutation : core_user : {core_user}")
+            logger.info(f"====> CreatePHPortalUserMutation : core_user : {core_user}")
 
             ph_obj = PolicyHolder()
             ph_obj.trade_name = ph_trade_name
@@ -709,7 +709,7 @@ class CreatePHPortalUserMutation(graphene.Mutation):
             ph_obj.request_number = uuid.uuid4().hex[:8].upper()
             ph_obj.status = PH_STATUS_CREATED
             ph_obj.save(username=core_user.username)
-            logger.info(f"CreatePHPortalUserMutation : ph_obj : {ph_obj}")
+            logger.info(f"====> CreatePHPortalUserMutation : ph_obj : {ph_obj}")
             create_policyholder_openkmfolder({"request_number": ph_obj.request_number})
             try:
                 create_camu_notification(POLICYHOLDER_CREATION_NT, ph_obj)
