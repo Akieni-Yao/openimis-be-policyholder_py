@@ -696,6 +696,8 @@ class CreatePHPortalUserMutation(graphene.Mutation):
 
             ph_trade_name = input.pop("trade_name")
             ph_json_ext = input.pop("json_ext")
+            
+            input['send_email'] = False
 
             core_user = update_or_create_user(input, user)
             core_user.is_portal_user = True
