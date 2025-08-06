@@ -11,7 +11,7 @@ from core.gql.gql_mutations.base_mutation import (
     BaseHistoryModelCreateMutationMixin,
 )
 from core.notification_service import create_camu_notification
-from core.schema import OpenIMISMutation, update_or_create_user
+from core.schema import OpenIMISMutation, update_or_create_user, update_or_create_ph_user
 from core.models import Role, User, InteractiveUser
 from insuree.models import Family
 from policyholder.apps import PolicyholderConfig
@@ -697,7 +697,7 @@ class CreatePHPortalUserMutation(graphene.Mutation):
             ph_trade_name = input.pop("trade_name")
             ph_json_ext = input.pop("json_ext")
 
-            core_user = update_or_create_user(input, user)
+            core_user = update_or_create_ph_user(input, user)
             core_user.is_portal_user = True
             core_user.save()
             logger.info(f"CreatePHPortalUserMutation : core_user : {core_user}")
@@ -718,6 +718,7 @@ class CreatePHPortalUserMutation(graphene.Mutation):
                 )
             except Exception as e:
                 logger.error(f"Failed to create CAMU notification: {e}")
+                print(f"========> Failed to create CAMU notification : exc : {e}")
             phu_obj = PolicyHolderUser()
             phu_obj.user = core_user
             phu_obj.policy_holder = ph_obj
@@ -728,6 +729,7 @@ class CreatePHPortalUserMutation(graphene.Mutation):
 
             return CreatePHPortalUserMutation(success=True, message="Successful!")
         except Exception as exc:
+            print(f"========> error CreatePHPortalUserMutation : exc : {exc}")
             return CreatePHPortalUserMutation(success=False, message=str(exc))
 
 
