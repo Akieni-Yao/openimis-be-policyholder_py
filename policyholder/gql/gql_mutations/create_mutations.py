@@ -728,6 +728,11 @@ class CreatePHPortalUserMutation(graphene.Mutation):
 
             # send_verification_email(core_user.i_user)
             token = uuid.uuid4().hex[:8].upper()
+            
+            # core_user = User.objects.filter(id=object_data.get("user_id")).first()
+            i_user = InteractiveUser.objects.filter(id=core_user.i_user.id).first()
+            i_user.password_reset_token = token
+            i_user.save()
             send_verification_and_new_password_email(core_user.i_user, token, core_user.username)
 
             return CreatePHPortalUserMutation(success=True, message="Successful!")
