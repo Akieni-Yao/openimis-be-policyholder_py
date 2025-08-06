@@ -338,8 +338,14 @@ class Query(graphene.ObjectType):
                 is_deleted=False,
             ).all()
             for ph_insuree in ph_insurees:
+                print(f"=====> ph_insuree : {ph_insuree.insuree.status}")
+
                 if not ph_insuree.insuree or not ph_insuree.insuree.family:
                     continue
+
+                if ph_insuree.insuree.status != "APPROVED":
+                    continue
+                
                 family = Family.objects.filter(id=ph_insuree.insuree.family.id).first()
 
                 if not family:
@@ -356,7 +362,7 @@ class Query(graphene.ObjectType):
                     .order_by("-expiry_date")
                     .first()
                 )
-                
+
                 print(f"=====> policy : {policy.uuid}")
 
                 check_insuree_exception = InsureeExcption.objects.filter(
