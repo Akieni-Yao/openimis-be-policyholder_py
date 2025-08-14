@@ -312,15 +312,24 @@ class CreatePolicyHolderInsureeMutation(
 
             try:
                 family = Family.objects.create(
-                head_insuree_id=insuree_id,
-                location=village,
-                audit_user_id=user.i_user.id,
-                status=insurees.status,
-                address=insurees.current_address,
-                json_ext={
-                    "enrolmentType": map_enrolment_type_to_category(enrolment_type)
-                },
+                    head_insuree_id=insuree_id,
+                    location=village,
+                    audit_user_id=user.i_user.id,
+                    status=insurees.status,
+                    address=insurees.current_address,
+                    json_ext={
+                        "enrolmentType": map_enrolment_type_to_category(enrolment_type)
+                    },
                 )
+
+                phi = PolicyHolderInsuree(
+                    insuree=insurees,
+                    policy_holder=policy_holder,
+                    contribution_plan_bundle=cpb,
+                    json_ext={},
+                    employer_number=None,
+                )
+                phi.save()
             except Exception as e:
                 print(f"============ error {e}")
                 raise Exception(f"Failed to create family: {e}")
