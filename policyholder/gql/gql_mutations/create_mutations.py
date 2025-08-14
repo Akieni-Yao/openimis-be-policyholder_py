@@ -284,8 +284,6 @@ class CreatePolicyHolderInsureeMutation(
         get_and_set_waiting_period_for_insuree(insuree_id, policyholder_id)
 
         # create family
-        insurees.head = True
-        insurees.save()
         print("============ create family =============")
         family = Family.objects.filter(head_insuree_id=insuree_id).first()
         print(f"============ family {family}")
@@ -321,15 +319,19 @@ class CreatePolicyHolderInsureeMutation(
                         "enrolmentType": map_enrolment_type_to_category(enrolment_type)
                     },
                 )
+                
+                insurees.head = True
+                insurees.family=family
+                insurees.save()
 
-                phi = PolicyHolderInsuree(
-                    insuree=insurees,
-                    policy_holder=policy_holder,
-                    contribution_plan_bundle=cpb,
-                    json_ext={},
-                    employer_number=None,
-                )
-                phi.save()
+                # phi = PolicyHolderInsuree(
+                #     insuree=insurees,
+                #     policy_holder=policy_holder,
+                #     contribution_plan_bundle=cpb,
+                #     json_ext={},
+                #     employer_number=None,
+                # )
+                # phi.save()
             except Exception as e:
                 print(f"============ error {e}")
                 raise Exception(f"Failed to create family: {e}")
