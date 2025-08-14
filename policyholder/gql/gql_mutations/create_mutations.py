@@ -242,10 +242,14 @@ class CreatePolicyHolderInsureeMutation(
 
     @classmethod
     def _validate_mutation(cls, user, **data):
+        from contract.utils import map_enrolment_type_to_category
+        from insuree.models import Family
+
         logger.info(f"-------------CreatePolicyHolderInsureeMutation : data : {data}")
         insuree_id = data.get("insuree_id")
         contribution_plan_bundle_id = data.get("contribution_plan_bundle_id")
         policyholder_id = data.get("policy_holder_id")
+        policy_holder = PolicyHolder.objects.filter(id=policyholder_id).first()
         is_insuree = PolicyHolderInsuree.objects.filter(
             policy_holder__id=policyholder_id,
             insuree__id=insuree_id,
@@ -278,6 +282,61 @@ class CreatePolicyHolderInsureeMutation(
         )
         # Get the waiting period for the insuree
         get_and_set_waiting_period_for_insuree(insuree_id, policyholder_id)
+
+        # create family
+        print("============ create family =============")
+        family = Family.objects.filter(head_insuree_id=insuree_id).first()
+        print(f"============ family {family}")
+        if not family:
+            print("============ family not found then create =============")
+            ph_cpb = PolicyHolderContributionPlan.objects.filter(
+                policy_holder=policy_holder, is_deleted=False
+            ).first()
+            cpb = ph_cpb.contribution_plan_bundle if ph_cpb else None
+            print(f"============ cpb {cpb}")
+            enrolment_type = cpb.name if cpb else None
+            print(f"============ enrolment_type {enrolment_type}")
+            village = (
+                insurees.current_village
+                if insurees.current_village
+                else policy_holder.locations
+            )
+            print(f"============ village {village}")
+            print(f"============ user {user.id} {user.i_user}")
+            print(
+                f"======> map_enrolment_type_to_category(enrolment_type) {map_enrolment_type_to_category(enrolment_type)}"
+            )
+            print(f"============ insurees.status {insurees.status}")
+
+            try:
+                family = Family.objects.create(
+                    head_insuree_id=insuree_id,
+                    location=village,
+                    audit_user_id=user.i_user.id,
+                    status=insurees.status,
+                    address=insurees.current_address,
+                    json_ext={
+                        "enrolmentType": map_enrolment_type_to_category(enrolment_type)
+                    },
+                )
+                
+                insurees.head = True
+                insurees.family=family
+                insurees.save()
+
+                # phi = PolicyHolderInsuree(
+                #     insuree=insurees,
+                #     policy_holder=policy_holder,
+                #     contribution_plan_bundle=cpb,
+                #     json_ext={},
+                #     employer_number=None,
+                # )
+                # phi.save()
+            except Exception as e:
+                print(f"============ error {e}")
+                raise Exception(f"Failed to create family: {e}")
+
+        # create family
 
         super()._validate_mutation(user, **data)
         PermissionValidation.validate_perms(
@@ -696,8 +755,8 @@ class CreatePHPortalUserMutation(graphene.Mutation):
 
             ph_trade_name = input.pop("trade_name")
             ph_json_ext = input.pop("json_ext")
-            
-            input['send_email'] = False
+
+            input["send_email"] = False
 
             core_user = update_or_create_user(input, user)
             core_user.is_portal_user = True
@@ -728,12 +787,14 @@ class CreatePHPortalUserMutation(graphene.Mutation):
 
             # send_verification_email(core_user.i_user)
             token = uuid.uuid4().hex[:8].upper()
-            
+
             # core_user = User.objects.filter(id=object_data.get("user_id")).first()
             i_user = InteractiveUser.objects.filter(id=core_user.i_user.id).first()
             i_user.password_reset_token = token
             i_user.save()
-            send_verification_and_new_password_email(core_user.i_user, token, core_user.username)
+            send_verification_and_new_password_email(
+                core_user.i_user, token, core_user.username
+            )
 
             return CreatePHPortalUserMutation(success=True, message="Successful!")
         except Exception as exc:
