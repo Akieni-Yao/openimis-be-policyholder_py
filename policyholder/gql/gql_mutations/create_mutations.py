@@ -284,34 +284,47 @@ class CreatePolicyHolderInsureeMutation(
         get_and_set_waiting_period_for_insuree(insuree_id, policyholder_id)
 
         # create family
+        insurees.head = True
+        insurees.save()
         print("============ create family =============")
         family = Family.objects.filter(head_insuree_id=insuree_id).first()
         print(f"============ family {family}")
         if not family:
+            print("============ family not found then create =============")
             ph_cpb = PolicyHolderContributionPlan.objects.filter(
                 policy_holder=policy_holder, is_deleted=False
             ).first()
             cpb = ph_cpb.contribution_plan_bundle if ph_cpb else None
+            print(f"============ cpb {cpb}")
             enrolment_type = cpb.name if cpb else None
+            print(f"============ enrolment_type {enrolment_type}")
             village = (
                 insurees.current_village
                 if insurees.current_village
                 else policy_holder.locations
             )
+            print(f"============ village {village}")
+            print(f"============ user {user.id} {user.i_user}")
+            print(
+                f"======> map_enrolment_type_to_category(enrolment_type) {map_enrolment_type_to_category(enrolment_type)}"
+            )
+            print(f"============ insurees.status {insurees.status}")
 
-            family = Family.objects.create(
+            try:
+                family = Family.objects.create(
                 head_insuree_id=insuree_id,
                 location=village,
-                audit_user_id=user.id,
+                audit_user_id=user.i_user.id,
                 status=insurees.status,
-                address="",
+                address=insurees.current_address,
                 json_ext={
                     "enrolmentType": map_enrolment_type_to_category(enrolment_type)
                 },
-            )
-            family.save()
+                )
+            except Exception as e:
+                print(f"============ error {e}")
+                raise Exception(f"Failed to create family: {e}")
 
-            print("============ family not found then create =============")
         # create family
 
         super()._validate_mutation(user, **data)
