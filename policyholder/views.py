@@ -318,15 +318,6 @@ def validating_insuree_on_name_dob(line, policy_holder):
     if not insuree:
         return False
 
-    policy_holder_insuree = PolicyHolderInsuree.objects.filter(
-        insuree=insuree,
-        policy_holder=policy_holder,
-        is_deleted=False,
-    ).first()
-
-    if not policy_holder_insuree:
-        return False
-
     return True
 
 
@@ -431,7 +422,7 @@ def import_phi(request, policy_holder_code):
         dob_value = line[HEADER_INSUREE_DOB]
 
         # if not line.get(HEADER_INSUREE_ID) and line.get(HEADER_FAMILY_HEAD):
-        if not line.get(HEADER_INSUREE_ID):
+        if not line.get(HEADER_INSUREE_ID) and not line.get(HEADER_INSUREE_CAMU_NO):
             if isinstance(dob_value, datetime):
                 dob = dob_value
             else:
@@ -474,7 +465,7 @@ def import_phi(request, policy_holder_code):
             insuree = validating_insuree_on_name_dob(line, policy_holder)
             if insuree:
                 # Generate an error message instructing to add insuree forcibly
-                error = "Un assuré ayant le même nom et la même date de naissance est déjà attaché à ce souscripteur."
+                error = "Un assuré ayant le même nom et la même date de naissance existe déjà, veuillez ajouter son numéro CAMU ou numéro temporaire."
                 errors.append(error)
                 # Adding error in output excel
                 row_data = line.tolist()
