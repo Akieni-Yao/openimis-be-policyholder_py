@@ -611,87 +611,14 @@ def import_phi(request, policy_holder_code):
             continue
 
         total_families_created += 1
-        # if insuree_created:
-        #     total_insurees_created += 1
 
-        # try:
-        #     user = request.user
-        #     create_openKm_folder_for_bulkupload(user, insuree)
-        #     insuree_add_to_workflow(
-        #         None, insuree.id, "INSUREE_ENROLLMENT", "Pre_Register"
-        #     )
-        #     create_abis_insuree(None, insuree)
-        # except Exception as e:
-        #     logger.error(f"insuree bulk upload error for abis or workflow : {e}")
-
-        # elif not insuree_created:
-        #     family.delete()
-        #     reason = None
-
-        #     logger.info(
-        #         "=================================== LINE 470 ==========================="
-        #     )
-
-        #     other_policyholder_connected = PolicyHolderInsuree.objects.filter(
-        #         insuree=insuree, policy_holder__id__ne=policy_holder.id
-        #     ).first()
-
-        #     insuree_dob = line[HEADER_INSUREE_DOB]
-        #     if not isinstance(insuree_dob, datetime):
-        #         datetime_obj = datetime.strptime(insuree_dob, "%d/%m/%Y")
-        #         line[HEADER_INSUREE_DOB] = timezone.make_aware(datetime_obj).date()
-
-        #     if insuree.other_names != line[HEADER_INSUREE_OTHER_NAMES]:
-        #         reason = "Le prénom de l'assuré ne correspond pas."
-        #     elif insuree.last_name != line[HEADER_INSUREE_LAST_NAME]:
-        #         reason = "Le nom de famille de l'assuré ne correspond pas."
-        #     elif insuree.dob != line[HEADER_INSUREE_DOB]:
-        #         reason = "La date de naissance de l'assuré ne correspond pas."
-        #     elif insuree.gender != GENDERS[line[HEADER_INSUREE_GENDER]]:
-        #         reason = "Le sexe de l'assuré ne correspond pas."
-        #     elif insuree.marital != mapping_marital_status(line[HEADER_CIVILITY]):
-        #         reason = "L'état civil de l'assuré ne correspond pas."
-        #     elif other_policyholder_connected:
-        #         reason = "L'assuré est deja lié a un autre souscripteur."
-
-        #     logger.info(
-        #         "=================================== LINE 471 ==========================="
-        #     )
-        #     if reason:
-        #         # Adding error in output excel
-        #         row_data = line.tolist()
-        #         row_data.extend(["Échec", reason])
-        #         processed_data = processed_data.append(
-        #             pd.Series(row_data), ignore_index=True
-        #         )
-        #         continue
-
-        #     logger.info(
-        #         "=================================== LINE 472 ==========================="
-        #     )
-
-        # if family_created and insuree_created:
-        #     family.head_insuree = insuree
-        #     family.save()
         phi_json_ext = {}
 
-        logger.info(
-            "=================================== LINE 473 ==========================="
-        )
-
-        # if line[HEADER_INCOME]:
-        #     phi_json_ext["calculation_rule"] = {"income": line[HEADER_INCOME]}
         employer_number = None
-        # if line[HEADER_INCOME]:
-        #     employer_number = line[HEADER_EMPLOYER_NUMBER]
-        # PolicyHolderInsuree is HistoryModel that prevents the use of .objects.update_or_create() :(
+
         phi = PolicyHolderInsuree.objects.filter(
             insuree=insuree, policy_holder=policy_holder
         ).first()
-
-        logger.info(
-            "=================================== LINE 474 ==========================="
-        )
 
         if phi:
             phi._state.adding = True
@@ -702,14 +629,9 @@ def import_phi(request, policy_holder_code):
             ):
                 phi.contribution_plan_bundle = cpb
                 phi.employer_number = employer_number
-                # phi.json_ext = {**phi.json_ext, **phi_json_ext} if phi.json_ext else phi_json_ext
                 phi.json_ext = phi_json_ext
                 phi.save(username=request.user.username)
                 total_phi_updated += 1
-
-                logger.info(
-                    "=================================== LINE 475 ==========================="
-                )
         else:
             phi = PolicyHolderInsuree(
                 insuree=insuree,
@@ -721,26 +643,12 @@ def import_phi(request, policy_holder_code):
             total_phi_created += 1
             phi.save(username=request.user.username)
 
-            logger.info(
-                "=================================== LINE 476 ==========================="
-            )
         try:
             create_camu_notification(INS_ADDED_NT, phi)
-            logger.info(
-                "Successfully created CAMU notification with INS_ADDED_NT and phi."
-            )
-
-            logger.info(
-                "=================================== LINE 477 ==========================="
-            )
 
         except Exception as e:
             logger.error(
                 f"Failed to create CAMU notification with with INS_ADDED_NT : {e}"
-            )
-
-            logger.info(
-                "=================================== LINE 478 ==========================="
             )
 
         # Adding success entry in output Excel
@@ -762,10 +670,6 @@ def import_phi(request, policy_holder_code):
     # Set the appropriate status code based on the type of errors encountered
     status_code = 200  # Default success status
 
-    logger.info(
-        "=================================== LINE 479 ==========================="
-    )
-
     if total_locations_not_found > 0:
         status_code = 417  # Expectation Failed for unknown village
     elif total_contribution_plan_not_found > 0:
@@ -773,20 +677,12 @@ def import_phi(request, policy_holder_code):
     elif total_validation_errors > 0:
         status_code = 422  # Unprocessable Entity for general validation errors
 
-    logger.info(
-        "=================================== LINE 480 ==========================="
-    )
-
     # Generate output Excel
     output_headers = list(org_columns) + ["Status", "Reason"]
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         processed_data.to_excel(
             writer, sheet_name="Processed Data", index=False, header=output_headers
         )
-
-    logger.info(
-        "=================================== LINE 481 ==========================="
-    )
 
     output.seek(0)
     response = HttpResponse(
