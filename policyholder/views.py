@@ -484,25 +484,6 @@ def import_phi(request, policy_holder_code):
                 )
                 continue
 
-        # validation_errors = validate_line(line)
-        # if validation_errors:
-        #     errors.append(
-        #         f"Error line {total_lines} - Problèmes de validation  ({validation_errors})"
-        #     )
-        #     logger.debug(
-        #         f"Error line {total_lines} - Problèmes de validation  ({validation_errors})"
-        #     )
-
-        #     total_validation_errors += 1
-
-        #     # Adding error in output excel
-        #     row_data = line.tolist()
-        #     row_data.extend(["Échec", validation_errors])
-        #     processed_data = processed_data.append(
-        #         pd.Series(row_data), ignore_index=True
-        #     )
-        #     continue
-
         if line[HEADER_DELETE] and line[HEADER_DELETE].lower() == "yes":
             is_deleted = soft_delete_insuree(line, policy_holder_code, user_id)
             if is_deleted:
