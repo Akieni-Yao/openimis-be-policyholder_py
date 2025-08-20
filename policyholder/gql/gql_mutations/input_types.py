@@ -159,6 +159,7 @@ class PolicyHolderExcptionInput(graphene.InputObjectType):
     policy_holder_id = graphene.UUID(required=True)
     reason_id = graphene.Int(required=True)
     exception_reason = graphene.String(required=False)
+    started_at = graphene.Date(required=True)
 
 
 class PHPortalUserCreateInput(graphene.InputObjectType, UserBase):

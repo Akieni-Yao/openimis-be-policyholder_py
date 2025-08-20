@@ -343,18 +343,29 @@ class Query(graphene.ObjectType):
                 if not ph_insuree.insuree or not ph_insuree.insuree.family:
                     continue
 
-                if ph_insuree.insuree.status != "APPROVED":
-                    continue
-                
+                # if ph_insuree.insuree.status != "APPROVED":
+                #     continue
+
                 family = Family.objects.filter(id=ph_insuree.insuree.family.id).first()
 
                 if not family:
                     continue
 
+                ph_exception_started_at = ph_exception.started_at
+
+                if not ph_exception.started_at:
+                    ph_exception_started_at = ph_exception.created_time
+
                 custom_filter = {
-                    "status": Policy.STATUS_ACTIVE,
+                    "status__in": [
+                        Policy.STATUS_ACTIVE,
+                        Policy.STATUS_READY,
+                        Policy.STATUS_EXPIRED,
+                    ],
                     "is_valid": True,
                     "family__id": family.id,
+                    "expiry_date__month": ph_exception_started_at.month,
+                    "expiry_date__year": ph_exception_started_at.year,
                 }
 
                 policy = (
@@ -362,8 +373,6 @@ class Query(graphene.ObjectType):
                     .order_by("-expiry_date")
                     .first()
                 )
-
-                print(f"=====> policy : {policy.uuid}")
 
                 check_insuree_exception = InsureeExcption.objects.filter(
                     insuree=ph_insuree.insuree, is_used=True
@@ -381,23 +390,6 @@ class Query(graphene.ObjectType):
                     policy.save()
                     print(f"=====> policy : {policy.uuid}")
 
-            # custom_filter = {"status": Policy.STATUS_ACTIVE, "is_valid": True}
-            # _contractPolicy = ContractPolicy.objects.filter(
-            #     policy_holder__id=ph_exception.policy_holder.id
-            # ).all()
-            # _all_policies_ids = _contractPolicy.values_list("policy__id", flat=True)
-            # custom_filter["id__in"] = _all_policies_ids
-            # policies = Policy.objects.filter(**custom_filter)
-
-            # for policy in policies:
-            #     policy.initial_expiry_date = policy.expiry_date
-            #     policy.expiry_date = policy.expiry_date + relativedelta(
-            #         months=reason.period
-            #     )
-            #     policy.save()
-            # # approve exception
-
-            # assign_ph_exception_policy(ph_exception)
         else:
             ph_exception.rejection_reason = rejection_reason
         ph_exception.save()
