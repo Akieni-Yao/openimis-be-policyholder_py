@@ -390,23 +390,6 @@ class Query(graphene.ObjectType):
                     policy.save()
                     print(f"=====> policy : {policy.uuid}")
 
-            # custom_filter = {"status": Policy.STATUS_ACTIVE, "is_valid": True}
-            # _contractPolicy = ContractPolicy.objects.filter(
-            #     policy_holder__id=ph_exception.policy_holder.id
-            # ).all()
-            # _all_policies_ids = _contractPolicy.values_list("policy__id", flat=True)
-            # custom_filter["id__in"] = _all_policies_ids
-            # policies = Policy.objects.filter(**custom_filter)
-
-            # for policy in policies:
-            #     policy.initial_expiry_date = policy.expiry_date
-            #     policy.expiry_date = policy.expiry_date + relativedelta(
-            #         months=reason.period
-            #     )
-            #     policy.save()
-            # # approve exception
-
-            # assign_ph_exception_policy(ph_exception)
         else:
             ph_exception.rejection_reason = rejection_reason
         # ph_exception.save()
