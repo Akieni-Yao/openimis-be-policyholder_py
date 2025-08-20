@@ -324,6 +324,8 @@ class Query(graphene.ObjectType):
                 success=False, message="Exception Not Found!"
             )
 
+        exception_current_month = ph_exception.created_time.month
+
         reason = ExceptionReason.objects.filter(id=ph_exception.reason.id).first()
         if not reason:
             return ApprovePolicyholderExceptionType(
@@ -345,16 +347,18 @@ class Query(graphene.ObjectType):
 
                 if ph_insuree.insuree.status != "APPROVED":
                     continue
-                
+
                 family = Family.objects.filter(id=ph_insuree.insuree.family.id).first()
 
                 if not family:
                     continue
 
                 custom_filter = {
-                    "status": Policy.STATUS_ACTIVE,
+                    # "status": Policy.STATUS_ACTIVE,
+                    "status__in": [Policy.STATUS_ACTIVE, Policy.STATUS_READY],
                     "is_valid": True,
                     "family__id": family.id,
+                    "expiry_date__month": exception_current_month,
                 }
 
                 policy = (
