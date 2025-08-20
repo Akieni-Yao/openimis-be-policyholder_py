@@ -392,7 +392,7 @@ class Query(graphene.ObjectType):
 
         else:
             ph_exception.rejection_reason = rejection_reason
-        # ph_exception.save()
+        ph_exception.save()
 
         if is_approved:
             # remove all pending exceptions for this policy holder
