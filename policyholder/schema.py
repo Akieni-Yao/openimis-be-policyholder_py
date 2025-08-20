@@ -343,8 +343,8 @@ class Query(graphene.ObjectType):
                 if not ph_insuree.insuree or not ph_insuree.insuree.family:
                     continue
 
-                if ph_insuree.insuree.status != "APPROVED":
-                    continue
+                # if ph_insuree.insuree.status != "APPROVED":
+                #     continue
 
                 family = Family.objects.filter(id=ph_insuree.insuree.family.id).first()
 
