@@ -324,8 +324,6 @@ class Query(graphene.ObjectType):
                 success=False, message="Exception Not Found!"
             )
 
-        exception_current_month = ph_exception.created_time.month
-
         reason = ExceptionReason.objects.filter(id=ph_exception.reason.id).first()
         if not reason:
             return ApprovePolicyholderExceptionType(
@@ -345,22 +343,29 @@ class Query(graphene.ObjectType):
                 if not ph_insuree.insuree or not ph_insuree.insuree.family:
                     continue
 
-                # if ph_insuree.insuree.status != "APPROVED":
-                #     continue
+                if ph_insuree.insuree.status != "APPROVED":
+                    continue
 
                 family = Family.objects.filter(id=ph_insuree.insuree.family.id).first()
 
                 if not family:
                     continue
-                
-                print(f"=====> exception_current_month {exception_current_month}")
+
+                ph_exception_started_at = ph_exception.started_at
+
+                if not ph_exception.started_at:
+                    ph_exception_started_at = ph_exception.created_time
 
                 custom_filter = {
-                    # "status": Policy.STATUS_ACTIVE,
-                    # "status__in": [Policy.STATUS_ACTIVE, Policy.STATUS_READY],
+                    "status__in": [
+                        Policy.STATUS_ACTIVE,
+                        Policy.STATUS_READY,
+                        Policy.STATUS_EXPIRED,
+                    ],
                     "is_valid": True,
                     "family__id": family.id,
-                    "expiry_date__month": exception_current_month,
+                    "expiry_date__month": ph_exception_started_at.month,
+                    "expiry_date__year": ph_exception_started_at.year,
                 }
 
                 policy = (
@@ -368,11 +373,6 @@ class Query(graphene.ObjectType):
                     .order_by("-expiry_date")
                     .first()
                 )
-                print(f"=====> policy : {policy}")
-                if policy:
-                    print(f"=====> policy : {policy.uuid}")
-
-                continue
 
                 check_insuree_exception = InsureeExcption.objects.filter(
                     insuree=ph_insuree.insuree, is_used=True
@@ -411,11 +411,11 @@ class Query(graphene.ObjectType):
             ph_exception.rejection_reason = rejection_reason
         # ph_exception.save()
 
-        # if is_approved:
-        #     # remove all pending exceptions for this policy holder
-        #     PolicyHolderExcption.objects.filter(
-        #         policy_holder=ph_exception.policy_holder, status="PENDING"
-        #     ).delete()
+        if is_approved:
+            # remove all pending exceptions for this policy holder
+            PolicyHolderExcption.objects.filter(
+                policy_holder=ph_exception.policy_holder, status="PENDING"
+            ).delete()
 
         return ApprovePolicyholderExceptionType(
             success=True, message="Exception Approved!"
