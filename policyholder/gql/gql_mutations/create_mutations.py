@@ -10,6 +10,7 @@ from core.gql.gql_mutations.base_mutation import (
     BaseMutation,
     BaseHistoryModelCreateMutationMixin,
 )
+from dateutil.relativedelta import relativedelta
 from core.notification_service import create_camu_notification
 from core.schema import OpenIMISMutation, update_or_create_user
 from core.models import Role, User, InteractiveUser
@@ -576,7 +577,8 @@ class CreatePolicyHolderExcption(graphene.Mutation):
                     input_data.get("started_at"), "%Y-%m-%d"
                 )
 
-            ended_at = input_data.get("started_at") + datetime.timedelta(
+            # time delta add month
+            ended_at = input_data.get("started_at") + relativedelta(
                 months=reason.period
             )
             input_data["ended_at"] = ended_at
