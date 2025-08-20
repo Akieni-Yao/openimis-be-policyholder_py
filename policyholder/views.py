@@ -276,6 +276,8 @@ def get_or_create_insuree_from_line(
             line[HEADER_INSUREE_DOB],
             enrolment_type,
         )
+
+        print(f"====> insuree_id {insuree_id}")
         current_village = village
         response_string = json.dumps(current_village, cls=LocationEncoder)
         response_data = json.loads(response_string)
@@ -288,7 +290,7 @@ def get_or_create_insuree_from_line(
             card_issued=False,
             chf_id=insuree_id,
             gender=GENDERS[line[HEADER_INSUREE_GENDER]],
-            # head=is_family_created,
+            head=False,
             current_village=current_village,
             current_address=line[HEADER_ADDRESS],
             phone=line[HEADER_PHONE],
@@ -303,6 +305,8 @@ def get_or_create_insuree_from_line(
                 "insureeaddress": line[HEADER_ADDRESS],
             },
         )
+
+        print(f"====> insuree {insuree.id} {insuree.last_name}")
 
         try:
             user = request.user
@@ -592,7 +596,7 @@ def import_phi(request, policy_holder_code):
                 pd.Series(row_data), ignore_index=True
             )
             continue
-        
+
         print(f"====> family {family.id} {family.uuid}")
 
         check_for_category_change_request(
