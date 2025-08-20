@@ -175,7 +175,9 @@ def get_village_from_line(line):
     return village
 
 
-def get_or_create_family_from_line(line, audit_user_id: int, enrolment_type, insuree):
+def get_or_create_family_from_line(
+    line, audit_user_id: int, enrolment_type, insuree, village
+):
     family = Family.objects.filter(
         validity_to__isnull=True, head_insuree=insuree
     ).first()
@@ -183,9 +185,12 @@ def get_or_create_family_from_line(line, audit_user_id: int, enrolment_type, ins
     if family:
         return family, True
 
+    if not village:
+        return None, False
+
     family = Family.objects.create(
         head_insuree=insuree,
-        location=insuree.current_village,
+        location=village,
         audit_user_id=audit_user_id,
         status="PRE_REGISTERED",
         address=line[HEADER_ADDRESS],
@@ -230,15 +235,29 @@ def get_or_create_insuree_from_line(
     camu_num = line[HEADER_INSUREE_CAMU_NO]
     insuree = None
 
-    if id or camu_num:
+    if id:
+        insuree = (
+            Insuree.objects.filter(validity_to__isnull=True).filter(chf_id=id).first()
+        )
+
+    if camu_num:
         insuree = (
             Insuree.objects.filter(validity_to__isnull=True)
-            .filter(Q(chf_id=id) | Q(camu_number=camu_num))
+            .filter(camu_number=camu_num)
             .first()
         )
 
     if insuree:
-        return insuree, True
+        print(f"===> insuree found {insuree.chf_id} {insuree.last_name}")
+        age = (datetime.now().date() - insuree.dob) // timedelta(days=365.25)
+        if age < MINIMUM_AGE_LIMIT:
+            return (
+                insuree,
+                f"L'assuré doit être âgé d'au moins {MINIMUM_AGE_LIMIT} ans.",
+            )
+        return insuree, None
+
+    print("===> create new insuree")
 
     # create new insuree
     if not insuree:
@@ -296,9 +315,12 @@ def get_or_create_insuree_from_line(
             logger.error(f"insuree bulk upload error for abis or workflow : {e}")
 
         if insuree:
-            return insuree, True
+            return insuree, None
 
-    return None, False
+    return (
+        None,
+        "Impossible de créer ou de trouver l'assuré. Assurez-vous que les données sont bien correctes",
+    )
 
 
 def validating_insuree_on_name_dob(line, policy_holder):
@@ -537,17 +559,7 @@ def import_phi(request, policy_holder_code):
             )
             continue
 
-        is_cc_request = check_for_category_change_request(
-            request.user, line, policy_holder, enrolment_type
-        )
-        if is_cc_request:
-            row_data = line.tolist()
-            row_data.extend(["Réussite", "Demande de changement de catégorie Créé."])
-            processed_data = processed_data.append(
-                pd.Series(row_data), ignore_index=True
-            )
-
-        insuree, insuree_created = get_or_create_insuree_from_line(
+        insuree, error = get_or_create_insuree_from_line(
             line,
             village,
             user_id,
@@ -555,10 +567,9 @@ def import_phi(request, policy_holder_code):
             core_user_id,
             enrolment_type,
         )
-        logger.debug("insuree_created: %s", insuree_created)
+        logger.debug("insuree_created: %s", insuree)
 
-        if not insuree:
-            error = "Impossible de créer ou de trouver l'assuré."
+        if error:
             row_data = line.tolist()
             row_data.extend(["Échec", error])
             processed_data = processed_data.append(
@@ -569,7 +580,7 @@ def import_phi(request, policy_holder_code):
         total_insurees_created += 1
 
         family, family_created = get_or_create_family_from_line(
-            line, user_id, enrolment_type, insuree
+            line, user_id, enrolment_type, insuree, village
         )
 
         if not family:
@@ -581,6 +592,18 @@ def import_phi(request, policy_holder_code):
                 pd.Series(row_data), ignore_index=True
             )
             continue
+        
+        print(f"====> family {family.id} {family.uuid}")
+
+        check_for_category_change_request(
+            request.user, line, policy_holder, enrolment_type
+        )
+        # if is_cc_request:
+        #     row_data = line.tolist()
+        #     row_data.extend(["Réussite", "Demande de changement de catégorie Créé."])
+        #     processed_data = processed_data.append(
+        #         pd.Series(row_data), ignore_index=True
+        #     )
 
         total_families_created += 1
 
@@ -593,6 +616,9 @@ def import_phi(request, policy_holder_code):
         ).first()
 
         if phi:
+            print(
+                f"====> already policyHolder insuree {insuree.id} {policy_holder.id} exists"
+            )
             phi._state.adding = True
             if (
                 phi.contribution_plan_bundle != cpb
@@ -615,6 +641,16 @@ def import_phi(request, policy_holder_code):
             total_phi_created += 1
             phi.save(username=request.user.username)
 
+            print(f"=====> create policyHolder insuree {insuree.id} {policy_holder.id}")
+
+            # row_data = line.tolist()
+            # row_data.extend(
+            #     ["Réussite", "L'assuré a été bien rattaché au souscripteur"]
+            # )
+            # processed_data = processed_data.append(
+            #     pd.Series(row_data), ignore_index=True
+            # )
+
         try:
             create_camu_notification(INS_ADDED_NT, phi)
 
@@ -625,7 +661,7 @@ def import_phi(request, policy_holder_code):
 
         # Adding success entry in output Excel
         row_data = line.tolist()
-        row_data.extend(["Réussite", ""])
+        row_data.extend(["Réussite", "L'assuré a été bien rattaché au souscripteur"])
         processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
 
         try:
