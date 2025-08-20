@@ -319,9 +319,9 @@ class CreatePolicyHolderInsureeMutation(
                         "enrolmentType": map_enrolment_type_to_category(enrolment_type)
                     },
                 )
-                
+
                 insurees.head = True
-                insurees.family=family
+                insurees.family = family
                 insurees.save()
 
                 # phi = PolicyHolderInsuree(
@@ -570,6 +570,17 @@ class CreatePolicyHolderExcption(graphene.Mutation):
                     policy_holder_excption=None,
                     message="Exception already exists for this policy holder.",
                 )
+
+            if not isinstance(input_data.get("started_at"), datetime.date):
+                input_data["started_at"] = datetime.datetime.strptime(
+                    input_data.get("started_at"), "%Y-%m-%d"
+                )
+
+            ended_at = input_data.get("started_at") + datetime.timedelta(
+                months=reason.period
+            )
+            input_data["ended_at"] = ended_at
+
             policy_holder_excption = PolicyHolderExcption(
                 code=ph_exc_code,
                 policy_holder=policy_holder,
