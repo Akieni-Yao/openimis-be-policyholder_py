@@ -345,17 +345,19 @@ class Query(graphene.ObjectType):
                 if not ph_insuree.insuree or not ph_insuree.insuree.family:
                     continue
 
-                if ph_insuree.insuree.status != "APPROVED":
-                    continue
+                # if ph_insuree.insuree.status != "APPROVED":
+                #     continue
 
                 family = Family.objects.filter(id=ph_insuree.insuree.family.id).first()
 
                 if not family:
                     continue
+                
+                print(f"=====> exception_current_month {exception_current_month}")
 
                 custom_filter = {
                     # "status": Policy.STATUS_ACTIVE,
-                    "status__in": [Policy.STATUS_ACTIVE, Policy.STATUS_READY],
+                    # "status__in": [Policy.STATUS_ACTIVE, Policy.STATUS_READY],
                     "is_valid": True,
                     "family__id": family.id,
                     "expiry_date__month": exception_current_month,
@@ -366,8 +368,11 @@ class Query(graphene.ObjectType):
                     .order_by("-expiry_date")
                     .first()
                 )
+                print(f"=====> policy : {policy}")
+                if policy:
+                    print(f"=====> policy : {policy.uuid}")
 
-                print(f"=====> policy : {policy.uuid}")
+                continue
 
                 check_insuree_exception = InsureeExcption.objects.filter(
                     insuree=ph_insuree.insuree, is_used=True
@@ -404,13 +409,13 @@ class Query(graphene.ObjectType):
             # assign_ph_exception_policy(ph_exception)
         else:
             ph_exception.rejection_reason = rejection_reason
-        ph_exception.save()
+        # ph_exception.save()
 
-        if is_approved:
-            # remove all pending exceptions for this policy holder
-            PolicyHolderExcption.objects.filter(
-                policy_holder=ph_exception.policy_holder, status="PENDING"
-            ).delete()
+        # if is_approved:
+        #     # remove all pending exceptions for this policy holder
+        #     PolicyHolderExcption.objects.filter(
+        #         policy_holder=ph_exception.policy_holder, status="PENDING"
+        #     ).delete()
 
         return ApprovePolicyholderExceptionType(
             success=True, message="Exception Approved!"

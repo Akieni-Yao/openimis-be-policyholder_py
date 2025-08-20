@@ -322,6 +322,8 @@ class PolicyHolderExcption(models.Model):
     contract_id = models.UUIDField(db_column="ContractId", editable=False, null=True)
     created_by = models.CharField(db_column="CreatedBy", max_length=56, null=True)
     modified_by = models.CharField(db_column="ModifiedBy", max_length=56, null=True)
+    started_at = models.DateTimeField(db_column="StartedAt", null=True)
+    ended_at = models.DateTimeField(db_column="EndedAt", null=True)
     created_time = models.DateTimeField(
         db_column="CreatedTime", auto_now_add=True, null=True
     )
