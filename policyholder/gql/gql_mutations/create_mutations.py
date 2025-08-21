@@ -472,6 +472,8 @@ class CreatePolicyHolderExcption(graphene.Mutation):
         input_data = PolicyHolderExcptionInput(required=True)
 
     def mutate(self, info, input_data):
+        from policy.models import Policy
+
         try:
             user = info.context.user
             reason = ExceptionReason.objects.filter(
@@ -515,9 +517,7 @@ class CreatePolicyHolderExcption(graphene.Mutation):
                 contract__state=5,
                 is_locked=False,
             ).order_by("-id")
-            print(
-                f"===> CreatePolicyHolderExcption :  ph_payment : {ph_payment}"
-            )
+            print(f"===> CreatePolicyHolderExcption :  ph_payment : {ph_payment}")
             if ph_payment:
                 contract_id = ph_payment[0].contract.id
                 month = ph_payment[0].contract.date_valid_from.month
@@ -572,6 +572,47 @@ class CreatePolicyHolderExcption(graphene.Mutation):
                 months=reason.period
             )
             input_data["ended_at"] = ended_at
+
+            ph_insurees = PolicyHolderInsuree.objects.filter(
+                policy_holder=policy_holder,
+                is_deleted=False,
+            ).all()
+            total_policy_applied = 0
+            for ph_insuree in ph_insurees:
+                if not ph_insuree.insuree or not ph_insuree.insuree.family:
+                    continue
+
+                family = Family.objects.filter(id=ph_insuree.insuree.family.id).first()
+
+                if not family:
+                    continue
+
+                custom_filter = {
+                    "status__in": [
+                        Policy.STATUS_ACTIVE,
+                        Policy.STATUS_READY,
+                        Policy.STATUS_EXPIRED,
+                    ],
+                    "is_valid": True,
+                    "family__id": family.id,
+                    "expiry_date__month": input_data.get("started_at").month,
+                    "expiry_date__year": input_data.get("started_at").year,
+                }
+
+                policy = (
+                    Policy.objects.filter(**custom_filter)
+                    .order_by("-expiry_date")
+                    .first()
+                )
+
+                if policy:
+                    total_policy_applied += 1
+
+            if total_policy_applied == 0:
+                return CreatePolicyHolderExcption(
+                    policy_holder_excption=None,
+                    message="Aucune polices trouvées pour cette période d'exception!",
+                )
 
             policy_holder_excption = PolicyHolderExcption(
                 code=ph_exc_code,
