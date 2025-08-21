@@ -501,20 +501,8 @@ class CreatePolicyHolderExcption(graphene.Mutation):
                     policy_holder_excption=None,
                     message="PolicyHolder's contribution plan not found.",
                 )
-            # if phcp:
-            #     periodicity = phcp[0].contribution_plan_bundle.periodicity
-            #     if periodicity != 1:
-            #         return CreatePolicyHolderExcption(
-            #             policy_holder_excption=None,
-            #             message="PolicyHolder's contribution plan periodicity should be 1.",
-            #         )
-            # else:
-            #     return CreatePolicyHolderExcption(
-            #         policy_holder_excption=None,
-            #         message="PolicyHolder's contribution plan not found.",
-            #     )
 
-            print(f"CreatePolicyHolderExcption : policy_holder 2: {policy_holder}")
+            print(f"===> CreatePolicyHolderExcption : policy_holder 2: {policy_holder}")
 
             month = None
             contract_id = None
@@ -527,7 +515,9 @@ class CreatePolicyHolderExcption(graphene.Mutation):
                 contract__state=5,
                 is_locked=False,
             ).order_by("-id")
-            logging.info(f"CreatePolicyHolderExcption :  ph_payment : {ph_payment}")
+            print(
+                f"===> CreatePolicyHolderExcption :  ph_payment : {ph_payment}"
+            )
             if ph_payment:
                 contract_id = ph_payment[0].contract.id
                 month = ph_payment[0].contract.date_valid_from.month

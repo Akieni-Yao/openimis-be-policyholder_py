@@ -400,7 +400,8 @@ class Query(graphene.ObjectType):
         if total_policy_applied == 0:
             print("=====> no policy applied!")
             return ApprovePolicyholderExceptionType(
-                success=False, message="No policy applied!"
+                success=False,
+                message="Aucune polices trouvées pour cette période d'exception!",
             )
         ph_exception.save()
 
