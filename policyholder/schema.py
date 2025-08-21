@@ -313,11 +313,6 @@ class Query(graphene.ObjectType):
     def resolve_approve_policyholder_exception(
         self, info, id, is_approved, rejection_reason
     ):
-        from policy.models import Policy
-        from contract.models import ContractPolicy
-        from insuree.models import InsureeExcption
-        from insuree.models import Family
-
         ph_exception = PolicyHolderExcption.objects.filter(id=id).first()
         if not ph_exception:
             return ApprovePolicyholderExceptionType(
@@ -332,65 +327,19 @@ class Query(graphene.ObjectType):
         ph_exception.status = "APPROVED" if is_approved else "REJECTED"
         total_policy_applied = 0
         if is_approved:
+            ph_exception_started_at = ph_exception.started_at
+
+            if not ph_exception.started_at:
+                ph_exception_started_at = ph_exception.created_time
+
             ph_exception.is_used = True
-            # approve exception
-            ph_insurees = PolicyHolderInsuree.objects.filter(
-                policy_holder=ph_exception.policy_holder,
-                is_deleted=False,
-            ).all()
-            for ph_insuree in ph_insurees:
-                print(f"=====> ph_insuree : {ph_insuree.insuree.status}")
-
-                if not ph_insuree.insuree or not ph_insuree.insuree.family:
-                    continue
-
-                # if ph_insuree.insuree.status != "APPROVED":
-                #     continue
-
-                family = Family.objects.filter(id=ph_insuree.insuree.family.id).first()
-
-                if not family:
-                    continue
-
-                ph_exception_started_at = ph_exception.started_at
-
-                if not ph_exception.started_at:
-                    ph_exception_started_at = ph_exception.created_time
-
-                custom_filter = {
-                    "status__in": [
-                        Policy.STATUS_ACTIVE,
-                        Policy.STATUS_READY,
-                        Policy.STATUS_EXPIRED,
-                    ],
-                    "is_valid": True,
-                    "family__id": family.id,
-                    "expiry_date__month": ph_exception_started_at.month,
-                    "expiry_date__year": ph_exception_started_at.year,
-                }
-
-                policy = (
-                    Policy.objects.filter(**custom_filter)
-                    .order_by("-expiry_date")
-                    .first()
-                )
-
-                check_insuree_exception = InsureeExcption.objects.filter(
-                    insuree=ph_insuree.insuree, is_used=True
-                ).first()
-
-                if check_insuree_exception:
-                    continue
-
-                if policy:
-                    policy.initial_expiry_date = policy.expiry_date
-                    policy.expiry_date = policy.expiry_date + relativedelta(
-                        months=reason.period
-                    )
-                    policy.ph_exception = ph_exception
-                    policy.save()
-                    print(f"=====> policy : {policy.uuid}")
-                    total_policy_applied += 1
+            total_policy_applied = check_policy_exception_and_apply(
+                ph_exception.policy_holder,
+                ph_exception_started_at,
+                ph_exception,
+                reason,
+                applied_exception=True,
+            )
 
         else:
             ph_exception.rejection_reason = rejection_reason
@@ -714,3 +663,64 @@ def on_policy_holder_mutation(sender, **kwargs):
 def bind_signals():
     signal_mutation_module_validate["policyholder"].connect(on_policy_holder_mutation)
     signal_before_payment_query.connect(append_policy_holder_filter)
+
+
+def check_policy_exception_and_apply(
+    policy_holder, exception_started_at, ph_exception, reason, applied_exception=False
+):
+    from policy.models import Policy
+    from contract.models import ContractPolicy
+    from insuree.models import InsureeExcption
+    from insuree.models import Family
+
+    ph_insurees = PolicyHolderInsuree.objects.filter(
+        policy_holder=policy_holder,
+        is_deleted=False,
+    ).all()
+    total_policy_applied = 0
+    for ph_insuree in ph_insurees:
+        print(f"=====> ph_insuree : {ph_insuree.insuree.status}")
+
+        if not ph_insuree.insuree or not ph_insuree.insuree.family:
+            continue
+
+        # if ph_insuree.insuree.status != "APPROVED":
+        #     continue
+
+        family = Family.objects.filter(id=ph_insuree.insuree.family.id).first()
+
+        if not family:
+            continue
+
+        custom_filter = {
+            "status__in": [
+                Policy.STATUS_ACTIVE,
+                Policy.STATUS_READY,
+                Policy.STATUS_EXPIRED,
+            ],
+            "is_valid": True,
+            "family__id": family.id,
+            "expiry_date__month": exception_started_at.month,
+            "expiry_date__year": exception_started_at.year,
+        }
+
+        policy = Policy.objects.filter(**custom_filter).order_by("-expiry_date").first()
+
+        check_insuree_exception = InsureeExcption.objects.filter(
+            insuree=ph_insuree.insuree, is_used=True
+        ).first()
+
+        if check_insuree_exception:
+            continue
+
+        if policy and applied_exception:
+            policy.initial_expiry_date = policy.expiry_date
+            policy.expiry_date = policy.expiry_date + relativedelta(
+                months=reason.period
+            )
+            policy.ph_exception = ph_exception
+            policy.save()
+            print(f"=====> policy : {policy.uuid}")
+            total_policy_applied += 1
+
+    return total_policy_applied
