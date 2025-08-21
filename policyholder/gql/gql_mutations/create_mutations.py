@@ -472,6 +472,9 @@ class CreatePolicyHolderExcption(graphene.Mutation):
         input_data = PolicyHolderExcptionInput(required=True)
 
     def mutate(self, info, input_data):
+        from payment.models import Payment
+        from policyholder.schema import check_policy_exception_and_apply
+
         try:
             user = info.context.user
             reason = ExceptionReason.objects.filter(
@@ -501,24 +504,11 @@ class CreatePolicyHolderExcption(graphene.Mutation):
                     policy_holder_excption=None,
                     message="PolicyHolder's contribution plan not found.",
                 )
-            # if phcp:
-            #     periodicity = phcp[0].contribution_plan_bundle.periodicity
-            #     if periodicity != 1:
-            #         return CreatePolicyHolderExcption(
-            #             policy_holder_excption=None,
-            #             message="PolicyHolder's contribution plan periodicity should be 1.",
-            #         )
-            # else:
-            #     return CreatePolicyHolderExcption(
-            #         policy_holder_excption=None,
-            #         message="PolicyHolder's contribution plan not found.",
-            #     )
 
-            print(f"CreatePolicyHolderExcption : policy_holder 2: {policy_holder}")
+            print(f"===> CreatePolicyHolderExcption : policy_holder 2: {policy_holder}")
 
             month = None
             contract_id = None
-            from payment.models import Payment
 
             ph_payment = Payment.objects.filter(
                 Q(received_amount__lt=F("expected_amount"))
@@ -527,7 +517,7 @@ class CreatePolicyHolderExcption(graphene.Mutation):
                 contract__state=5,
                 is_locked=False,
             ).order_by("-id")
-            logging.info(f"CreatePolicyHolderExcption :  ph_payment : {ph_payment}")
+            print(f"===> CreatePolicyHolderExcption :  ph_payment : {ph_payment}")
             if ph_payment:
                 contract_id = ph_payment[0].contract.id
                 month = ph_payment[0].contract.date_valid_from.month
@@ -582,6 +572,20 @@ class CreatePolicyHolderExcption(graphene.Mutation):
                 months=reason.period
             )
             input_data["ended_at"] = ended_at
+
+            total_policy_applied = check_policy_exception_and_apply(
+                policy_holder,
+                input_data.get("started_at"),
+                None,
+                reason,
+                applied_exception=False,
+            )
+
+            if total_policy_applied == 0:
+                return CreatePolicyHolderExcption(
+                    policy_holder_excption=None,
+                    message="Aucune polices trouvées pour cette période d'exception!",
+                )
 
             policy_holder_excption = PolicyHolderExcption(
                 code=ph_exc_code,
