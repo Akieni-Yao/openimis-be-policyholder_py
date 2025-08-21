@@ -330,6 +330,7 @@ class Query(graphene.ObjectType):
                 success=False, message="Exception Reason Not Found!"
             )
         ph_exception.status = "APPROVED" if is_approved else "REJECTED"
+        total_policy_applied = 0
         if is_approved:
             ph_exception.is_used = True
             # approve exception
@@ -389,9 +390,18 @@ class Query(graphene.ObjectType):
                     policy.ph_exception = ph_exception
                     policy.save()
                     print(f"=====> policy : {policy.uuid}")
+                    total_policy_applied += 1
 
         else:
             ph_exception.rejection_reason = rejection_reason
+
+        print(f"=====> total_policy_applied : {total_policy_applied}")
+
+        if total_policy_applied == 0:
+            print("=====> no policy applied!")
+            return ApprovePolicyholderExceptionType(
+                success=False, message="No policy applied!"
+            )
         ph_exception.save()
 
         if is_approved:
