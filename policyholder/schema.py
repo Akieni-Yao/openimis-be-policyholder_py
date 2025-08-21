@@ -713,14 +713,16 @@ def check_policy_exception_and_apply(
         if check_insuree_exception:
             continue
 
-        if policy and applied_exception:
-            policy.initial_expiry_date = policy.expiry_date
-            policy.expiry_date = policy.expiry_date + relativedelta(
-                months=reason.period
-            )
-            policy.ph_exception = ph_exception
-            policy.save()
+        if policy:
             print(f"=====> policy : {policy.uuid}")
             total_policy_applied += 1
+
+            if applied_exception:
+                policy.initial_expiry_date = policy.expiry_date
+                policy.expiry_date = policy.expiry_date + relativedelta(
+                    months=reason.period
+                )
+                policy.ph_exception = ph_exception
+                policy.save()
 
     return total_policy_applied
