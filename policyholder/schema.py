@@ -571,6 +571,7 @@ class Query(graphene.ObjectType):
         payments_with_penalties = (
             Payment.objects.filter(
                 contract__policy_holder=policy_holder_id,
+                parent__isnull=True,
                 payments_penalty__isnull=False,  # Ensures there are penalties
             )
             .distinct()
