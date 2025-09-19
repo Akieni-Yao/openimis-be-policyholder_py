@@ -73,7 +73,8 @@ from policyholder.tasks import sync_policyholders_to_erp
 
 logger = logging.getLogger(__name__)
 
-MINIMUM_AGE_LIMIT = 16
+MINIMUM_AGE_LIMIT = 18
+MINIMUM_AGE_LIMIT_FOR_STUDENTS = 16
 HEADER_INSUREE_CAMU_NO = "camu_number"
 HEADER_FAMILY_HEAD = "family_head"
 HEADER_FAMILY_LOCATION_CODE = "family_location_code"
@@ -447,6 +448,45 @@ def import_phi(request, policy_holder_code):
 
         dob_value = line[HEADER_INSUREE_DOB]
 
+        ph_cpb = PolicyHolderContributionPlan.objects.filter(
+            policy_holder=policy_holder, is_deleted=False
+        ).first()
+
+        if not ph_cpb:
+            error = f"Pas de plans de cotisation avec ({policy_holder.trade_name})"
+            errors.append(error)
+            total_contribution_plan_not_found += 1
+
+            # Adding error in output excel
+            row_data = line.tolist()
+            row_data.extend(["Échec", error])
+            processed_data = processed_data.append(
+                pd.Series(row_data), ignore_index=True
+            )
+            continue
+
+        cpb = ph_cpb.contribution_plan_bundle
+
+        if not cpb:
+            error = f"Contribution plan inconnu - {ph_cpb.contribution_plan_bundle}"
+            errors.append(error)
+            total_locations_not_found += 1
+
+            # Adding error in output excel
+            row_data = line.tolist()
+            row_data.extend(["Échec", error])
+            processed_data = processed_data.append(
+                pd.Series(row_data), ignore_index=True
+            )
+            continue
+
+        enrolment_type = cpb.name
+
+        print(f"====> enrolment_type {enrolment_type} {cpb.code}")
+
+        if cpb.code == "PSC05" or enrolment_type == "Etudiants":
+            MINIMUM_AGE_LIMIT = MINIMUM_AGE_LIMIT_FOR_STUDENTS
+
         # if not line.get(HEADER_INSUREE_ID) and line.get(HEADER_FAMILY_HEAD):
         if not line.get(HEADER_INSUREE_ID) and not line.get(HEADER_INSUREE_CAMU_NO):
             if isinstance(dob_value, datetime):
@@ -518,40 +558,6 @@ def import_phi(request, policy_holder_code):
                 pd.Series(row_data), ignore_index=True
             )
             continue
-
-        ph_cpb = PolicyHolderContributionPlan.objects.filter(
-            policy_holder=policy_holder, is_deleted=False
-        ).first()
-
-        if not ph_cpb:
-            error = f"Pas de plans de cotisation avec ({policy_holder.trade_name})"
-            errors.append(error)
-            total_contribution_plan_not_found += 1
-
-            # Adding error in output excel
-            row_data = line.tolist()
-            row_data.extend(["Échec", error])
-            processed_data = processed_data.append(
-                pd.Series(row_data), ignore_index=True
-            )
-            continue
-
-        cpb = ph_cpb.contribution_plan_bundle
-
-        if not cpb:
-            error = f"Contribution plan inconnu - {ph_cpb.contribution_plan_bundle}"
-            errors.append(error)
-            total_locations_not_found += 1
-
-            # Adding error in output excel
-            row_data = line.tolist()
-            row_data.extend(["Échec", error])
-            processed_data = processed_data.append(
-                pd.Series(row_data), ignore_index=True
-            )
-            continue
-
-        enrolment_type = cpb.name
 
         is_valid_enrolment = validate_enrolment_type(line, enrolment_type)
         if not is_valid_enrolment:
