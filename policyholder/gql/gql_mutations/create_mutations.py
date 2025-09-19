@@ -258,19 +258,24 @@ class CreatePolicyHolderInsureeMutation(
             date_valid_to__isnull=True,
         ).first()
         insurees = Insuree.objects.filter(id=insuree_id).first()
-        products = ContributionPlanBundle.objects.filter(
-            id=contribution_plan_bundle_id, code="PSC5"
+        student_product = ContributionPlanBundle.objects.filter(
+            id=contribution_plan_bundle_id, name="Etudiants"
         ).first()
+
+        from policyholder.views import MINIMUM_AGE_LIMIT, MINIMUM_AGE_LIMIT_FOR_STUDENTS
 
         if is_insuree:
             raise ValidationError(message="Already Exists")
 
-        if products is None and insurees.age() < 18:
+        if student_product is None and insurees.age() < MINIMUM_AGE_LIMIT:
             raise ValidationError(
                 message="A principal insuree should have minimum 18 years old"
             )
 
-        if products is not None and insurees.age() < 16:
+        if (
+            student_product is not None
+            and insurees.age() < MINIMUM_AGE_LIMIT_FOR_STUDENTS
+        ):
             raise ValidationError(message="Student should have minimum 16 years old")
 
         employer_number = data.get("employer_number", "")
