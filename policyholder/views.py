@@ -73,7 +73,8 @@ from policyholder.tasks import sync_policyholders_to_erp
 
 logger = logging.getLogger(__name__)
 
-MINIMUM_AGE_LIMIT = 16
+MINIMUM_AGE_LIMIT = 18
+MINIMUM_AGE_LIMIT_FOR_STUDENTS = 16
 HEADER_INSUREE_CAMU_NO = "camu_number"
 HEADER_FAMILY_HEAD = "family_head"
 HEADER_FAMILY_LOCATION_CODE = "family_location_code"
@@ -250,10 +251,16 @@ def get_or_create_insuree_from_line(
     if insuree:
         print(f"===> insuree found {insuree.chf_id} {insuree.last_name}")
         age = (datetime.now().date() - insuree.dob) // timedelta(days=365.25)
-        if age < MINIMUM_AGE_LIMIT:
+        
+        # Set minimum age limit based on enrolment type
+        current_minimum_age = MINIMUM_AGE_LIMIT  # Default to global value
+        if enrolment_type == "Etudiants":
+            current_minimum_age = MINIMUM_AGE_LIMIT_FOR_STUDENTS
+            
+        if age < current_minimum_age:
             return (
                 insuree,
-                f"L'assuré doit être âgé d'au moins {MINIMUM_AGE_LIMIT} ans.",
+                f"L'assuré doit être âgé d'au moins {current_minimum_age} ans.",
             )
         return insuree, None
 
@@ -447,6 +454,47 @@ def import_phi(request, policy_holder_code):
 
         dob_value = line[HEADER_INSUREE_DOB]
 
+        ph_cpb = PolicyHolderContributionPlan.objects.filter(
+            policy_holder=policy_holder, is_deleted=False
+        ).first()
+
+        if not ph_cpb:
+            error = f"Pas de plans de cotisation avec ({policy_holder.trade_name})"
+            errors.append(error)
+            total_contribution_plan_not_found += 1
+
+            # Adding error in output excel
+            row_data = line.tolist()
+            row_data.extend(["Échec", error])
+            processed_data = processed_data.append(
+                pd.Series(row_data), ignore_index=True
+            )
+            continue
+
+        cpb = ph_cpb.contribution_plan_bundle
+
+        if not cpb:
+            error = f"Contribution plan inconnu - {ph_cpb.contribution_plan_bundle}"
+            errors.append(error)
+            total_locations_not_found += 1
+
+            # Adding error in output excel
+            row_data = line.tolist()
+            row_data.extend(["Échec", error])
+            processed_data = processed_data.append(
+                pd.Series(row_data), ignore_index=True
+            )
+            continue
+
+        enrolment_type = cpb.name
+
+        print(f"====> enrolment_type {enrolment_type} {cpb.code}")
+
+        # Set minimum age limit based on enrolment type
+        current_minimum_age = MINIMUM_AGE_LIMIT  # Default to global value
+        if cpb.code == "PSC05" or enrolment_type == "Etudiants":
+            current_minimum_age = MINIMUM_AGE_LIMIT_FOR_STUDENTS
+
         # if not line.get(HEADER_INSUREE_ID) and line.get(HEADER_FAMILY_HEAD):
         if not line.get(HEADER_INSUREE_ID) and not line.get(HEADER_INSUREE_CAMU_NO):
             if isinstance(dob_value, datetime):
@@ -476,8 +524,8 @@ def import_phi(request, policy_holder_code):
             age = (datetime.now().date() - dob.date()) // timedelta(
                 days=365.25
             )  # Calculate age in years
-            if age < MINIMUM_AGE_LIMIT:
-                error = f"L'assuré doit être âgé d'au moins {MINIMUM_AGE_LIMIT} ans."
+            if age < current_minimum_age:
+                error = f"L'assuré doit être âgé d'au moins {current_minimum_age} ans."
                 errors.append(error)
                 total_validation_errors += 1
                 row_data = line.tolist()
@@ -518,40 +566,6 @@ def import_phi(request, policy_holder_code):
                 pd.Series(row_data), ignore_index=True
             )
             continue
-
-        ph_cpb = PolicyHolderContributionPlan.objects.filter(
-            policy_holder=policy_holder, is_deleted=False
-        ).first()
-
-        if not ph_cpb:
-            error = f"Pas de plans de cotisation avec ({policy_holder.trade_name})"
-            errors.append(error)
-            total_contribution_plan_not_found += 1
-
-            # Adding error in output excel
-            row_data = line.tolist()
-            row_data.extend(["Échec", error])
-            processed_data = processed_data.append(
-                pd.Series(row_data), ignore_index=True
-            )
-            continue
-
-        cpb = ph_cpb.contribution_plan_bundle
-
-        if not cpb:
-            error = f"Contribution plan inconnu - {ph_cpb.contribution_plan_bundle}"
-            errors.append(error)
-            total_locations_not_found += 1
-
-            # Adding error in output excel
-            row_data = line.tolist()
-            row_data.extend(["Échec", error])
-            processed_data = processed_data.append(
-                pd.Series(row_data), ignore_index=True
-            )
-            continue
-
-        enrolment_type = cpb.name
 
         is_valid_enrolment = validate_enrolment_type(line, enrolment_type)
         if not is_valid_enrolment:
