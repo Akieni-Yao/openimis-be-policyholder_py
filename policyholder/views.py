@@ -251,10 +251,16 @@ def get_or_create_insuree_from_line(
     if insuree:
         print(f"===> insuree found {insuree.chf_id} {insuree.last_name}")
         age = (datetime.now().date() - insuree.dob) // timedelta(days=365.25)
-        if age < MINIMUM_AGE_LIMIT:
+        
+        # Set minimum age limit based on enrolment type
+        current_minimum_age = MINIMUM_AGE_LIMIT  # Default to global value
+        if enrolment_type == "Etudiants":
+            current_minimum_age = MINIMUM_AGE_LIMIT_FOR_STUDENTS
+            
+        if age < current_minimum_age:
             return (
                 insuree,
-                f"L'assuré doit être âgé d'au moins {MINIMUM_AGE_LIMIT} ans.",
+                f"L'assuré doit être âgé d'au moins {current_minimum_age} ans.",
             )
         return insuree, None
 
@@ -484,8 +490,10 @@ def import_phi(request, policy_holder_code):
 
         print(f"====> enrolment_type {enrolment_type} {cpb.code}")
 
+        # Set minimum age limit based on enrolment type
+        current_minimum_age = MINIMUM_AGE_LIMIT  # Default to global value
         if cpb.code == "PSC05" or enrolment_type == "Etudiants":
-            MINIMUM_AGE_LIMIT = MINIMUM_AGE_LIMIT_FOR_STUDENTS
+            current_minimum_age = MINIMUM_AGE_LIMIT_FOR_STUDENTS
 
         # if not line.get(HEADER_INSUREE_ID) and line.get(HEADER_FAMILY_HEAD):
         if not line.get(HEADER_INSUREE_ID) and not line.get(HEADER_INSUREE_CAMU_NO):
@@ -516,8 +524,8 @@ def import_phi(request, policy_holder_code):
             age = (datetime.now().date() - dob.date()) // timedelta(
                 days=365.25
             )  # Calculate age in years
-            if age < MINIMUM_AGE_LIMIT:
-                error = f"L'assuré doit être âgé d'au moins {MINIMUM_AGE_LIMIT} ans."
+            if age < current_minimum_age:
+                error = f"L'assuré doit être âgé d'au moins {current_minimum_age} ans."
                 errors.append(error)
                 total_validation_errors += 1
                 row_data = line.tolist()
