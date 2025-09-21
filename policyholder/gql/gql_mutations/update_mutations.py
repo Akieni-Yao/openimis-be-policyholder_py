@@ -393,7 +393,6 @@ class PHApprovalMutation(graphene.Mutation):
                     ph_obj.code = generated_number
                     ph_obj.is_approved = True
                     ph_obj.status = PH_STATUS_APPROVED
-                    ph_obj.save(username=username)
 
                     policyHolderUserPending = PolicyHolderUserPending.objects.filter(
                         policy_holder=ph_obj
@@ -404,6 +403,8 @@ class PHApprovalMutation(graphene.Mutation):
                             ph_obj, policyHolderUserPending.user, user
                         )
                         policyHolderUserPending.delete()
+
+                    ph_obj.save(username=username)
 
                     rename_folder_dms_and_openkm(
                         ph_obj.request_number, generated_number
