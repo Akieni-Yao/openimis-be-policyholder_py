@@ -779,6 +779,9 @@ class CreatePHPortalUserMutation(graphene.Mutation):
             ph_json_ext = input.pop("json_ext")
 
             input["send_email"] = False
+            
+            # create new insuree 
+            # Insuree.objects.filter(id=insuree_id).first()
 
             core_user = update_or_create_user(input, user)
             core_user.is_portal_user = True
