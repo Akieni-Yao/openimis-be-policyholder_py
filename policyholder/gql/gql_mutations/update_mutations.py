@@ -1,3 +1,4 @@
+import datetime
 import logging
 import re
 
@@ -26,6 +27,7 @@ from policyholder.models import (
     PolicyHolderInsuree,
     PolicyHolderContributionPlan,
     PolicyHolderUser,
+    PolicyHolderUserPending,
 )
 from policyholder.gql.gql_mutations import (
     PolicyHolderInsureeUpdateInputType,
@@ -79,18 +81,19 @@ class UpdateExceptionReasonMutation(graphene.Mutation):
             obj = ExceptionReason.objects.filter(id=id).first()
             if not obj:
                 raise ValidationError("ExceptionReason with this ID does not exist.")
-            
+
             obj.reason = input.get("reason")
             obj.period = input.get("period")
             obj.scope = scope
             obj.save()
-            
+
             logger.info(f"ExceptionReason updated successfully: {obj.id}")
 
             return cls(success=True, message="Mutation successful!")
         except Exception as e:
             logger.error(f"Failed to create exception reason: {e}")
             return cls(success=False, message=str(e))
+
 
 class UpdatePolicyHolderMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
     _mutation_class = "PolicyHolderMutation"
@@ -263,6 +266,106 @@ class PHApprovalMutation(graphene.Mutation):
     class Arguments:
         input = graphene.Argument(PHApprovalInput)
 
+    def create_new_insuree(self, policy_holder, user, infoUser):
+        from contract.utils import map_enrolment_type_to_category
+        from policyholder.views import generate_available_chf_id
+        from insuree.models import Family, Insuree
+        from insuree.dms_utils import create_openKm_folder_for_bulkupload
+        from workflow.workflow_stage import insuree_add_to_workflow
+        from insuree.abis_api import create_abis_insuree
+
+        i_user = InteractiveUser.objects.filter(id=user.id).first()
+
+        if not i_user:
+            raise ValidationError("User not found.")
+
+        ph_cpb = PolicyHolderContributionPlan.objects.filter(
+            policy_holder=policy_holder, is_deleted=False
+        ).first()
+        cpb = ph_cpb.contribution_plan_bundle if ph_cpb else None
+        enrolment_type = cpb.name if cpb else None
+
+        family = None
+        insuree_created = None
+        village = policy_holder.locations
+        dob = datetime.strptime("2007-03-03", "%Y-%m-%d")
+
+        if village:
+            family = Family.objects.create(
+                head_insuree_id=1,  # dummy
+                location=village,
+                audit_user_id=infoUser.id,
+                status="PRE_REGISTERED",
+                address="",
+                json_ext={
+                    "enrolmentType": map_enrolment_type_to_category(enrolment_type)
+                },
+            )
+
+        if family:
+            insuree_id = generate_available_chf_id(
+                "M",
+                village,
+                dob,
+                enrolment_type,
+            )
+            insuree_created = Insuree.objects.create(
+                other_names=i_user.other_names,
+                last_name=i_user.last_name,
+                dob=dob,
+                family=family,
+                audit_user_id=infoUser.id,
+                card_issued=False,
+                chf_id=insuree_id,
+                head=True,
+                current_village=village,
+                created_by=infoUser.id,
+                modified_by=infoUser.id,
+                marital="",
+                email=i_user.email,
+                phone=i_user.phone,
+                json_ext={
+                    "insureeEnrolmentType": map_enrolment_type_to_category(
+                        enrolment_type
+                    ),
+                },
+            )
+            chf_id = insuree_id
+
+            if not insuree_created:
+                raise ValidationError("Insuree not created.")
+
+            print(f"===> insuree_created: {insuree_created}")
+
+            family = Family.objects.filter(id=family.id).first()
+            family.head_insuree_id = insuree_created.id
+            family.save()
+
+            try:
+                create_openKm_folder_for_bulkupload(infoUser, insuree_created)
+            except Exception as e:
+                logger.error(f"insuree bulk upload error for dms: {e}")
+
+            try:
+                insuree_add_to_workflow(
+                    infoUser, insuree_created.id, "INSUREE_ENROLLMENT", "Pre_Register"
+                )
+                create_abis_insuree(infoUser, insuree_created)
+
+            except Exception as e:
+                logger.error(f"insuree bulk upload error for abis or workflow : {e}")
+
+            phi = PolicyHolderInsuree(
+                insuree=insuree_created,
+                policy_holder=policy_holder,
+                contribution_plan_bundle=cpb,
+                json_ext={},
+                employer_number=None,
+            )
+            phi.save(username=infoUser.username)
+
+        print(f"===> created insuree: {chf_id}")
+
     def mutate(self, info, input):
         try:
             username = info.context.user.username
@@ -291,6 +394,17 @@ class PHApprovalMutation(graphene.Mutation):
                     ph_obj.is_approved = True
                     ph_obj.status = PH_STATUS_APPROVED
                     ph_obj.save(username=username)
+
+                    policyHolderUserPending = PolicyHolderUserPending.objects.filter(
+                        policy_holder=ph_obj
+                    ).first()
+
+                    if policyHolderUserPending:
+                        self.create_new_insuree(
+                            ph_obj, policyHolderUserPending.user, user
+                        )
+                        policyHolderUserPending.delete()
+
                     rename_folder_dms_and_openkm(
                         ph_obj.request_number, generated_number
                     )
@@ -479,66 +593,66 @@ class PHApprovalMutation(graphene.Mutation):
 #             success=True, message="Policyholder unlocked successfully."
 #         )
 
-    # def old_mutate(self, info, policy_holder, check_status=False):
-    #     # Fetch the policyholder
-    #     try:
-    #         policyholder = PolicyHolder.objects.get(id=policy_holder)
-    #     except PolicyHolder.DoesNotExist:
-    #         return UnlockPolicyHolderMutation(
-    #             success=False, message="Policyholder does not exist."
-    #         )
+# def old_mutate(self, info, policy_holder, check_status=False):
+#     # Fetch the policyholder
+#     try:
+#         policyholder = PolicyHolder.objects.get(id=policy_holder)
+#     except PolicyHolder.DoesNotExist:
+#         return UnlockPolicyHolderMutation(
+#             success=False, message="Policyholder does not exist."
+#         )
 
-    #     # Query all payments associated with the policyholder's contracts
-    #     payments = Payment.objects.filter(Q(contract__policy_holder__id=policy_holder))
+#     # Query all payments associated with the policyholder's contracts
+#     payments = Payment.objects.filter(Q(contract__policy_holder__id=policy_holder))
 
-    #     # Check if any payments exist for the policyholder
-    #     if not payments.exists():
-    #         return UnlockPolicyHolderMutation(
-    #             success=False, message="No payments found for this policyholder."
-    #         )
+#     # Check if any payments exist for the policyholder
+#     if not payments.exists():
+#         return UnlockPolicyHolderMutation(
+#             success=False, message="No payments found for this policyholder."
+#         )
 
-    #     if payments.filter(~Q(status=1) & ~Q(status=5)).exists():
-    #         return UnlockPolicyHolderMutation(
-    #             success=False, message="Not all payments are fully paid."
-    #         )
+#     if payments.filter(~Q(status=1) & ~Q(status=5)).exists():
+#         return UnlockPolicyHolderMutation(
+#             success=False, message="Not all payments are fully paid."
+#         )
 
-    #     # Check penalties of those payments: should have status 3 or 4, penalty_type 'Penalty', and is_approved=True
-    #     penalties = PaymentPenaltyAndSanction.objects.filter(
-    #         Q(payment__in=payments)
-    #         & ~Q(
-    #             status__in=[
-    #                 PaymentPenaltyAndSanction.PENALTY_APPROVED,
-    #                 PaymentPenaltyAndSanction.PENALTY_CANCELED,
-    #                 PaymentPenaltyAndSanction.INSTALLMENT_APPROVED,
-    #                 PaymentPenaltyAndSanction.INSTALLMENT_AGREEMENT_PENDING,
-    #             ]
-    #         )
-    #     )
+#     # Check penalties of those payments: should have status 3 or 4, penalty_type 'Penalty', and is_approved=True
+#     penalties = PaymentPenaltyAndSanction.objects.filter(
+#         Q(payment__in=payments)
+#         & ~Q(
+#             status__in=[
+#                 PaymentPenaltyAndSanction.PENALTY_APPROVED,
+#                 PaymentPenaltyAndSanction.PENALTY_CANCELED,
+#                 PaymentPenaltyAndSanction.INSTALLMENT_APPROVED,
+#                 PaymentPenaltyAndSanction.INSTALLMENT_AGREEMENT_PENDING,
+#             ]
+#         )
+#     )
 
-    #     # If penalties exist that are unresolved or not approved
-    #     if penalties.exists():
-    #         if not penalties.filter(is_approved=True).exists():
-    #             return UnlockPolicyHolderMutation(
-    #                 success=False, message="Penalties are not approved."
-    #             )
-    #         return UnlockPolicyHolderMutation(
-    #             success=False, message="Penalties are not fully resolved."
-    #         )
+#     # If penalties exist that are unresolved or not approved
+#     if penalties.exists():
+#         if not penalties.filter(is_approved=True).exists():
+#             return UnlockPolicyHolderMutation(
+#                 success=False, message="Penalties are not approved."
+#             )
+#         return UnlockPolicyHolderMutation(
+#             success=False, message="Penalties are not fully resolved."
+#         )
 
-    #     if check_status:
-    #         return UnlockPolicyHolderMutation(
-    #             success=True, message="Policyholder can be unlocked."
-    #         )
+#     if check_status:
+#         return UnlockPolicyHolderMutation(
+#             success=True, message="Policyholder can be unlocked."
+#         )
 
-    #     username = info.context.user.username
+#     username = info.context.user.username
 
-    #     # If all payments are fully paid, penalties are resolved and approved, unlock the policyholder
-    #     policyholder.status = "Approved"
-    #     policyholder.save(username=username)
+#     # If all payments are fully paid, penalties are resolved and approved, unlock the policyholder
+#     policyholder.status = "Approved"
+#     policyholder.save(username=username)
 
-    #     return UnlockPolicyHolderMutation(
-    #         success=True, message="Policyholder unlocked successfully."
-    #     )
+#     return UnlockPolicyHolderMutation(
+#         success=True, message="Policyholder unlocked successfully."
+#     )
 
 
 class VerifyUserAndUpdatePasswordMutation(graphene.Mutation):
