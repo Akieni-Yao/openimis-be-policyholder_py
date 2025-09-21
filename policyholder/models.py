@@ -371,3 +371,17 @@ class CategoryChange(models.Model):
     class Meta:
         managed = True
         db_table = "tblCategoryChange"
+
+
+class PolicyHolderUserPending(models.Model):
+    id = models.AutoField(db_column="ID", primary_key=True)
+    user = models.ForeignKey(
+        core_models.User, db_column="UserID", on_delete=models.deletion.DO_NOTHING
+    )
+    policy_holder = models.ForeignKey(
+        PolicyHolder, db_column="PolicyHolderId", on_delete=models.deletion.DO_NOTHING
+    )
+
+    class Meta:
+        managed = True
+        db_table = "tblPolicyHolderUserPending"

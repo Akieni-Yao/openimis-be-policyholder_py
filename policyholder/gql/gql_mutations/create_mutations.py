@@ -39,6 +39,7 @@ from policyholder.models import (
     Insuree,
     PolicyHolderExcption,
     CategoryChange,
+    PolicyHolderUserPending,
 )
 from policyholder.gql.gql_mutations import (
     PolicyHolderInputType,
@@ -792,6 +793,9 @@ class CreatePHPortalUserMutation(graphene.Mutation):
             ph_obj.request_number = uuid.uuid4().hex[:8].upper()
             ph_obj.status = PH_STATUS_CREATED
             ph_obj.save(username=core_user.username)
+
+            PolicyHolderUserPending.objects.create(user=core_user, policy_holder=ph_obj)
+
             logger.info(f"CreatePHPortalUserMutation : ph_obj : {ph_obj}")
             create_policyholder_openkmfolder({"request_number": ph_obj.request_number})
             try:
