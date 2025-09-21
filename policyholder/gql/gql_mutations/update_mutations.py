@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime
 import logging
 import re
 
@@ -266,106 +266,6 @@ class PHApprovalMutation(graphene.Mutation):
     class Arguments:
         input = graphene.Argument(PHApprovalInput)
 
-    def create_new_insuree(self, policy_holder, user, infoUser):
-        from contract.utils import map_enrolment_type_to_category
-        from policyholder.views import generate_available_chf_id
-        from insuree.models import Family, Insuree
-        from insuree.dms_utils import create_openKm_folder_for_bulkupload
-        from workflow.workflow_stage import insuree_add_to_workflow
-        from insuree.abis_api import create_abis_insuree
-
-        i_user = InteractiveUser.objects.filter(id=user.id).first()
-
-        if not i_user:
-            raise ValidationError("User not found.")
-
-        ph_cpb = PolicyHolderContributionPlan.objects.filter(
-            policy_holder=policy_holder, is_deleted=False
-        ).first()
-        cpb = ph_cpb.contribution_plan_bundle if ph_cpb else None
-        enrolment_type = cpb.name if cpb else None
-
-        family = None
-        insuree_created = None
-        village = policy_holder.locations
-        dob = datetime.strptime("2007-03-03", "%Y-%m-%d")
-
-        if village:
-            family = Family.objects.create(
-                head_insuree_id=1,  # dummy
-                location=village,
-                audit_user_id=infoUser.id,
-                status="PRE_REGISTERED",
-                address="",
-                json_ext={
-                    "enrolmentType": map_enrolment_type_to_category(enrolment_type)
-                },
-            )
-
-        if family:
-            insuree_id = generate_available_chf_id(
-                "M",
-                village,
-                dob,
-                enrolment_type,
-            )
-            insuree_created = Insuree.objects.create(
-                other_names=i_user.other_names,
-                last_name=i_user.last_name,
-                dob=dob,
-                family=family,
-                audit_user_id=infoUser.id,
-                card_issued=False,
-                chf_id=insuree_id,
-                head=True,
-                current_village=village,
-                created_by=infoUser.id,
-                modified_by=infoUser.id,
-                marital="",
-                email=i_user.email,
-                phone=i_user.phone,
-                json_ext={
-                    "insureeEnrolmentType": map_enrolment_type_to_category(
-                        enrolment_type
-                    ),
-                },
-            )
-            chf_id = insuree_id
-
-            if not insuree_created:
-                raise ValidationError("Insuree not created.")
-
-            print(f"===> insuree_created: {insuree_created}")
-
-            family = Family.objects.filter(id=family.id).first()
-            family.head_insuree_id = insuree_created.id
-            family.save()
-
-            try:
-                create_openKm_folder_for_bulkupload(infoUser, insuree_created)
-            except Exception as e:
-                logger.error(f"insuree bulk upload error for dms: {e}")
-
-            try:
-                insuree_add_to_workflow(
-                    infoUser, insuree_created.id, "INSUREE_ENROLLMENT", "Pre_Register"
-                )
-                create_abis_insuree(infoUser, insuree_created)
-
-            except Exception as e:
-                logger.error(f"insuree bulk upload error for abis or workflow : {e}")
-
-            phi = PolicyHolderInsuree(
-                insuree=insuree_created,
-                policy_holder=policy_holder,
-                contribution_plan_bundle=cpb,
-                json_ext={},
-                employer_number=None,
-            )
-            phi.save(username=infoUser.username)
-
-        print(f"===> created insuree: {chf_id}")
-
     def mutate(self, info, input):
         try:
             username = info.context.user.username
@@ -399,9 +299,7 @@ class PHApprovalMutation(graphene.Mutation):
                     ).first()
 
                     if policyHolderUserPending:
-                        self.create_new_insuree(
-                            ph_obj, policyHolderUserPending.user, user
-                        )
+                        create_new_insuree(ph_obj, policyHolderUserPending.user, user)
                         policyHolderUserPending.delete()
 
                     ph_obj.save(username=username)
@@ -498,6 +396,119 @@ class PHApprovalMutation(graphene.Mutation):
             success = False
             message = str(e)
             return PHApprovalMutation(success=success, message=message)
+
+
+def create_new_insuree(policy_holder, user, infoUser):
+    from contract.utils import map_enrolment_type_to_category
+    from policyholder.views import generate_available_chf_id
+    from insuree.models import Family, Insuree
+    from insuree.dms_utils import create_openKm_folder_for_bulkupload
+    from workflow.workflow_stage import insuree_add_to_workflow
+    from insuree.abis_api import create_abis_insuree
+
+    print(f"===> create_new_insuree: {policy_holder} {user.email} {infoUser.i_user_id}")
+
+    i_user = InteractiveUser.objects.filter(email=user.email).first()
+    
+    audit_user_id = infoUser.i_user_id
+
+    if not i_user:
+        raise ValidationError("User not found.")
+
+    ph_cpb = PolicyHolderContributionPlan.objects.filter(
+        policy_holder=policy_holder, is_deleted=False
+    ).first()
+    cpb = ph_cpb.contribution_plan_bundle if ph_cpb else None
+    enrolment_type = cpb.name if cpb else None
+
+    family = None
+    insuree_created = None
+    village = policy_holder.locations
+    dob = datetime.strptime("2007-03-03", "%Y-%m-%d")
+
+    print(f"===> village: {village}")
+    print(f"===> enrolment_type: {enrolment_type}")
+    
+
+    if village:
+        family = Family.objects.create(
+            head_insuree_id=1,  # dummy
+            location=village,
+            audit_user_id=audit_user_id,
+            status="PRE_REGISTERED",
+            address="",
+            json_ext={"enrolmentType": map_enrolment_type_to_category(enrolment_type)},
+        )
+
+    print(f"===> family: {family}")
+
+    if family:
+        insuree_id = generate_available_chf_id(
+            "M",
+            village,
+            dob,
+            enrolment_type,
+        )
+
+        print(f"===> insuree_id: {insuree_id}")
+
+        insuree_created = Insuree.objects.create(
+            other_names=i_user.other_names,
+            last_name=i_user.last_name,
+            dob=dob,
+            family=family,
+            audit_user_id=audit_user_id,
+            card_issued=False,
+            chf_id=insuree_id,
+            head=True,
+            current_village=village,
+            created_by=audit_user_id,
+            modified_by=audit_user_id,
+            marital="",
+            email=i_user.email,
+            phone=i_user.phone,
+            json_ext={
+                "insureeEnrolmentType": map_enrolment_type_to_category(enrolment_type),
+            },
+        )
+        chf_id = insuree_id
+
+        if not insuree_created:
+            raise ValidationError("Insuree not created.")
+
+        print(f"===> insuree_created: {insuree_created}")
+
+        family = Family.objects.filter(id=family.id).first()
+        family.head_insuree_id = insuree_created.id
+        family.save()
+
+        try:
+            create_openKm_folder_for_bulkupload(infoUser, insuree_created)
+        except Exception as e:
+            logger.error(f"insuree bulk upload error for dms: {e}")
+
+        try:
+            insuree_add_to_workflow(
+                infoUser, insuree_created.id, "INSUREE_ENROLLMENT", "Pre_Register"
+            )
+            create_abis_insuree(infoUser, insuree_created)
+
+        except Exception as e:
+            logger.error(f"insuree bulk upload error for abis or workflow : {e}")
+
+        phi = PolicyHolderInsuree(
+            insuree=insuree_created,
+            policy_holder=policy_holder,
+            contribution_plan_bundle=cpb,
+            json_ext={},
+            employer_number=None,
+        )
+        phi.save(username=infoUser.username)
+        
+        i_user.insuree = insuree_created
+        i_user.save()
+
+    print(f"===> created insuree: {chf_id}")
 
 
 # @TODO not used anymore, the current field has been moved to payment module
