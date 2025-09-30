@@ -9,6 +9,7 @@ from decimal import Decimal, InvalidOperation
 
 import pandas as pd
 from contract.models import Contract
+from contract.utils import map_enrolment_type_to_category
 from contract.services import Contract as ContractService
 from contribution_plan.models import ContributionPlan, ContributionPlanBundleDetails
 from core.constants import *
@@ -1087,47 +1088,47 @@ class LocationEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-def map_enrolment_type_to_category(enrolment_type):
-    """
-    Map enrolment type to category using dynamic mapping from ContributionPlan.
-    Falls back to hardcoded mapping if no dynamic mapping is found.
-    """
-    try:
-        # Get the first active contribution plan with mapping_value
-        contribution_plan = (
-            ContributionPlan.objects.filter(
-                name=enrolment_type, is_deleted=False, mapping_value__isnull=False
-            )
-            .exclude(mapping_value="")
-            .first()
-        )
-        if contribution_plan and contribution_plan.mapping_value:
-            # mapping_value is a direct string (category value)
-            return contribution_plan.mapping_value
-    except Exception as e:
-        logger.warning(f"Failed to get dynamic mapping: {e}")
+# def map_enrolment_type_to_category(enrolment_type):
+#     """
+#     Map enrolment type to category using dynamic mapping from ContributionPlan.
+#     Falls back to hardcoded mapping if no dynamic mapping is found.
+#     """
+#     try:
+#         # Get the first active contribution plan with mapping_value
+#         contribution_plan = (
+#             ContributionPlan.objects.filter(
+#                 name=enrolment_type, is_deleted=False, mapping_value__isnull=False
+#             )
+#             .exclude(mapping_value="")
+#             .first()
+#         )
+#         if contribution_plan and contribution_plan.mapping_value:
+#             # mapping_value is a direct string (category value)
+#             return contribution_plan.mapping_value
+#     except Exception as e:
+#         logger.warning(f"Failed to get dynamic mapping: {e}")
 
-    # Fallback to hardcoded mapping if dynamic mapping fails or is not found
-    # Define the mapping from input values to categories
-    enrolment_type_mapping = {
-        "Agents de l'Etat": "public_Employees",
-        "Salariés du privé": "private_sector_employees",
-        "Travailleurs indépendants et professions libérales": "Selfemployed_and_liberal_professions",
-        "TIPL": "Selfemployed_and_liberal_professions",
-        "Pensionnés CRF et CNSS": "CRF_and_CNSS_pensioners",
-        "Personnes vulnérables": "vulnerable_Persons",
-        "Etudiants": "students",
-        "Pensionnés de la CRF et CNSS": "CRF_and_CNSS_pensioners",
-        "Titulaire de pensions CRF et CNSS": "CRF_and_CNSS_pensioners",
-    }
+#     # Fallback to hardcoded mapping if dynamic mapping fails or is not found
+#     # Define the mapping from input values to categories
+#     enrolment_type_mapping = {
+#         "Agents de l'Etat": "public_Employees",
+#         "Salariés du privé": "private_sector_employees",
+#         "Travailleurs indépendants et professions libérales": "Selfemployed_and_liberal_professions",
+#         "TIPL": "Selfemployed_and_liberal_professions",
+#         "Pensionnés CRF et CNSS": "CRF_and_CNSS_pensioners",
+#         "Personnes vulnérables": "vulnerable_Persons",
+#         "Etudiants": "students",
+#         "Pensionnés de la CRF et CNSS": "CRF_and_CNSS_pensioners",
+#         "Titulaire de pensions CRF et CNSS": "CRF_and_CNSS_pensioners",
+#     }
 
-    # Check if the enrolment type exists in the mapping dictionary
-    if enrolment_type in enrolment_type_mapping:
-        return enrolment_type_mapping[enrolment_type]
-    else:
-        # If the value doesn't match any predefined category, you can handle it accordingly.
-        # For example, set a default category or raise an exception.
-        return None
+#     # Check if the enrolment type exists in the mapping dictionary
+#     if enrolment_type in enrolment_type_mapping:
+#         return enrolment_type_mapping[enrolment_type]
+#     else:
+#         # If the value doesn't match any predefined category, you can handle it accordingly.
+#         # For example, set a default category or raise an exception.
+#         return None
 
 
 def mapping_marital_status(marital, value=None):
