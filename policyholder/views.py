@@ -1,80 +1,81 @@
+import calendar
+import io
 import json
 import logging
 import math
-import io
-import calendar
-from datetime import datetime, timedelta
 import re
+from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation
 
+import pandas as pd
+from contract.models import Contract
+from contract.utils import map_enrolment_type_to_category
+from contract.services import Contract as ContractService
+from contribution_plan.models import ContributionPlan, ContributionPlanBundleDetails
+from core.constants import *
+from core.models import Banks, InteractiveUser, Role
+from core.notification_service import base64_encode, create_camu_notification
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import EmailMessage
 from django.db.models import Q, Sum
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.utils import timezone
-import pandas as pd
-from django.http import JsonResponse, HttpResponse
 from django.utils.dateparse import parse_date
 from django.utils.encoding import force_text
 from django.utils.http import urlsafe_base64_decode
 from graphql import GraphQLError
-
-from rest_framework.decorators import (
-    permission_classes,
-    api_view,
-    authentication_classes,
-)
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework.response import Response
-
-from contract.models import Contract
-from contract.services import Contract as ContractService
-from core.constants import *
-from core.models import Role, InteractiveUser, Banks
-from core.notification_service import create_camu_notification, base64_encode
+from insuree.abis_api import create_abis_insuree
 from insuree.dms_utils import (
     create_openKm_folder_for_bulkupload,
     send_mail_to_temp_insuree_with_pdf,
 )
 from insuree.gql_mutations import temp_generate_employee_camu_registration_number
-from insuree.models import Insuree, Gender, Family, InsureePolicy
+from insuree.models import Family, Gender, Insuree, InsureePolicy
 from location.models import Location
 from payment.models import Payment, PaymentPenaltyAndSanction
 from payment.views import get_payment_product_config
 from policy.models import Policy
+from rest_framework.decorators import (
+    api_view,
+    authentication_classes,
+    permission_classes,
+)
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from workflow.workflow_stage import insuree_add_to_workflow
+
 from policyholder.apps import *
 from policyholder.constants import (
-    CC_WAITING_FOR_DOCUMENT,
     CC_APPROVED,
     CC_PENDING,
-    CC_WAITING_FOR_APPROVAL,
     CC_PROCESSING,
+    CC_WAITING_FOR_APPROVAL,
+    CC_WAITING_FOR_DOCUMENT,
     PH_STATUS_CREATED,
     PH_STATUS_LOCKED,
     TIPL_PAYMENT_METHOD_ID,
 )
 from policyholder.dms_utils import (
     create_folder_for_cat_chnage_req,
-    validate_enrolment_type,
     send_notification_to_head,
+    validate_enrolment_type,
 )
 from policyholder.models import (
-    PolicyHolder,
-    PolicyHolderInsuree,
-    PolicyHolderContributionPlan,
     CategoryChange,
+    PolicyHolder,
+    PolicyHolderContributionPlan,
+    PolicyHolderInsuree,
     PolicyHolderUser,
 )
-from contribution_plan.models import ContributionPlanBundleDetails
-from workflow.workflow_stage import insuree_add_to_workflow
-from insuree.abis_api import create_abis_insuree
-from decimal import Decimal, InvalidOperation
 from policyholder.tasks import sync_policyholders_to_erp
 
 logger = logging.getLogger(__name__)
 
-MINIMUM_AGE_LIMIT = 16
+MINIMUM_AGE_LIMIT = 18
+MINIMUM_AGE_LIMIT_FOR_STUDENTS = 16
 HEADER_INSUREE_CAMU_NO = "camu_number"
 HEADER_FAMILY_HEAD = "family_head"
 HEADER_FAMILY_LOCATION_CODE = "family_location_code"
@@ -177,29 +178,35 @@ def get_village_from_line(line):
 
 
 def get_or_create_family_from_line(
-    line, village: Location, audit_user_id: int, enrolment_type
+    line, audit_user_id: int, enrolment_type, insuree, village
 ):
-    # head_id = line[HEADER_FAMILY_HEAD]
-    head_id = None
-    family = None
-    if head_id:
-        family = Family.objects.filter(
-            validity_to__isnull=True, head_insuree__chf_id=head_id, location=village
-        ).first()
-    created = False
+    family = Family.objects.filter(
+        validity_to__isnull=True, head_insuree=insuree
+    ).first()
 
-    if not family and not head_id:
-        family = Family.objects.create(
-            head_insuree_id=1,  # dummy
-            location=village,
-            audit_user_id=audit_user_id,
-            status="PRE_REGISTERED",
-            address=line[HEADER_ADDRESS],
-            json_ext={"enrolmentType": map_enrolment_type_to_category(enrolment_type)},
-        )
-        created = True
+    if family:
+        return family, True
 
-    return family, created
+    if not village:
+        return None, False
+
+    family = Family.objects.create(
+        head_insuree=insuree,
+        location=village,
+        audit_user_id=audit_user_id,
+        status="PRE_REGISTERED",
+        address=line[HEADER_ADDRESS],
+        json_ext={"enrolmentType": map_enrolment_type_to_category(enrolment_type)},
+    )
+
+    if family:
+        insurees = Insuree.objects.filter(id=insuree.id).first()
+        insurees.family = family
+        insurees.head = True
+        insurees.save()
+        return family, True
+
+    return None, False
 
 
 def generate_available_chf_id(gender, village, dob, insureeEnrolmentType):
@@ -220,35 +227,49 @@ def generate_available_chf_id(gender, village, dob, insureeEnrolmentType):
 
 def get_or_create_insuree_from_line(
     line,
-    family: Family,
-    is_family_created: bool,
+    village,
     audit_user_id: int,
-    location=None,
+    request,
     core_user_id=None,
     enrolment_type=None,
 ):
     id = line[HEADER_INSUREE_ID]
     camu_num = line[HEADER_INSUREE_CAMU_NO]
     insuree = None
+
     if id:
-        insuree = Insuree.objects.filter(validity_to__isnull=True, chf_id=id).first()
-    if not insuree and camu_num:
-        insuree = Insuree.objects.filter(
-            validity_to__isnull=True, camu_number=camu_num
-        ).first()
+        insuree = (
+            Insuree.objects.filter(validity_to__isnull=True).filter(chf_id=id).first()
+        )
 
-    created = False
-    # if insuree:
-    #     json_ext = insuree.json_ext
-    #     json_ext['employeeNumber'] = line[HEADER_EMPLOYER_NUMBER]
-    #     insuree.json_ext = json_ext
-    #     insuree.save()
+    if camu_num:
+        insuree = (
+            Insuree.objects.filter(validity_to__isnull=True)
+            .filter(camu_number=camu_num)
+            .first()
+        )
 
+    if insuree:
+        print(f"===> insuree found {insuree.chf_id} {insuree.last_name}")
+        age = (datetime.now().date() - insuree.dob) // timedelta(days=365.25)
+        
+        # Set minimum age limit based on enrolment type
+        current_minimum_age = MINIMUM_AGE_LIMIT  # Default to global value
+        if enrolment_type == "Etudiants":
+            current_minimum_age = MINIMUM_AGE_LIMIT_FOR_STUDENTS
+            
+        if age < current_minimum_age:
+            return (
+                insuree,
+                f"L'assuré doit être âgé d'au moins {current_minimum_age} ans.",
+            )
+        return insuree, None
+
+    print("===> create new insuree")
+
+    # create new insuree
     if not insuree:
         insuree_dob = line[HEADER_INSUREE_DOB]
-        logger.info(
-            f"=================================== LINE 244 {type(insuree_dob)}==========================="
-        )
         if not isinstance(insuree_dob, datetime):
             datetime_obj = (
                 datetime.strptime(f"{insuree_dob}", "%d/%m/%Y")
@@ -259,23 +280,25 @@ def get_or_create_insuree_from_line(
 
         insuree_id = generate_available_chf_id(
             line[HEADER_INSUREE_GENDER],
-            location if location else family.location,
+            village,
             line[HEADER_INSUREE_DOB],
             enrolment_type,
         )
-        current_village = location if location else family.location
+
+        print(f"====> insuree_id {insuree_id}")
+        current_village = village
         response_string = json.dumps(current_village, cls=LocationEncoder)
         response_data = json.loads(response_string)
         insuree = Insuree.objects.create(
             other_names=line[HEADER_INSUREE_OTHER_NAMES],
             last_name=line[HEADER_INSUREE_LAST_NAME],
             dob=line[HEADER_INSUREE_DOB],
-            family=family,
+            # family=family,
             audit_user_id=audit_user_id,
             card_issued=False,
             chf_id=insuree_id,
             gender=GENDERS[line[HEADER_INSUREE_GENDER]],
-            head=is_family_created,
+            head=False,
             current_village=current_village,
             current_address=line[HEADER_ADDRESS],
             phone=line[HEADER_PHONE],
@@ -290,12 +313,29 @@ def get_or_create_insuree_from_line(
                 "insureeaddress": line[HEADER_ADDRESS],
             },
         )
-        created = True
 
-    return insuree, created
+        print(f"====> insuree {insuree.id} {insuree.last_name}")
+
+        try:
+            user = request.user
+            create_openKm_folder_for_bulkupload(user, insuree)
+            insuree_add_to_workflow(
+                None, insuree.id, "INSUREE_ENROLLMENT", "Pre_Register"
+            )
+            create_abis_insuree(None, insuree)
+        except Exception as e:
+            logger.error(f"insuree bulk upload error for abis or workflow : {e}")
+
+        if insuree:
+            return insuree, None
+
+    return (
+        None,
+        "Impossible de créer ou de trouver l'assuré. Assurez-vous que les données sont bien correctes",
+    )
 
 
-def validating_insuree_on_name_dob(line):
+def validating_insuree_on_name_dob(line, policy_holder):
     insuree_dob = line[HEADER_INSUREE_DOB]
     if not isinstance(insuree_dob, datetime):
         datetime_obj = datetime.strptime(insuree_dob, "%d/%m/%Y")
@@ -309,7 +349,10 @@ def validating_insuree_on_name_dob(line):
         legacy_id__isnull=True,
     ).first()
 
-    return insuree
+    if not insuree:
+        return False
+
+    return True
 
 
 def get_policy_holder_from_code(ph_code: str):
@@ -358,17 +401,9 @@ def import_phi(request, policy_holder_code):
     core_user_id = request.user.id
     logger.info("User (audit id %s) requested import of PolicyHolderInsurees", user_id)
 
-    logger.info(
-        "=================================== LINE 349 ==========================="
-    )
-
     policy_holder = get_policy_holder_from_code(policy_holder_code)
     if not policy_holder:
         return JsonResponse({"errors": f"Unknown policy holder ({policy_holder_code})"})
-
-    logger.info(
-        "=================================== LINE 354 ==========================="
-    )
 
     total_lines = 0
     total_insurees_created = 0
@@ -379,17 +414,9 @@ def import_phi(request, policy_holder_code):
     total_contribution_plan_not_found = 0
     total_validation_errors = 0
 
-    logger.info(
-        "=================================== LINE 360 ==========================="
-    )
-
     df = pd.read_excel(file)
     df.columns = [col.strip() for col in df.columns]
     org_columns = df.columns
-
-    logger.info(
-        "=================================== LINE 366 ==========================="
-    )
     # Renaming the headers
     rename_columns = {
         "Numéro CAMU": HEADER_INSUREE_CAMU_NO,
@@ -403,48 +430,22 @@ def import_phi(request, policy_holder_code):
         "Téléphone": HEADER_PHONE,
         "Adresse": HEADER_ADDRESS,
         "Village": HEADER_FAMILY_LOCATION_CODE,
-        # "ID Famille": HEADER_FAMILY_HEAD,
         "Email": HEADER_EMAIL,
-        # "Matricule": HEADER_EMPLOYER_NUMBER,
-        # "Salaire Brut": HEADER_INCOME,
-        # "Part Patronale %": HEADER_EMPLOYER_PERCENTAGE,
-        # "Part Patronale": HEADER_EMPLOYER_SHARE,
-        # "Part Salariale %": HEADER_EMPLOYEE_PERCENTAGE,
-        # "Part Salariale": HEADER_EMPLOYEE_SHARE,
-        # "Cotisation total": HEADER_TOTAL_SHARE,
         "Supprimé": HEADER_DELETE,
     }
 
     df.rename(columns=rename_columns, inplace=True)
-
-    logger.info(
-        "=================================== LINE 371 ==========================="
-    )
-
     errors = []
     logger.debug("Importing %s lines", len(df))
-
-    logger.info(
-        "=================================== LINE 375 ==========================="
-    )
 
     # For output excel with error and success message
     output = io.BytesIO()
     writer = pd.ExcelWriter(output, engine="xlsxwriter")
     processed_data = pd.DataFrame()
 
-    logger.info(
-        "=================================== LINE 380 ==========================="
-    )
-
     for index, line in df.iterrows():  # for each line in the Excel file
         total_lines += 1
         clean_line(line)
-        logger.debug("Importing line %s: %s", total_lines, line)
-        logger.info(
-            "=================================== LINE 419 ==========================="
-        )
-
         # List of possible date formats to try
         date_formats = [
             "%Y-%m-%d",
@@ -453,17 +454,52 @@ def import_phi(request, policy_holder_code):
         ]  # Add more formats as needed
 
         dob_value = line[HEADER_INSUREE_DOB]
-        logger.info(
-            "=================================== LINE 422 ==========================="
-        )
+
+        ph_cpb = PolicyHolderContributionPlan.objects.filter(
+            policy_holder=policy_holder, is_deleted=False
+        ).first()
+
+        if not ph_cpb:
+            error = f"Pas de plans de cotisation avec ({policy_holder.trade_name})"
+            errors.append(error)
+            total_contribution_plan_not_found += 1
+
+            # Adding error in output excel
+            row_data = line.tolist()
+            row_data.extend(["Échec", error])
+            processed_data = processed_data.append(
+                pd.Series(row_data), ignore_index=True
+            )
+            continue
+
+        cpb = ph_cpb.contribution_plan_bundle
+
+        if not cpb:
+            error = f"Contribution plan inconnu - {ph_cpb.contribution_plan_bundle}"
+            errors.append(error)
+            total_locations_not_found += 1
+
+            # Adding error in output excel
+            row_data = line.tolist()
+            row_data.extend(["Échec", error])
+            processed_data = processed_data.append(
+                pd.Series(row_data), ignore_index=True
+            )
+            continue
+
+        enrolment_type = cpb.name
+
+        print(f"====> enrolment_type {enrolment_type} {cpb.code}")
+
+        # Set minimum age limit based on enrolment type
+        current_minimum_age = MINIMUM_AGE_LIMIT  # Default to global value
+        if cpb.code == "PSC05" or enrolment_type == "Etudiants":
+            current_minimum_age = MINIMUM_AGE_LIMIT_FOR_STUDENTS
 
         # if not line.get(HEADER_INSUREE_ID) and line.get(HEADER_FAMILY_HEAD):
-        if not line.get(HEADER_INSUREE_ID):
+        if not line.get(HEADER_INSUREE_ID) and not line.get(HEADER_INSUREE_CAMU_NO):
             if isinstance(dob_value, datetime):
                 dob = dob_value
-                logger.info(
-                    "=================================== LINE 435 ==========================="
-                )
             else:
                 dob = None
                 for date_format in date_formats:
@@ -475,21 +511,12 @@ def import_phi(request, policy_holder_code):
 
                 if dob is None:
                     # If none of the formats match, handle the error
-                    errors.append(
-                        f"Error line {total_lines} - Format de date invalide pour la date de naissance : {dob_value}"
-                    )
-                    logger.debug(
-                        f"Error line {total_lines} - Format de date invalide pour la date de naissance : {dob_value}"
-                    )
+                    error = f"Format de date invalide pour la date de naissance : {dob_value}"
+                    errors.append(error)
                     total_validation_errors += 1
                     # Adding error in output excel
                     row_data = line.tolist()
-                    row_data.extend(
-                        [
-                            "Échec",
-                            f"Format de date invalide pour la date de naissance : {dob_value}",
-                        ]
-                    )
+                    row_data.extend(["Échec", error])
                     processed_data = processed_data.append(
                         pd.Series(row_data), ignore_index=True
                     )
@@ -498,371 +525,119 @@ def import_phi(request, policy_holder_code):
             age = (datetime.now().date() - dob.date()) // timedelta(
                 days=365.25
             )  # Calculate age in years
-            if age < MINIMUM_AGE_LIMIT:
-                errors.append(
-                    f"Error line {total_lines} - L'assuré doit être âgé d'au moins {MINIMUM_AGE_LIMIT} ans."
-                )
-                logger.debug(
-                    f"Error line {total_lines} - L'assuré doit être âgé d'au moins {MINIMUM_AGE_LIMIT} ans."
-                )
+            if age < current_minimum_age:
+                error = f"L'assuré doit être âgé d'au moins {current_minimum_age} ans."
+                errors.append(error)
                 total_validation_errors += 1
-                # Adding error in output excel
                 row_data = line.tolist()
-                row_data.extend(
-                    [
-                        "Échec",
-                        f"L'assuré doit être âgé d'au moins {MINIMUM_AGE_LIMIT} ans.",
-                    ]
-                )
+                row_data.extend(["Échec", error])
                 processed_data = processed_data.append(
                     pd.Series(row_data), ignore_index=True
                 )
                 continue
 
-            logger.info(
-                "=================================== LINE 439 ==========================="
-            )
-
-            force_value = str(line.get("Force", "")).strip().lower()
-            if force_value not in ["yes", "Yes", "YES"]:
-                logger.info(
-                    "=================================== LINE 442 ==========================="
+            # Check if insuree with the same name and DOB already exists
+            insuree = validating_insuree_on_name_dob(line, policy_holder)
+            if insuree:
+                # Generate an error message instructing to add insuree forcibly
+                error = "Un assuré ayant le même nom et la même date de naissance existe déjà, veuillez ajouter son numéro CAMU ou numéro temporaire."
+                errors.append(error)
+                # Adding error in output excel
+                row_data = line.tolist()
+                row_data.extend(["Échec", error])
+                processed_data = processed_data.append(
+                    pd.Series(row_data), ignore_index=True
                 )
-                # Check if insuree with the same name and DOB already exists
-                insuree = validating_insuree_on_name_dob(line)
-                if insuree:
-                    # Generate an error message instructing to add insuree forcibly
-                    errors.append(
-                        f"Error line {total_lines} - Un assuré ayant le même nom et la même date de naissance existe déjà. Si vous voulez l'ajouter, veuillez le faire de force en ajoutant une nouvelle colonne nommée 'Force' avec la valeur 'YES'."
-                    )
-                    logger.debug(
-                        f"Error line {total_lines} - Un assuré ayant le même nom et la même date de naissance existe déjà. Si vous voulez l'ajouter, veuillez le faire de force en ajoutant une nouvelle colonne nommée 'Force' avec la valeur 'YES'."
-                    )
-
-                    logger.info(
-                        "=================================== LINE 445 ==========================="
-                    )
-
-                    # Adding error in output excel
-                    row_data = line.tolist()
-                    row_data.extend(
-                        [
-                            "Échec",
-                            "Un assuré ayant le même nom et la même date de naissance existe déjà. Si vous voulez l'ajouter, veuillez le faire de force en ajoutant une nouvelle colonne nommée 'Force' avec la valeur 'YES'.",
-                        ]
-                    )
-                    processed_data = processed_data.append(
-                        pd.Series(row_data), ignore_index=True
-                    )
-                    continue
-
-            logger.info(
-                "=================================== LINE 448 ==========================="
-            )
-
-        validation_errors = validate_line(line)
-        if validation_errors:
-            errors.append(
-                f"Error line {total_lines} - Problèmes de validation  ({validation_errors})"
-            )
-            logger.debug(
-                f"Error line {total_lines} - Problèmes de validation  ({validation_errors})"
-            )
-
-            logger.info(
-                "=================================== LINE 452 ==========================="
-            )
-
-            total_validation_errors += 1
-
-            # Adding error in output excel
-            row_data = line.tolist()
-            row_data.extend(["Échec", validation_errors])
-            processed_data = processed_data.append(
-                pd.Series(row_data), ignore_index=True
-            )
-            continue
-
-        logger.info(
-            "=================================== LINE 455 ==========================="
-        )
+                continue
 
         if line[HEADER_DELETE] and line[HEADER_DELETE].lower() == "yes":
             is_deleted = soft_delete_insuree(line, policy_holder_code, user_id)
             if is_deleted:
                 continue
 
-            logger.info(
-                "=================================== LINE 458 ==========================="
-            )
-
         village = get_village_from_line(line)
         if not village:
-            errors.append(
-                f"Error line {total_lines} - Village inconnu ({line[HEADER_FAMILY_LOCATION_CODE]})"
-            )
-            logger.debug(
-                f"Error line {total_lines} -Village inconnu ({line[HEADER_FAMILY_LOCATION_CODE]})"
-            )
+            error = f"Village inconnu - {line[HEADER_FAMILY_LOCATION_CODE]}"
+            errors.append(error)
             total_locations_not_found += 1
-
-            logger.info(
-                "=================================== LINE 459 ==========================="
-            )
-
             # Adding error in output excel
             row_data = line.tolist()
-            row_data.extend(
-                ["Échec", f"Village inconnu - {line[HEADER_FAMILY_LOCATION_CODE]}"]
-            )
+            row_data.extend(["Échec", error])
             processed_data = processed_data.append(
                 pd.Series(row_data), ignore_index=True
             )
             continue
-
-        try:
-            ph_cpb = PolicyHolderContributionPlan.objects.filter(
-                policy_holder=policy_holder, is_deleted=False
-            ).first()
-            if not ph_cpb:
-                errors.append(
-                    f"Error line {total_lines} - Pas de plans de cotisation avec ({policy_holder.trade_name})"
-                )
-                logger.debug(
-                    f"Error line {total_lines} - Pas de plans de cotisation avec ({policy_holder.trade_name})"
-                )
-                total_contribution_plan_not_found += 1
-
-                logger.info(
-                    "=================================== LINE 460 ==========================="
-                )
-
-                # Adding error in output excel
-                row_data = line.tolist()
-                row_data.extend(
-                    [
-                        "Échec",
-                        f"Pas de plans de cotisation avec - {policy_holder.trade_name}",
-                    ]
-                )
-                processed_data = processed_data.append(
-                    pd.Series(row_data), ignore_index=True
-                )
-                continue
-
-            cpb = ph_cpb.contribution_plan_bundle
-            if not cpb:
-                errors.append(
-                    f"Error line {total_lines} - Contribution plan inconnu ({ph_cpb.contribution_plan_bundle})"
-                )
-                logger.debug(
-                    f"Error line {total_lines} - Contribution plan inconnu ({ph_cpb.contribution_plan_bundle})"
-                )
-                total_locations_not_found += 1
-
-                logger.info(
-                    "=================================== LINE 461 ==========================="
-                )
-
-                # Adding error in output excel
-                row_data = line.tolist()
-                row_data.extend(
-                    [
-                        "Échec",
-                        f"Contribution plan inconnu - {ph_cpb.contribution_plan_bundle}",
-                    ]
-                )
-                processed_data = processed_data.append(
-                    pd.Series(row_data), ignore_index=True
-                )
-                continue
-
-            enrolment_type = cpb.name
-        except Exception as e:
-            logger.error(
-                f"Error occurred while retrieving Contribution Plan Bundle: {e}"
-            )
-            enrolment_type = None
-
-            logger.info(
-                "=================================== LINE 462 ==========================="
-            )
 
         is_valid_enrolment = validate_enrolment_type(line, enrolment_type)
         if not is_valid_enrolment:
+            error = "Le type d'enrôlement doit être différent de 'étudiant."
             row_data = line.tolist()
-            row_data.extend(
-                ["Échec", "Le type d'enrôlement doit être différent de 'étudiant'."]
-            )
+            row_data.extend(["Échec", error])
             processed_data = processed_data.append(
                 pd.Series(row_data), ignore_index=True
             )
             continue
 
-        logger.info(
-            "=================================== LINE 463 ==========================="
+        insuree, error = get_or_create_insuree_from_line(
+            line,
+            village,
+            user_id,
+            request,
+            core_user_id,
+            enrolment_type,
         )
+        logger.debug("insuree_created: %s", insuree)
 
-        is_cc_request = check_for_category_change_request(
-            request.user, line, policy_holder, enrolment_type
-        )
-        if is_cc_request:
+        if error:
             row_data = line.tolist()
-            row_data.extend(["Réussite", "Demande de changement de catégorie Créé."])
+            row_data.extend(["Échec", error])
             processed_data = processed_data.append(
                 pd.Series(row_data), ignore_index=True
             )
-            # continue
+            continue
 
-        logger.info(
-            "=================================== LINE 464 ==========================="
-        )
+        total_insurees_created += 1
 
         family, family_created = get_or_create_family_from_line(
-            line, village, user_id, enrolment_type
+            line, user_id, enrolment_type, insuree, village
         )
-        # family
-        logger.debug("family_created: %s", family_created)
-        if family_created:
-            total_families_created += 1
-        elif not family_created and family is None:
-            logger.info(
-                "=================================== LINE 465 ==========================="
-            )
 
+        if not family:
             # Adding error in output excel
+            error = "Impossible de créer ou de trouver la famille."
             row_data = line.tolist()
-            row_data.extend(["Échec", "ID du chef de famille inconnu."])
+            row_data.extend(["Échec", error])
             processed_data = processed_data.append(
                 pd.Series(row_data), ignore_index=True
             )
             continue
 
-        logger.info(
-            "=================================== LINE 466 ==========================="
+        print(f"====> family {family.id} {family.uuid}")
+
+        check_for_category_change_request(
+            request.user, line, policy_holder, enrolment_type
         )
+        # if is_cc_request:
+        #     row_data = line.tolist()
+        #     row_data.extend(["Réussite", "Demande de changement de catégorie Créé."])
+        #     processed_data = processed_data.append(
+        #         pd.Series(row_data), ignore_index=True
+        #     )
 
-        insuree, insuree_created = get_or_create_insuree_from_line(
-            line, family, family_created, user_id, None, core_user_id, enrolment_type
-        )
-        logger.debug("insuree_created: %s", insuree_created)
-        if insuree_created:
-            total_insurees_created += 1
+        total_families_created += 1
 
-            logger.info(
-                "=================================== LINE 467 ==========================="
-            )
-
-            try:
-                logger.info(
-                    "====  policyholder  ====  import_phi  ====  create_openKm_folder_for_bulkupload  ====  Start"
-                )
-                user = request.user
-                create_openKm_folder_for_bulkupload(user, insuree)
-                logger.info(
-                    "====  policyholder  ====  import_phi  ====  create_openKm_folder_for_bulkupload  ====  End"
-                )
-
-                logger.info(
-                    "=================================== LINE 468 ==========================="
-                )
-
-            except Exception as e:
-                logger.error(f"insuree bulk upload error for dms: {e}")
-
-            logger.info(
-                "=================================== LINE 469 ==========================="
-            )
-
-            try:
-                logger.info(
-                    "====  policyholder  ====  import_phi  ====  insuree_add_to_workflow  ====  Start"
-                )
-                insuree_add_to_workflow(
-                    None, insuree.id, "INSUREE_ENROLLMENT", "Pre_Register"
-                )
-                logger.info(
-                    "====  policyholder  ====  import_phi  ====  insuree_add_to_workflow  ====  End"
-                )
-                logger.info(
-                    "====  policyholder  ====  import_phi  ====  create_abis_insuree  ====  Start"
-                )
-                create_abis_insuree(None, insuree)
-                logger.info(
-                    "====  policyholder  ====  import_phi  ====  create_abis_insuree  ====  End"
-                )
-            except Exception as e:
-                logger.error(f"insuree bulk upload error for abis or workflow : {e}")
-        elif not insuree_created:
-            family.delete()
-            reason = None
-
-            logger.info(
-                "=================================== LINE 470 ==========================="
-            )
-
-            other_policyholder_connected = PolicyHolderInsuree.objects.filter(
-                insuree=insuree, policy_holder__id__ne=policy_holder.id
-            ).first()
-
-            insuree_dob = line[HEADER_INSUREE_DOB]
-            if not isinstance(insuree_dob, datetime):
-                datetime_obj = datetime.strptime(insuree_dob, "%d/%m/%Y")
-                line[HEADER_INSUREE_DOB] = timezone.make_aware(datetime_obj).date()
-
-            if insuree.other_names != line[HEADER_INSUREE_OTHER_NAMES]:
-                reason = "Le prénom de l'assuré ne correspond pas."
-            elif insuree.last_name != line[HEADER_INSUREE_LAST_NAME]:
-                reason = "Le nom de famille de l'assuré ne correspond pas."
-            elif insuree.dob != line[HEADER_INSUREE_DOB]:
-                reason = "La date de naissance de l'assuré ne correspond pas."
-            elif insuree.gender != GENDERS[line[HEADER_INSUREE_GENDER]]:
-                reason = "Le sexe de l'assuré ne correspond pas."
-            elif insuree.marital != mapping_marital_status(line[HEADER_CIVILITY]):
-                reason = "L'état civil de l'assuré ne correspond pas."
-            elif other_policyholder_connected: 
-                reason = "L'assuré est deja lié a un autre souscripteur."
-
-            logger.info(
-                "=================================== LINE 471 ==========================="
-            )
-            if reason:
-                # Adding error in output excel
-                row_data = line.tolist()
-                row_data.extend(["Échec", reason])
-                processed_data = processed_data.append(
-                    pd.Series(row_data), ignore_index=True
-                )
-                continue
-
-            logger.info(
-                "=================================== LINE 472 ==========================="
-            )
-
-        if family_created and insuree_created:
-            family.head_insuree = insuree
-            family.save()
         phi_json_ext = {}
 
-        logger.info(
-            "=================================== LINE 473 ==========================="
-        )
-
-        # if line[HEADER_INCOME]:
-        #     phi_json_ext["calculation_rule"] = {"income": line[HEADER_INCOME]}
         employer_number = None
-        # if line[HEADER_INCOME]:
-        #     employer_number = line[HEADER_EMPLOYER_NUMBER]
-        # PolicyHolderInsuree is HistoryModel that prevents the use of .objects.update_or_create() :(
+
         phi = PolicyHolderInsuree.objects.filter(
             insuree=insuree, policy_holder=policy_holder
         ).first()
 
-        logger.info(
-            "=================================== LINE 474 ==========================="
-        )
-
         if phi:
+            print(
+                f"====> already policyHolder insuree {insuree.id} {policy_holder.id} exists"
+            )
             phi._state.adding = True
             if (
                 phi.contribution_plan_bundle != cpb
@@ -871,14 +646,9 @@ def import_phi(request, policy_holder_code):
             ):
                 phi.contribution_plan_bundle = cpb
                 phi.employer_number = employer_number
-                # phi.json_ext = {**phi.json_ext, **phi_json_ext} if phi.json_ext else phi_json_ext
                 phi.json_ext = phi_json_ext
                 phi.save(username=request.user.username)
                 total_phi_updated += 1
-
-                logger.info(
-                    "=================================== LINE 475 ==========================="
-                )
         else:
             phi = PolicyHolderInsuree(
                 insuree=insuree,
@@ -890,31 +660,27 @@ def import_phi(request, policy_holder_code):
             total_phi_created += 1
             phi.save(username=request.user.username)
 
-            logger.info(
-                "=================================== LINE 476 ==========================="
-            )
+            print(f"=====> create policyHolder insuree {insuree.id} {policy_holder.id}")
+
+            # row_data = line.tolist()
+            # row_data.extend(
+            #     ["Réussite", "L'assuré a été bien rattaché au souscripteur"]
+            # )
+            # processed_data = processed_data.append(
+            #     pd.Series(row_data), ignore_index=True
+            # )
+
         try:
             create_camu_notification(INS_ADDED_NT, phi)
-            logger.info(
-                "Successfully created CAMU notification with INS_ADDED_NT and phi."
-            )
-
-            logger.info(
-                "=================================== LINE 477 ==========================="
-            )
 
         except Exception as e:
             logger.error(
                 f"Failed to create CAMU notification with with INS_ADDED_NT : {e}"
             )
 
-            logger.info(
-                "=================================== LINE 478 ==========================="
-            )
-
         # Adding success entry in output Excel
         row_data = line.tolist()
-        row_data.extend(["Réussite", ""])
+        row_data.extend(["Réussite", "L'assuré a été bien rattaché au souscripteur"])
         processed_data = processed_data.append(pd.Series(row_data), ignore_index=True)
 
         try:
@@ -931,10 +697,6 @@ def import_phi(request, policy_holder_code):
     # Set the appropriate status code based on the type of errors encountered
     status_code = 200  # Default success status
 
-    logger.info(
-        "=================================== LINE 479 ==========================="
-    )
-
     if total_locations_not_found > 0:
         status_code = 417  # Expectation Failed for unknown village
     elif total_contribution_plan_not_found > 0:
@@ -942,20 +704,12 @@ def import_phi(request, policy_holder_code):
     elif total_validation_errors > 0:
         status_code = 422  # Unprocessable Entity for general validation errors
 
-    logger.info(
-        "=================================== LINE 480 ==========================="
-    )
-
     # Generate output Excel
     output_headers = list(org_columns) + ["Status", "Reason"]
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         processed_data.to_excel(
             writer, sheet_name="Processed Data", index=False, header=output_headers
         )
-
-    logger.info(
-        "=================================== LINE 481 ==========================="
-    )
 
     output.seek(0)
     response = HttpResponse(
@@ -1277,7 +1031,7 @@ def export_phi(request, policy_holder_code):
         # df.insert(loc=18, column="Part Salariale %", value=employee_percentage)
         # df.insert(loc=19, column="Part Salariale", value=employee_share)
         # df.insert(loc=20, column="Cotisation total", value=total_share)
-        
+
         df2.insert(
             loc=8,
             column="Status d'enregistrement",
@@ -1334,27 +1088,47 @@ class LocationEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-def map_enrolment_type_to_category(enrolment_type):
-    # Define the mapping from input values to categories
-    enrolment_type_mapping = {
-        "Agents de l'Etat": "public_Employees",
-        "Salariés du privé": "private_sector_employees",
-        "Travailleurs indépendants et professions libérales": "Selfemployed_and_liberal_professions",
-        "TIPL": "Selfemployed_and_liberal_professions",
-        "Pensionnés CRF et CNSS": "CRF_and_CNSS_pensioners",
-        "Personnes vulnérables": "vulnerable_Persons",
-        "Etudiants": "students",
-        "Pensionnés de la CRF et CNSS": "CRF_and_CNSS_pensioners",
-        "Titulaire de pensions CRF et CNSS": "CRF_and_CNSS_pensioners",
-    }
+# def map_enrolment_type_to_category(enrolment_type):
+#     """
+#     Map enrolment type to category using dynamic mapping from ContributionPlan.
+#     Falls back to hardcoded mapping if no dynamic mapping is found.
+#     """
+#     try:
+#         # Get the first active contribution plan with mapping_value
+#         contribution_plan = (
+#             ContributionPlan.objects.filter(
+#                 name=enrolment_type, is_deleted=False, mapping_value__isnull=False
+#             )
+#             .exclude(mapping_value="")
+#             .first()
+#         )
+#         if contribution_plan and contribution_plan.mapping_value:
+#             # mapping_value is a direct string (category value)
+#             return contribution_plan.mapping_value
+#     except Exception as e:
+#         logger.warning(f"Failed to get dynamic mapping: {e}")
 
-    # Check if the enrolment type exists in the mapping dictionary
-    if enrolment_type in enrolment_type_mapping:
-        return enrolment_type_mapping[enrolment_type]
-    else:
-        # If the value doesn't match any predefined category, you can handle it accordingly.
-        # For example, set a default category or raise an exception.
-        return None
+#     # Fallback to hardcoded mapping if dynamic mapping fails or is not found
+#     # Define the mapping from input values to categories
+#     enrolment_type_mapping = {
+#         "Agents de l'Etat": "public_Employees",
+#         "Salariés du privé": "private_sector_employees",
+#         "Travailleurs indépendants et professions libérales": "Selfemployed_and_liberal_professions",
+#         "TIPL": "Selfemployed_and_liberal_professions",
+#         "Pensionnés CRF et CNSS": "CRF_and_CNSS_pensioners",
+#         "Personnes vulnérables": "vulnerable_Persons",
+#         "Etudiants": "students",
+#         "Pensionnés de la CRF et CNSS": "CRF_and_CNSS_pensioners",
+#         "Titulaire de pensions CRF et CNSS": "CRF_and_CNSS_pensioners",
+#     }
+
+#     # Check if the enrolment type exists in the mapping dictionary
+#     if enrolment_type in enrolment_type_mapping:
+#         return enrolment_type_mapping[enrolment_type]
+#     else:
+#         # If the value doesn't match any predefined category, you can handle it accordingly.
+#         # For example, set a default category or raise an exception.
+#         return None
 
 
 def mapping_marital_status(marital, value=None):
@@ -1705,7 +1479,12 @@ def check_for_category_change_request(user, line, policy_holder, enrolment_type)
                             # Check if there's an existing category change request
                             existing_request = CategoryChange.objects.filter(
                                 insuree=insuree,
-                                status__in=[CC_PENDING, CC_WAITING_FOR_DOCUMENT, CC_PROCESSING, CC_WAITING_FOR_APPROVAL]
+                                status__in=[
+                                    CC_PENDING,
+                                    CC_WAITING_FOR_DOCUMENT,
+                                    CC_PROCESSING,
+                                    CC_WAITING_FOR_APPROVAL,
+                                ],
                             ).first()
 
                             if not existing_request:
@@ -1873,7 +1652,8 @@ def portal_reset(request, uidb64, token, e_timestamp):
             )  # open page when token has expired
     else:
         logger.info("Invalid token.")
-        return redirect(settings.PORTAL_FRONTEND)  # open page when token is invalid
+        # open page when token is invalid
+        return redirect(settings.PORTAL_FRONTEND)
 
 
 @authentication_classes([])
@@ -2098,7 +1878,8 @@ def get_declaration_details(requests, policy_holder_code):
                 "insuree_right_status": insuree_right_status,
                 "period": period,  # This will now show the next month's MM-YYYY
                 "label": "declaration",
-                "total_amount": output_data,  # Ensure this is always a Decimal (since no payment was found)
+                # Ensure this is always a Decimal (since no payment was found)
+                "total_amount": output_data,
             }
         )
         data["data"] = contract_data
@@ -2232,7 +2013,8 @@ def get_declaration_details(requests, policy_holder_code):
                 "insuree_right_status": insuree_right_status,
                 "period": period,  # This will now show the next month's MM-YYYY
                 "label": "declaration",
-                "total_amount": output_data,  # Ensure this is always a Decimal (since no payment was found)
+                # Ensure this is always a Decimal (since no payment was found)
+                "total_amount": output_data,
             }
         )
         logger.info(

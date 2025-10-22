@@ -11,10 +11,12 @@ from core.schema import (
     OrderedDjangoFilterConnectionField,
     signal_mutation_module_validate,
 )
+from dateutil.relativedelta import relativedelta
 from core.utils import append_validity_filter
 from payment.gql_queries import PaymentPenaltyAndSanctionType, PaymentGQLType
 from payment.models import PaymentPenaltyAndSanction, Payment
 from policyholder.models import (
+    ExceptionReason,
     PolicyHolder,
     PolicyHolderInsuree,
     PolicyHolderUser,
@@ -27,6 +29,7 @@ from policyholder.models import (
     CategoryChange,
 )
 from policyholder.gql.gql_mutations.create_mutations import (
+    CreateExceptionReasonMutation,
     CreatePolicyHolderMutation,
     CreatePolicyHolderInsureeMutation,
     CreatePolicyHolderUserMutation,
@@ -36,12 +39,14 @@ from policyholder.gql.gql_mutations.create_mutations import (
     CreatePHPortalUserMutation,
 )
 from policyholder.gql.gql_mutations.delete_mutations import (
+    DeleteExceptionReasonMutation,
     DeletePolicyHolderMutation,
     DeletePolicyHolderInsureeMutation,
     DeletePolicyHolderUserMutation,
     DeletePolicyHolderContributionPlanMutation,
 )
 from policyholder.gql.gql_mutations.update_mutations import (
+    UpdateExceptionReasonMutation,
     UpdatePolicyHolderMutation,
     UpdatePolicyHolderInsureeMutation,
     UpdatePolicyHolderUserMutation,
@@ -64,6 +69,7 @@ from policyholder.services import (
     PolicyHolder as PolicyHolderServices,
 )
 from policyholder.gql.gql_types import (
+    ExceptionReasonGQLType,
     PolicyHolderUserGQLType,
     PolicyHolderGQLType,
     PolicyHolderInsureeGQLType,
@@ -105,6 +111,11 @@ class Query(graphene.ObjectType):
         applyDefaultValidityFilter=graphene.Boolean(),
         contactName=graphene.String(),
         shortName=graphene.String(),
+    )
+
+    exception_reason = OrderedDjangoFilterConnectionField(
+        ExceptionReasonGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
     )
 
     # can_unlock_policyholder = graphene.Field(
@@ -163,6 +174,21 @@ class Query(graphene.ObjectType):
     #     return UnlockPolicyHolderMutation(
     #         success=True, message="Policyholder can be unlocked."
     #     )
+
+    # def resolve_exception_reason(self, info, **kwargs):
+    #     """
+    #     Resolve the exception reason query.
+    #     This method retrieves all exception reasons from the database.
+    #     """
+
+    #     filters = {}
+
+    #     for key, value in kwargs.items():
+    #         if value is not None:
+    #             filters[key] = value
+
+    #     exception_reasons =  ExceptionReason.objects.filter(**filters).all()
+    #     return gql_optimizer.query(exception_reasons, info)
 
     def resolve_policy_holder_by_family(self, info, **kwargs):
         # family_uuid=kwargs.get('family_uuid')
@@ -288,18 +314,54 @@ class Query(graphene.ObjectType):
         self, info, id, is_approved, rejection_reason
     ):
         ph_exception = PolicyHolderExcption.objects.filter(id=id).first()
-        if ph_exception:
-            ph_exception.status = "APPROVED" if is_approved else "REJECTED"
-            if is_approved:
-                assign_ph_exception_policy(ph_exception)
-            else:
-                ph_exception.rejection_reason = rejection_reason
-            ph_exception.save()
+        if not ph_exception:
             return ApprovePolicyholderExceptionType(
-                success=True, message="Exception Approved!"
+                success=False, message="Exception Not Found!"
             )
+
+        reason = ExceptionReason.objects.filter(id=ph_exception.reason.id).first()
+        if not reason:
+            return ApprovePolicyholderExceptionType(
+                success=False, message="Exception Reason Not Found!"
+            )
+        ph_exception.status = "APPROVED" if is_approved else "REJECTED"
+        total_policy_applied = 0
+        if is_approved:
+            ph_exception_started_at = ph_exception.started_at
+
+            if not ph_exception.started_at:
+                ph_exception_started_at = ph_exception.created_time
+
+            ph_exception.is_used = True
+            total_policy_applied = check_policy_exception_and_apply(
+                ph_exception.policy_holder,
+                ph_exception_started_at,
+                ph_exception,
+                reason,
+                applied_exception=True,
+            )
+
+        else:
+            ph_exception.rejection_reason = rejection_reason
+
+        print(f"=====> total_policy_applied : {total_policy_applied}")
+
+        if total_policy_applied == 0:
+            print("=====> no policy applied!")
+            return ApprovePolicyholderExceptionType(
+                success=False,
+                message="Aucune polices trouvées pour cette période d'exception!",
+            )
+        ph_exception.save()
+
+        if is_approved:
+            # remove all pending exceptions for this policy holder
+            PolicyHolderExcption.objects.filter(
+                policy_holder=ph_exception.policy_holder, status="PENDING"
+            ).delete()
+
         return ApprovePolicyholderExceptionType(
-            success=False, message="Exception Not Found!"
+            success=True, message="Exception Approved!"
         )
 
     category_change_requests = OrderedDjangoFilterConnectionField(
@@ -416,7 +478,7 @@ class Query(graphene.ObjectType):
             ).values_list("insuree_id", flat=True)
             if insuree_ids:
                 query = query.exclude(insuree_id__in=insuree_ids)
-                
+
         if kwargs.get("insuree__id") is not None:
             query = query.filter(insuree__id=kwargs.get("insuree__id"))
         # # check validity_to is null
@@ -509,6 +571,7 @@ class Query(graphene.ObjectType):
         payments_with_penalties = (
             Payment.objects.filter(
                 contract__policy_holder=policy_holder_id,
+                parent__isnull=True,
                 payments_penalty__isnull=False,  # Ensures there are penalties
             )
             .distinct()
@@ -554,6 +617,10 @@ class Mutation(graphene.ObjectType):
     verify_user_and_update_password = VerifyUserAndUpdatePasswordMutation.Field()
     new_password_request = NewPasswordRequestMutation.Field()
 
+    create_exception_reason = CreateExceptionReasonMutation.Field()
+    update_exception_reason = UpdateExceptionReasonMutation.Field()
+    delete_exception_reason = DeleteExceptionReasonMutation.Field()
+
 
 def on_policy_holder_mutation(sender, **kwargs):
     uuid = kwargs["data"].get("uuid", None)
@@ -597,3 +664,66 @@ def on_policy_holder_mutation(sender, **kwargs):
 def bind_signals():
     signal_mutation_module_validate["policyholder"].connect(on_policy_holder_mutation)
     signal_before_payment_query.connect(append_policy_holder_filter)
+
+
+def check_policy_exception_and_apply(
+    policy_holder, exception_started_at, ph_exception, reason, applied_exception=False
+):
+    from policy.models import Policy
+    from contract.models import ContractPolicy
+    from insuree.models import InsureeExcption
+    from insuree.models import Family
+
+    ph_insurees = PolicyHolderInsuree.objects.filter(
+        policy_holder=policy_holder,
+        is_deleted=False,
+    ).all()
+    total_policy_applied = 0
+    for ph_insuree in ph_insurees:
+        print(f"=====> ph_insuree : {ph_insuree.insuree.status}")
+
+        if not ph_insuree.insuree or not ph_insuree.insuree.family:
+            continue
+
+        # if ph_insuree.insuree.status != "APPROVED":
+        #     continue
+
+        family = Family.objects.filter(id=ph_insuree.insuree.family.id).first()
+
+        if not family:
+            continue
+
+        custom_filter = {
+            "status__in": [
+                Policy.STATUS_ACTIVE,
+                Policy.STATUS_READY,
+                Policy.STATUS_EXPIRED,
+            ],
+            "is_valid": True,
+            "family__id": family.id,
+            "expiry_date__month": exception_started_at.month,
+            "expiry_date__year": exception_started_at.year,
+        }
+
+        policy = Policy.objects.filter(**custom_filter).order_by("-expiry_date").first()
+
+        check_insuree_exception = InsureeExcption.objects.filter(
+            insuree=ph_insuree.insuree, is_used=True
+        ).first()
+
+        if check_insuree_exception:
+            continue
+
+        if policy:
+            print(f"=====> policy : {policy.uuid}")
+            total_policy_applied += 1
+
+            if applied_exception:
+                policy.initial_expiry_date = policy.expiry_date
+                policy.expiry_date = policy.expiry_date + relativedelta(
+                    months=reason.period
+                )
+                policy.ph_exception = ph_exception
+                policy.save()
+
+    return total_policy_applied

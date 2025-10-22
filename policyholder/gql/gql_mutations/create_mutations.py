@@ -10,6 +10,7 @@ from core.gql.gql_mutations.base_mutation import (
     BaseMutation,
     BaseHistoryModelCreateMutationMixin,
 )
+from dateutil.relativedelta import relativedelta
 from core.notification_service import create_camu_notification
 from core.schema import OpenIMISMutation, update_or_create_user
 from core.models import Role, User, InteractiveUser
@@ -28,7 +29,9 @@ from policyholder.dms_utils import (
     manual_validate_enrolment_type,
 )
 from policyholder.gql import PolicyHolderExcptionType
+from policyholder.gql.gql_mutations.input_types import ExceptionReasonInputType
 from policyholder.models import (
+    ExceptionReason,
     PolicyHolder,
     PolicyHolderInsuree,
     PolicyHolderContributionPlan,
@@ -36,6 +39,7 @@ from policyholder.models import (
     Insuree,
     PolicyHolderExcption,
     CategoryChange,
+    PolicyHolderUserPending,
 )
 from policyholder.gql.gql_mutations import (
     PolicyHolderInputType,
@@ -80,7 +84,9 @@ def get_and_set_waiting_period_for_insuree(insuree_id, policyholder_id):
         logger.info("============get_and_set_waiting_period_for_insuree=============")
 
         policy_holder_contribution_plan = PolicyHolderContributionPlan.objects.filter(
-            policy_holder_id=policyholder_id, is_deleted=False, date_valid_to__isnull=True
+            policy_holder_id=policyholder_id,
+            is_deleted=False,
+            date_valid_to__isnull=True,
         ).first()
         logger.info(
             f"policy_holder_contribution_plan: {policy_holder_contribution_plan}"
@@ -114,7 +120,7 @@ def get_and_set_waiting_period_for_insuree(insuree_id, policyholder_id):
         logger.info(f"product.policy_waiting_period: {product.policy_waiting_period}")
 
         insuree = Insuree.objects.filter(id=insuree_id).first()
-        
+
         logger.info(f"insuree: {insuree}")
 
         if policy_holder_contribution_plan:
@@ -238,30 +244,39 @@ class CreatePolicyHolderInsureeMutation(
 
     @classmethod
     def _validate_mutation(cls, user, **data):
+        from contract.utils import map_enrolment_type_to_category
+        from insuree.models import Family
+
         logger.info(f"-------------CreatePolicyHolderInsureeMutation : data : {data}")
         insuree_id = data.get("insuree_id")
         contribution_plan_bundle_id = data.get("contribution_plan_bundle_id")
         policyholder_id = data.get("policy_holder_id")
+        policy_holder = PolicyHolder.objects.filter(id=policyholder_id).first()
         is_insuree = PolicyHolderInsuree.objects.filter(
-            policy_holder__id=policyholder_id, 
-            insuree__id=insuree_id, 
+            policy_holder__id=policyholder_id,
+            insuree__id=insuree_id,
             is_deleted=False,
-            date_valid_to__isnull=True
+            date_valid_to__isnull=True,
         ).first()
         insurees = Insuree.objects.filter(id=insuree_id).first()
-        products = ContributionPlanBundle.objects.filter(
-            id=contribution_plan_bundle_id, code="PSC5"
+        student_product = ContributionPlanBundle.objects.filter(
+            id=contribution_plan_bundle_id, name="Etudiants"
         ).first()
+
+        from policyholder.views import MINIMUM_AGE_LIMIT, MINIMUM_AGE_LIMIT_FOR_STUDENTS
 
         if is_insuree:
             raise ValidationError(message="Already Exists")
 
-        if products is None and insurees.age() < 18:
+        if student_product is None and insurees.age() < MINIMUM_AGE_LIMIT:
             raise ValidationError(
                 message="A principal insuree should have minimum 18 years old"
             )
 
-        if products is not None and insurees.age() < 16:
+        if (
+            student_product is not None
+            and insurees.age() < MINIMUM_AGE_LIMIT_FOR_STUDENTS
+        ):
             raise ValidationError(message="Student should have minimum 16 years old")
 
         employer_number = data.get("employer_number", "")
@@ -274,6 +289,61 @@ class CreatePolicyHolderInsureeMutation(
         )
         # Get the waiting period for the insuree
         get_and_set_waiting_period_for_insuree(insuree_id, policyholder_id)
+
+        # create family
+        print("============ create family =============")
+        family = Family.objects.filter(head_insuree_id=insuree_id).first()
+        print(f"============ family {family}")
+        if not family:
+            print("============ family not found then create =============")
+            ph_cpb = PolicyHolderContributionPlan.objects.filter(
+                policy_holder=policy_holder, is_deleted=False
+            ).first()
+            cpb = ph_cpb.contribution_plan_bundle if ph_cpb else None
+            print(f"============ cpb {cpb}")
+            enrolment_type = cpb.name if cpb else None
+            print(f"============ enrolment_type {enrolment_type}")
+            village = (
+                insurees.current_village
+                if insurees.current_village
+                else policy_holder.locations
+            )
+            print(f"============ village {village}")
+            print(f"============ user {user.id} {user.i_user}")
+            print(
+                f"======> map_enrolment_type_to_category(enrolment_type) {map_enrolment_type_to_category(enrolment_type)}"
+            )
+            print(f"============ insurees.status {insurees.status}")
+
+            try:
+                family = Family.objects.create(
+                    head_insuree_id=insuree_id,
+                    location=village,
+                    audit_user_id=user.i_user.id,
+                    status=insurees.status,
+                    address=insurees.current_address,
+                    json_ext={
+                        "enrolmentType": map_enrolment_type_to_category(enrolment_type)
+                    },
+                )
+
+                insurees.head = True
+                insurees.family = family
+                insurees.save()
+
+                # phi = PolicyHolderInsuree(
+                #     insuree=insurees,
+                #     policy_holder=policy_holder,
+                #     contribution_plan_bundle=cpb,
+                #     json_ext={},
+                #     employer_number=None,
+                # )
+                # phi.save()
+            except Exception as e:
+                print(f"============ error {e}")
+                raise Exception(f"Failed to create family: {e}")
+
+        # create family
 
         super()._validate_mutation(user, **data)
         PermissionValidation.validate_perms(
@@ -408,11 +478,23 @@ class CreatePolicyHolderExcption(graphene.Mutation):
         input_data = PolicyHolderExcptionInput(required=True)
 
     def mutate(self, info, input_data):
+        from payment.models import Payment
+        from policyholder.schema import check_policy_exception_and_apply
+
         try:
             user = info.context.user
+            reason = ExceptionReason.objects.filter(
+                id=input_data.pop("reason_id")
+            ).first()
+            print(f"CreatePolicyHolderExcption : reason : {reason}")
+            if not reason:
+                return CreatePolicyHolderExcption(
+                    policy_holder_excption=None, errors=["Reason not found"]
+                )
             policy_holder = PolicyHolder.objects.filter(
                 id=input_data["policy_holder_id"]
             ).first()
+            print(f"CreatePolicyHolderExcption : policy_holder : {policy_holder}")
             if not policy_holder:
                 return CreatePolicyHolderExcption(
                     policy_holder_excption=None, errors=["Policy holder not found"]
@@ -421,22 +503,18 @@ class CreatePolicyHolderExcption(graphene.Mutation):
             phcp = PolicyHolderContributionPlan.objects.filter(
                 policy_holder=policy_holder, is_deleted=False
             ).order_by("-date_created")
-            if phcp:
-                periodicity = phcp[0].contribution_plan_bundle.periodicity
-                if periodicity != 1:
-                    return CreatePolicyHolderExcption(
-                        policy_holder_excption=None,
-                        message="PolicyHolder's contribution plan periodicity should be 1.",
-                    )
-            else:
+            print(f"CreatePolicyHolderExcption : phcp : {phcp}")
+
+            if not phcp:
                 return CreatePolicyHolderExcption(
                     policy_holder_excption=None,
                     message="PolicyHolder's contribution plan not found.",
                 )
 
+            print(f"===> CreatePolicyHolderExcption : policy_holder 2: {policy_holder}")
+
             month = None
             contract_id = None
-            from payment.models import Payment
 
             ph_payment = Payment.objects.filter(
                 Q(received_amount__lt=F("expected_amount"))
@@ -445,7 +523,7 @@ class CreatePolicyHolderExcption(graphene.Mutation):
                 contract__state=5,
                 is_locked=False,
             ).order_by("-id")
-            logging.info(f"CreatePolicyHolderExcption :  ph_payment : {ph_payment}")
+            print(f"===> CreatePolicyHolderExcption :  ph_payment : {ph_payment}")
             if ph_payment:
                 contract_id = ph_payment[0].contract.id
                 month = ph_payment[0].contract.date_valid_from.month
@@ -477,8 +555,44 @@ class CreatePolicyHolderExcption(graphene.Mutation):
                 )
 
             current_time = datetime.datetime.now()
-            today_date = current_time.date().strftime("%d-%m-%Y")
-            ph_exc_code = f"{policy_holder.code}-({today_date})"
+            # today_date = current_time.date().strftime("%d-%m-%Y")
+            today_date = current_time.strftime("%d%m%y%H%M%S")
+            ph_exc_code = f"PE-{policy_holder.code}{today_date}"
+            check_if_exception_already_exists = PolicyHolderExcption.objects.filter(
+                is_used=True,
+                policy_holder=policy_holder,
+            ).first()
+            if check_if_exception_already_exists:
+                return CreatePolicyHolderExcption(
+                    policy_holder_excption=None,
+                    message="Exception already exists for this policy holder.",
+                )
+
+            if not isinstance(input_data.get("started_at"), datetime.date):
+                input_data["started_at"] = datetime.datetime.strptime(
+                    input_data.get("started_at"), "%Y-%m-%d"
+                )
+
+            # time delta add month
+            ended_at = input_data.get("started_at") + relativedelta(
+                months=reason.period
+            )
+            input_data["ended_at"] = ended_at
+
+            total_policy_applied = check_policy_exception_and_apply(
+                policy_holder,
+                input_data.get("started_at"),
+                None,
+                reason,
+                applied_exception=False,
+            )
+
+            if total_policy_applied == 0:
+                return CreatePolicyHolderExcption(
+                    policy_holder_excption=None,
+                    message="Aucune polices trouvées pour cette période d'exception!",
+                )
+
             policy_holder_excption = PolicyHolderExcption(
                 code=ph_exc_code,
                 policy_holder=policy_holder,
@@ -489,6 +603,7 @@ class CreatePolicyHolderExcption(graphene.Mutation):
                 modified_time=current_time,
                 month=month,
                 contract_id=contract_id,
+                reason=reason,
                 **input_data,
             )
             policy_holder_excption.save()
@@ -497,7 +612,8 @@ class CreatePolicyHolderExcption(graphene.Mutation):
                 f"PolicyHolderExcption created successfully: {policy_holder_excption.id}"
             )
             return CreatePolicyHolderExcption(
-                policy_holder_excption=policy_holder_excption, message=None
+                policy_holder_excption=policy_holder_excption,
+                message="Exception created successfully!",
             )
 
         except Exception as e:
@@ -564,19 +680,20 @@ class CategoryChangeStatusChange(graphene.Mutation):
                     insuree.head = True
                     insuree_status = insuree.status
 
-                    if insuree_status == STATUS_PRE_REGISTERED and not insuree.biometrics_status:
+                    if (
+                        insuree_status == STATUS_PRE_REGISTERED
+                        and not insuree.biometrics_status
+                    ):
                         insuree_status = STATUS_WAITING_FOR_BIOMETRIC
 
                     if insuree_status == STATUS_WAITING_FOR_DOCUMENT:
                         insuree_status = STATUS_WAITING_FOR_APPROVAL
-
 
                     # insuree.document_status = True
                     # if insuree.biometrics_is_master:
                     #     insuree_status = STATUS_APPROVED
                     # elif not insuree.biometrics_status:
                     #     insuree_status = STATUS_WAITING_FOR_BIOMETRIC
-
 
                     insuree.status = insuree_status
                     logger.info(f"insuree_status: {insuree_status}")
@@ -593,7 +710,10 @@ class CategoryChangeStatusChange(graphene.Mutation):
                     insuree_status = insuree.status
                     insuree.document_status = True
 
-                    if insuree_status == STATUS_PRE_REGISTERED and not insuree.biometrics_status:
+                    if (
+                        insuree_status == STATUS_PRE_REGISTERED
+                        and not insuree.biometrics_status
+                    ):
                         insuree_status = STATUS_WAITING_FOR_BIOMETRIC
 
                     if insuree_status == STATUS_WAITING_FOR_DOCUMENT:
@@ -659,6 +779,8 @@ class CreatePHPortalUserMutation(graphene.Mutation):
             ph_trade_name = input.pop("trade_name")
             ph_json_ext = input.pop("json_ext")
 
+            input["send_email"] = False
+
             core_user = update_or_create_user(input, user)
             core_user.is_portal_user = True
             core_user.save()
@@ -671,6 +793,9 @@ class CreatePHPortalUserMutation(graphene.Mutation):
             ph_obj.request_number = uuid.uuid4().hex[:8].upper()
             ph_obj.status = PH_STATUS_CREATED
             ph_obj.save(username=core_user.username)
+
+            PolicyHolderUserPending.objects.create(user=core_user, policy_holder=ph_obj)
+
             logger.info(f"CreatePHPortalUserMutation : ph_obj : {ph_obj}")
             create_policyholder_openkmfolder({"request_number": ph_obj.request_number})
             try:
@@ -686,8 +811,47 @@ class CreatePHPortalUserMutation(graphene.Mutation):
             phu_obj.save(username=core_user.username)
             logger.info(f"CreatePHPortalUserMutation : phu_obj : {phu_obj}")
 
-            send_verification_email(core_user.i_user)
+            # send_verification_email(core_user.i_user)
+            token = uuid.uuid4().hex[:8].upper()
+
+            # core_user = User.objects.filter(id=object_data.get("user_id")).first()
+            i_user = InteractiveUser.objects.filter(id=core_user.i_user.id).first()
+            i_user.password_reset_token = token
+            i_user.save()
+            send_verification_and_new_password_email(
+                core_user.i_user, token, core_user.username
+            )
 
             return CreatePHPortalUserMutation(success=True, message="Successful!")
         except Exception as exc:
             return CreatePHPortalUserMutation(success=False, message=str(exc))
+
+
+class CreateExceptionReasonMutation(graphene.Mutation):
+    success = graphene.Boolean()
+    message = graphene.String()
+
+    class Arguments:
+        input = graphene.Argument(ExceptionReasonInputType, required=True)
+
+    @classmethod
+    def mutate(cls, root, info, input):
+        print(f"CreateExceptionReasonMutation : input : {input}")
+
+        try:
+            scope = input.pop("scope")
+            if scope not in ["POLICY_HOLDER", "INSUREE"]:
+                raise ValidationError(
+                    "Invalid scope provided. Must be 'POLICY_HOLDER' or 'INSUREE'."
+                )
+            obj = ExceptionReason.objects.create(
+                reason=input.get("reason"),
+                period=input.get("period"),
+                scope=scope,
+            )
+            logger.info(f"ExceptionReason created successfully: {obj.id}")
+
+            return cls(success=True, message="Mutation successful!")
+        except Exception as e:
+            logger.error(f"Failed to create exception reason: {e}")
+            return cls(success=False, message=str(e))

@@ -1,5 +1,8 @@
+from datetime import datetime
 import logging
 import re
+
+from django.forms import ValidationError
 
 import graphene
 from django.db.models import Q
@@ -17,11 +20,14 @@ from core.models import InteractiveUser
 from core.notification_service import create_camu_notification
 from payment.models import Payment, PaymentPenaltyAndSanction
 from policyholder.apps import PolicyholderConfig
+from policyholder.gql.gql_mutations.input_types import ExceptionReasonInputType
 from policyholder.models import (
+    ExceptionReason,
     PolicyHolder,
     PolicyHolderInsuree,
     PolicyHolderContributionPlan,
     PolicyHolderUser,
+    PolicyHolderUserPending,
 )
 from policyholder.gql.gql_mutations import (
     PolicyHolderInsureeUpdateInputType,
@@ -52,6 +58,41 @@ logger = logging.getLogger(__name__)
 PORTAL_SUBSCRIBER_URL = os.getenv("PORTAL_SUBSCRIBER_URL", "")
 PORTAL_FOSA_URL = os.getenv("PORTAL_FOSA_URL", "")
 IMIS_URL = os.getenv("IMIS_URL", "")
+
+
+class UpdateExceptionReasonMutation(graphene.Mutation):
+    success = graphene.Boolean()
+    message = graphene.String()
+
+    class Arguments:
+        input = graphene.Argument(ExceptionReasonInputType, required=True)
+
+    @classmethod
+    def mutate(cls, root, info, input):
+        print(f"updateExceptionReasonMutation : input : {input}")
+
+        try:
+            scope = input.pop("scope")
+            id = input.pop("id")
+            if scope not in ["POLICY_HOLDER", "INSUREE"]:
+                raise ValidationError(
+                    "Invalid scope provided. Must be 'POLICY_HOLDER' or 'INSUREE'."
+                )
+            obj = ExceptionReason.objects.filter(id=id).first()
+            if not obj:
+                raise ValidationError("ExceptionReason with this ID does not exist.")
+
+            obj.reason = input.get("reason")
+            obj.period = input.get("period")
+            obj.scope = scope
+            obj.save()
+
+            logger.info(f"ExceptionReason updated successfully: {obj.id}")
+
+            return cls(success=True, message="Mutation successful!")
+        except Exception as e:
+            logger.error(f"Failed to create exception reason: {e}")
+            return cls(success=False, message=str(e))
 
 
 class UpdatePolicyHolderMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
@@ -252,7 +293,17 @@ class PHApprovalMutation(graphene.Mutation):
                     ph_obj.code = generated_number
                     ph_obj.is_approved = True
                     ph_obj.status = PH_STATUS_APPROVED
+
+                    policyHolderUserPending = PolicyHolderUserPending.objects.filter(
+                        policy_holder=ph_obj
+                    ).first()
+
+                    if policyHolderUserPending:
+                        create_new_insuree(ph_obj, policyHolderUserPending.user, user)
+                        policyHolderUserPending.delete()
+
                     ph_obj.save(username=username)
+
                     rename_folder_dms_and_openkm(
                         ph_obj.request_number, generated_number
                     )
@@ -347,160 +398,117 @@ class PHApprovalMutation(graphene.Mutation):
             return PHApprovalMutation(success=success, message=message)
 
 
-# @TODO not used anymore, the current field has been moved to payment module
-# class UnlockPolicyHolderMutation(graphene.Mutation):
-#     class Arguments:
-#         policy_holder = graphene.String(required=True)
-#         check_status = graphene.Boolean(required=False)
+def create_new_insuree(policy_holder, user, infoUser):
+    from contract.utils import map_enrolment_type_to_category
+    from policyholder.views import generate_available_chf_id
+    from insuree.models import Family, Insuree
+    from insuree.dms_utils import create_openKm_folder_for_bulkupload
+    from workflow.workflow_stage import insuree_add_to_workflow
+    from insuree.abis_api import create_abis_insuree
 
-#     success = graphene.Boolean()
-#     message = graphene.String()
+    print(f"===> create_new_insuree: {policy_holder} {user.email} {infoUser.i_user_id}")
 
-#     def mutate(self, info, policy_holder, check_status=False):
-#         try:
-#             policyholder = PolicyHolder.objects.get(id=policy_holder)
-#         except PolicyHolder.DoesNotExist:
-#             return UnlockPolicyHolderMutation(
-#                 success=False, message="Policyholder does not exist."
-#             )
+    i_user = InteractiveUser.objects.filter(email=user.email).first()
+    
+    audit_user_id = infoUser.i_user_id
 
-#         payments_with_penalties = (
-#             Payment.objects.filter(
-#                 contract__policy_holder=policy_holder,
-#                 payments_penalty__isnull=False,  # Ensures there are penalties
-#             )
-#             .distinct()
-#             .order_by("contract__date_valid_from")
-#             # [:3]
-#             # .order_by("-payment_date")[:3]
-#             # status=Payment.STATUS_APPROVED,
-#         )
+    if not i_user:
+        raise ValidationError("User not found.")
 
-#         if payments_with_penalties.count() == 0:
-#             return UnlockPolicyHolderMutation(
-#                 success=False, message="No penalties found for this policyholder."
-#             )
+    ph_cpb = PolicyHolderContributionPlan.objects.filter(
+        policy_holder=policy_holder, is_deleted=False
+    ).first()
+    cpb = ph_cpb.contribution_plan_bundle if ph_cpb else None
+    enrolment_type = cpb.name if cpb else None
 
-#         all_payments_approved = True
-#         all_penalities_approved_or_canceled_or_installment = True
+    family = None
+    insuree_created = None
+    village = policy_holder.locations
+    dob = datetime.strptime("2007-03-03", "%Y-%m-%d")
 
-#         for payment in payments_with_penalties:
-#             if payment.status != Payment.STATUS_APPROVED:
-#                 all_payments_approved = False
+    print(f"===> village: {village}")
+    print(f"===> enrolment_type: {enrolment_type}")
+    
 
-#             for penality in payment.payments_penalty.all():
-#                 # check if payment is oustanding then check if there are similar to pick up the last one with the highest status
-#                 if penality.status == PaymentPenaltyAndSanction.PENALTY_OUTSTANDING:
-#                     payment_penalty_and_sanction = (
-#                         PaymentPenaltyAndSanction.objects.filter(
-#                             amount=penality.amount,
-#                             date_valid_from=penality.date_valid_from,
-#                             payment=payment,
-#                             payment__contract__policy_holder=policy_holder,
-#                         )
-#                         .order_by("-status")
-#                         .first()
-#                     )
+    if village:
+        family = Family.objects.create(
+            head_insuree_id=1,  # dummy
+            location=village,
+            audit_user_id=audit_user_id,
+            status="PRE_REGISTERED",
+            address="",
+            json_ext={"enrolmentType": map_enrolment_type_to_category(enrolment_type)},
+        )
 
-#                     print(
-#                         f"=============== payment_penalty_and_sanction {payment_penalty_and_sanction.id} {payment_penalty_and_sanction.status}"
-#                     )
+    print(f"===> family: {family}")
 
-#                     if payment_penalty_and_sanction:
-#                         penality = payment_penalty_and_sanction
+    if family:
+        insuree_id = generate_available_chf_id(
+            "M",
+            village,
+            dob,
+            enrolment_type,
+        )
 
-#                 if penality.status not in [
-#                     PaymentPenaltyAndSanction.PENALTY_PAID,
-#                     PaymentPenaltyAndSanction.PENALTY_APPROVED,
-#                     PaymentPenaltyAndSanction.PENALTY_CANCELED,
-#                     PaymentPenaltyAndSanction.INSTALLMENT_AGREEMENT_PENDING,
-#                     PaymentPenaltyAndSanction.INSTALLMENT_APPROVED,
-#                 ]:
-#                     all_penalities_approved_or_canceled_or_installment = False
+        print(f"===> insuree_id: {insuree_id}")
 
-#         if (
-#             all_payments_approved is False
-#             or all_penalities_approved_or_canceled_or_installment is False
-#         ):
-#             return UnlockPolicyHolderMutation(
-#                 success=False,
-#                 message="Policyholder can not be unlocked. There are payments or penalities that are not approved.",
-#             )
+        insuree_created = Insuree.objects.create(
+            other_names=i_user.other_names,
+            last_name=i_user.last_name,
+            dob=dob,
+            family=family,
+            audit_user_id=audit_user_id,
+            card_issued=False,
+            chf_id=insuree_id,
+            head=True,
+            current_village=village,
+            created_by=audit_user_id,
+            modified_by=audit_user_id,
+            marital="",
+            email=i_user.email,
+            phone=i_user.phone,
+            json_ext={
+                "insureeEnrolmentType": map_enrolment_type_to_category(enrolment_type),
+            },
+        )
+        chf_id = insuree_id
 
-#         if check_status:
-#             return UnlockPolicyHolderMutation(
-#                 success=True, message="Policyholder can be unlocked."
-#             )
+        if not insuree_created:
+            raise ValidationError("Insuree not created.")
 
-#         username = info.context.user.username
+        print(f"===> insuree_created: {insuree_created}")
 
-#         policyholder.status = "Approved"
-#         policyholder.save(username=username)
+        family = Family.objects.filter(id=family.id).first()
+        family.head_insuree_id = insuree_created.id
+        family.save()
 
-#         return UnlockPolicyHolderMutation(
-#             success=True, message="Policyholder unlocked successfully."
-#         )
+        try:
+            create_openKm_folder_for_bulkupload(infoUser, insuree_created)
+        except Exception as e:
+            logger.error(f"insuree bulk upload error for dms: {e}")
 
-    # def old_mutate(self, info, policy_holder, check_status=False):
-    #     # Fetch the policyholder
-    #     try:
-    #         policyholder = PolicyHolder.objects.get(id=policy_holder)
-    #     except PolicyHolder.DoesNotExist:
-    #         return UnlockPolicyHolderMutation(
-    #             success=False, message="Policyholder does not exist."
-    #         )
+        try:
+            insuree_add_to_workflow(
+                infoUser, insuree_created.id, "INSUREE_ENROLLMENT", "Pre_Register"
+            )
+            create_abis_insuree(infoUser, insuree_created)
 
-    #     # Query all payments associated with the policyholder's contracts
-    #     payments = Payment.objects.filter(Q(contract__policy_holder__id=policy_holder))
+        except Exception as e:
+            logger.error(f"insuree bulk upload error for abis or workflow : {e}")
 
-    #     # Check if any payments exist for the policyholder
-    #     if not payments.exists():
-    #         return UnlockPolicyHolderMutation(
-    #             success=False, message="No payments found for this policyholder."
-    #         )
+        phi = PolicyHolderInsuree(
+            insuree=insuree_created,
+            policy_holder=policy_holder,
+            contribution_plan_bundle=cpb,
+            json_ext={},
+            employer_number=None,
+        )
+        phi.save(username=infoUser.username)
+        
+        i_user.insuree = insuree_created
+        i_user.save()
 
-    #     if payments.filter(~Q(status=1) & ~Q(status=5)).exists():
-    #         return UnlockPolicyHolderMutation(
-    #             success=False, message="Not all payments are fully paid."
-    #         )
-
-    #     # Check penalties of those payments: should have status 3 or 4, penalty_type 'Penalty', and is_approved=True
-    #     penalties = PaymentPenaltyAndSanction.objects.filter(
-    #         Q(payment__in=payments)
-    #         & ~Q(
-    #             status__in=[
-    #                 PaymentPenaltyAndSanction.PENALTY_APPROVED,
-    #                 PaymentPenaltyAndSanction.PENALTY_CANCELED,
-    #                 PaymentPenaltyAndSanction.INSTALLMENT_APPROVED,
-    #                 PaymentPenaltyAndSanction.INSTALLMENT_AGREEMENT_PENDING,
-    #             ]
-    #         )
-    #     )
-
-    #     # If penalties exist that are unresolved or not approved
-    #     if penalties.exists():
-    #         if not penalties.filter(is_approved=True).exists():
-    #             return UnlockPolicyHolderMutation(
-    #                 success=False, message="Penalties are not approved."
-    #             )
-    #         return UnlockPolicyHolderMutation(
-    #             success=False, message="Penalties are not fully resolved."
-    #         )
-
-    #     if check_status:
-    #         return UnlockPolicyHolderMutation(
-    #             success=True, message="Policyholder can be unlocked."
-    #         )
-
-    #     username = info.context.user.username
-
-    #     # If all payments are fully paid, penalties are resolved and approved, unlock the policyholder
-    #     policyholder.status = "Approved"
-    #     policyholder.save(username=username)
-
-    #     return UnlockPolicyHolderMutation(
-    #         success=True, message="Policyholder unlocked successfully."
-    #     )
+    print(f"===> created insuree: {chf_id}")
 
 
 class VerifyUserAndUpdatePasswordMutation(graphene.Mutation):
@@ -519,20 +527,17 @@ class VerifyUserAndUpdatePasswordMutation(graphene.Mutation):
             ).first()
 
             if not i_user:
+                print("===> user token expired")
                 return VerifyUserAndUpdatePasswordMutation(
                     success=False, message="Invalid user or token"
                 )
 
-            # Validate password for string tag and sql injection
-            # if not re.match(r"^[a-zA-Z0-9]+$", password): ### Deactivating password validation step
-            #     return VerifyUserAndUpdatePasswordMutation(
-            #         success=False, message="Invalid password"
-            #     )
-
+            print(f"========> VerifyUserAndUpdatePasswordMutation : i_user : {i_user}")
             i_user.is_verified = True
             i_user.set_password(password)
             i_user.password_reset_token = None
             i_user.save()
+            print(f"========> VerifyUserAndUpdatePasswordMutation : i_user : {i_user}")
 
             return VerifyUserAndUpdatePasswordMutation(
                 success=True, message="User verified and password updated successfully"
