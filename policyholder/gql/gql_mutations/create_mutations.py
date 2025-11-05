@@ -313,6 +313,7 @@ class CreatePolicyHolderInsureeMutation(
             print(
                 f"======> map_enrolment_type_to_category(enrolment_type) {map_enrolment_type_to_category(enrolment_type)}"
             )
+            raise Exception(f"enrolment_type: {enrolment_type}")
             print(f"============ insurees.status {insurees.status}")
 
             try:
@@ -325,6 +326,10 @@ class CreatePolicyHolderInsureeMutation(
                     json_ext={
                         "enrolmentType": map_enrolment_type_to_category(enrolment_type)
                     },
+                )
+
+                insurees.json_ext["enrolmentType"] = map_enrolment_type_to_category(
+                    enrolment_type
                 )
 
                 insurees.head = True
