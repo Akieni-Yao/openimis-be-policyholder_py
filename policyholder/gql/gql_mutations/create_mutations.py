@@ -294,6 +294,24 @@ class CreatePolicyHolderInsureeMutation(
         print("============ create family =============")
         family = Family.objects.filter(head_insuree_id=insuree_id).first()
         print(f"============ family {family}")
+        if family:
+            ph_cpb = PolicyHolderContributionPlan.objects.filter(
+                policy_holder=policy_holder, is_deleted=False
+            ).first()
+            cpb = ph_cpb.contribution_plan_bundle if ph_cpb else None
+            print(f"============ cpb {cpb}")
+            enrolment_type = cpb.name if cpb else None
+            
+            print(f"============ enrolment_type {enrolment_type}")
+            if not enrolment_type:
+                raise Exception(f"Enrolment type not found for policy holder: {policy_holder.id}")
+                
+            insurees.json_ext["insureeEnrolmentType"] = map_enrolment_type_to_category(enrolment_type)
+            insurees.save()
+                
+            family.json_ext["enrolmentType"] = map_enrolment_type_to_category(enrolment_type)
+            family.save()
+                
         if not family:
             print("============ family not found then create =============")
             ph_cpb = PolicyHolderContributionPlan.objects.filter(
@@ -313,7 +331,7 @@ class CreatePolicyHolderInsureeMutation(
             print(
                 f"======> map_enrolment_type_to_category(enrolment_type) {map_enrolment_type_to_category(enrolment_type)}"
             )
-            raise Exception(f"enrolment_type: {enrolment_type}")
+
             print(f"============ insurees.status {insurees.status}")
 
             try:
@@ -328,13 +346,16 @@ class CreatePolicyHolderInsureeMutation(
                     },
                 )
 
-                insurees.json_ext["enrolmentType"] = map_enrolment_type_to_category(
+                insurees.json_ext["insureeEnrolmentType"] = map_enrolment_type_to_category(
                     enrolment_type
                 )
 
                 insurees.head = True
                 insurees.family = family
                 insurees.save()
+                
+                print(f"============ insurees.json_ext: {insurees.json_ext}")
+                print(f"============ insurees.json_ext['insureeEnrolmentType']: {insurees.json_ext['insureeEnrolmentType']}")
 
                 # phi = PolicyHolderInsuree(
                 #     insuree=insurees,
