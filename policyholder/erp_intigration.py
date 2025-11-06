@@ -89,42 +89,39 @@ def erp_create_update_policyholder(ph_id, cpb_id, user):
     policyholder_data = erp_mapping_data(phcp, bank_accounts, False)
     policyholder_data = filter_null_values(policyholder_data)
 
+    print(
+        f"===> phcp.policy_holder.erp_partner_access_id {phcp.policy_holder.erp_partner_access_id}"
+    )
+    print(f"===> phcp.policy_holder.erp_partner_id {phcp.policy_holder.erp_partner_id}")
+    print(f"===> phcp.policy_holder.id {phcp.policy_holder.id}")
+
     if phcp.policy_holder.erp_partner_access_id:
-        logger.debug(" ======    erp_create_update_policyholder - update    =======")
+        print(" ======>  erp_create_update_policyholder - update")
         action = "Update Policyholder"
         url = "{}/update/partner/{}".format(
             erp_url, phcp.policy_holder.erp_partner_access_id
         )
-        logger.debug(
-            f" ======    erp_create_update_policyholder : url : {url}    ======="
-        )
+        print(f" ======    erp_create_update_policyholder : url : {url}")
     else:
-        logger.debug(" ======    erp_create_update_policyholder - create    =======")
+        print(" ======>  erp_create_update_policyholder - create")
         action = "Create Policyholder"
         url = "{}/create/partner".format(erp_url)
-        logger.debug(
-            f" ======    erp_create_update_policyholder : url : {url}    ======="
-        )
+        print(f" ======    erp_create_update_policyholder : url : {url}")
 
-    logger.debug(
-        f" ======    erp_create_update_policyholder : policyholder_data : {policyholder_data}    ======="
-    )
+    print(f" ======  erp_create_update_policyholder : data : {policyholder_data}")
 
     try:
         json_data = json.dumps(policyholder_data)
-        logger.debug(
-            f" ======    erp_create_update_policyholder : json_data : {json_data}    ======="
-        )
+        print(f" ======> erp_create_update_policyholder : json_data : {json_data}")
     except TypeError as e:
         logger.error(f"Error serializing JSON: {e}")
 
     response = requests.post(url, headers=headers, json=policyholder_data, verify=False)
-    logger.debug(
-        f" ======    erp_create_update_policyholder : response.status_code : {response.status_code}    ======="
+    print(f"=====================> response ERP : {response}")
+    print(
+        f" ======> erp_create_update_policyholder : response.status_code : {response.status_code}"
     )
-    logger.debug(
-        f" ======    erp_create_update_policyholder : response.text : {response.text}    ======="
-    )
+    print(f" ======> erp_create_update_policyholder : response.text : {response.text}")
 
     if response.status_code not in [200, 201]:
         failed_data = {
@@ -146,7 +143,7 @@ def erp_create_update_policyholder(ph_id, cpb_id, user):
             logger.error(f"Failed to save ERP API Failed log: {e}")
     try:
         response_json = response.json()
-        logger.debug(
+        print(
             f" ======    erp_create_update_policyholder : response.json : {response_json}    ======="
         )
 
@@ -251,6 +248,7 @@ def erp_delete_policyholder(ph_id, cpb_id, user):
     logger.debug(" ======    erp_delete_policyholder - end    =======")
     return True
 
+
 def erp_create_update_fosa(policyholder_code, account_payable_id, user, is_vendor=True):
     logger.debug(" ======    erp_create_update_fosa - start    =======")
     logger.debug(
@@ -292,7 +290,9 @@ def erp_create_update_fosa(policyholder_code, account_payable_id, user, is_vendo
             }
             bank_accounts.append(filter_null_values(bank_account_details))
 
-    policyholder_data = erp_mapping_data(phcp, bank_accounts, is_vendor, account_payable_id)
+    policyholder_data = erp_mapping_data(
+        phcp, bank_accounts, is_vendor, account_payable_id
+    )
     policyholder_data = filter_null_values(policyholder_data)
 
     url = "{}/update/partner/{}".format(
@@ -534,7 +534,8 @@ def create_existing_fosa_in_erp():
             code=policyholder_code, is_deleted=False
         ).first()
         hf_cat = HealthFacilityCategory.objects.filter(
-            code=updated_object.json_ext["category_fosa"], is_deleted=False
+            code=updated_object.json_ext["category_fosa"],
+            is_deleted=False,  # noqa: F821
         ).first()
         logger.debug(
             f" ======    create_existing_fosa_in_erp : policyholder_code : {policyholder_code}    ======="
