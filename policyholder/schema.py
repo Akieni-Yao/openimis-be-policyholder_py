@@ -338,7 +338,9 @@ class Query(graphene.ObjectType):
                 success=False, message="Policy Holder Insuree Not Found!"
             )
 
-        insuree = Insuree.objects.filter(id=policy_holder_insuree.insuree.id).first()
+        insuree = Insuree.objects.filter(
+            id=policy_holder_insuree.insuree.id, legacy_id=None
+        ).first()
 
         if not insuree:
             return ApprovePolicyholderExceptionType(
