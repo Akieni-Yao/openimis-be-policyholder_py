@@ -314,7 +314,7 @@ class Query(graphene.ObjectType):
         self, info, id, is_approved, rejection_reason
     ):
         from insuree.models import Insuree
-        
+
         ph_exception = PolicyHolderExcption.objects.filter(id=id).first()
         if not ph_exception:
             return ApprovePolicyholderExceptionType(
@@ -328,6 +328,23 @@ class Query(graphene.ObjectType):
             )
         ph_exception.status = "APPROVED" if is_approved else "REJECTED"
         total_policy_applied = 0
+
+        policy_holder_insuree = PolicyHolderInsuree.objects.filter(
+            policy_holder=ph_exception.policy_holder
+        ).first()
+
+        if not policy_holder_insuree:
+            return ApprovePolicyholderExceptionType(
+                success=False, message="Policy Holder Insuree Not Found!"
+            )
+
+        insuree = Insuree.objects.filter(id=policy_holder_insuree.insuree.id).first()
+
+        if not insuree:
+            return ApprovePolicyholderExceptionType(
+                success=False, message="Insuree Not Found!"
+            )
+
         if is_approved:
             ph_exception_started_at = ph_exception.started_at
 
@@ -343,18 +360,8 @@ class Query(graphene.ObjectType):
                 applied_exception=True,
             )
 
-            policy_holder_insuree = PolicyHolderInsuree.objects.filter(
-                policy_holder=ph_exception.policy_holder
-            ).first()
-            
-            insuree = Insuree.objects.filter(id=policy_holder_insuree.insuree.id).first()
-            
-            print(f"=====> insuree : {insuree}")
-            
-            if insuree: 
-                insuree.modified_time = datetime.now()
-                insuree.save()
-                print(f"=====> insuree saved : {insuree}")
+            insuree.modified_time = datetime.now()
+            insuree.save()
 
         else:
             ph_exception.rejection_reason = rejection_reason
