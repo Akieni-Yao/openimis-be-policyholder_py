@@ -1,5 +1,7 @@
 # Category Chnage Constatnts
 
+from enum import Enum
+
 CC_PENDING = 'Pending'
 CC_WAITING_FOR_DOCUMENT = "Waiting_for_Document"
 CC_PROCESSING = 'Processing'
@@ -33,37 +35,39 @@ BANK_ACCOUNT_ID = {
 
 TIPL_PAYMENT_METHOD_ID = 28
 
-LEGAL_FORM_CHOICES = [
-    1,  # Association/ Syndicat
-    2,  # SA/ SAU/ SAS
-    3,  # Confession religieuse
-    4,  # Collectivité publique
-    5,  # Coopérative/ Société mutualiste/ GIE
-    6,  # Établissement individuel/ EURL
-    7,  # Établissement public
-    8,  # Fondation/ ONG
-    9,  # Organisation Internationale/ Représentation diplo
-    10, # SARL/ SARLU
-    11, # Autre
-]
+class LegalForm(Enum):
+    ASSOCIATION_SYNDICAT = 1
+    SA_SAU_SAS = 2
+    CONFESSION_RELIGIEUSE = 3
+    COLLECTIVITE_PUBLIQUE = 4
+    COOPERATIVE_SOCIETE_MUTUALISTE_GIE = 5
+    ETABLISSEMENT_INDIVIDUEL_EURL = 6
+    ETABLISSEMENT_PUBLIC = 7
+    FONDATION_ONG = 8
+    ORGANISATION_INTERNATIONALE_REPRESENTATION_DIPLO = 9
+    SARL_SARLU = 10
+    AUTRE = 11
 
-ACTIVITY_CODE_CHOICES = [
-    1,  # Agriculture, élevage et pêche
-    2,  # Banques, assurances et microfinances
-    3,  # Bâtiment et travaux publics
-    4,  # Commerces
-    5,  # Environnement
-    6,  # Exploitation forestière
-    7,  # Hôtelleries et restaurations
-    8,  # Industries
-    9,  # Jeux et Loisirs
-    10, # Mines solides
-    11, # Pétrole
-    12, # Parapétrolier
-    13, # Projet
-    14, # Santé et médicament
-    15, # Services
-    16, # Transport et Logistique
-    17, # Télécom et NTIC
-    18, # Autre
-]
+class ActivityCode(Enum):
+    AGRICULTURE_ELEVAGE_PECHE = 1
+    BANQUES_ASSURANCES_MICROFINANCES = 2
+    BATIMENT_TRAVAUX_PUBLICS = 3
+    COMMERCES = 4
+    ENVIRONNEMENT = 5
+    EXPLOITATION_FORESTIERE = 6
+    HOTELLERIES_RESTAURATIONS = 7
+    INDUSTRIES = 8
+    JEUX_LOISIRS = 9
+    MINES_SOLIDES = 10
+    PETROLE = 11
+    PARAPETROLIER = 12
+    PROJET = 13
+    SANTE_MEDICAMENT = 14
+    SERVICES = 15
+    TRANSPORT_LOGISTIQUE = 16
+    TELECOM_NTIC = 17
+    AUTRE = 18
+
+LEGAL_FORM_CHOICES = [e.value for e in LegalForm]
+
+ACTIVITY_CODE_CHOICES = [e.value for e in ActivityCode]

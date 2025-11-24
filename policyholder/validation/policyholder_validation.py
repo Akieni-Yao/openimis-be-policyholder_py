@@ -40,12 +40,10 @@ class PolicyHolderValidation:
     @classmethod
     def validate_mandatory_fields(cls, data, existing_instance=None, is_validation_required=False):
         mandatory_fields = [
-            'trade_name', 'email', 'phone', 'legal_form', 'activity_code', 'date_valid_from'
+            'trade_name', 'address', 'phone', 'legal_form', 'activity_code', 'date_valid_from'
         ]
 
         is_update = existing_instance is not None
-        if not is_update:
-            mandatory_fields.remove('email') 
 
         strict_validation = not is_update or is_validation_required
         errors = []
