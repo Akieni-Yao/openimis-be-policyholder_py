@@ -32,3 +32,38 @@ BANK_ACCOUNT_ID = {
 }
 
 TIPL_PAYMENT_METHOD_ID = 28
+
+LEGAL_FORM_CHOICES = [
+    1,  # Association/ Syndicat
+    2,  # SA/ SAU/ SAS
+    3,  # Confession religieuse
+    4,  # Collectivité publique
+    5,  # Coopérative/ Société mutualiste/ GIE
+    6,  # Établissement individuel/ EURL
+    7,  # Établissement public
+    8,  # Fondation/ ONG
+    9,  # Organisation Internationale/ Représentation diplo
+    10, # SARL/ SARLU
+    11, # Autre
+]
+
+ACTIVITY_CODE_CHOICES = [
+    1,  # Agriculture, élevage et pêche
+    2,  # Banques, assurances et microfinances
+    3,  # Bâtiment et travaux publics
+    4,  # Commerces
+    5,  # Environnement
+    6,  # Exploitation forestière
+    7,  # Hôtelleries et restaurations
+    8,  # Industries
+    9,  # Jeux et Loisirs
+    10, # Mines solides
+    11, # Pétrole
+    12, # Parapétrolier
+    13, # Projet
+    14, # Santé et médicament
+    15, # Services
+    16, # Transport et Logistique
+    17, # Télécom et NTIC
+    18, # Autre
+]
