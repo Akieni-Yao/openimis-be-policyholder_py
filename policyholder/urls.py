@@ -28,4 +28,5 @@ urlpatterns = [
     ),
     path("create-existing-fosa-in-erp/", erp_intigration.create_existing_fosa_in_erp),
     path("erp-sync-mising-policyholders/", views.erp_sync_policy_holders),
+    path("odoo-health-check/", erp_intigration.odoo_health_check),
 ]
