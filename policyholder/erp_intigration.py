@@ -598,3 +598,60 @@ def create_existing_fosa_in_erp():
 
     logger.debug(" ======    create_existing_fosa_in_erp - End    =======")
     return Response({"message": "Script Successfully Run."})
+
+
+def is_odoo_available():
+    import requests
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        response = requests.get(
+            f"{erp_url}/web/health",
+            headers=headers,
+            verify=False,
+            timeout=10
+        )
+        return response.status_code == 200
+
+    except Exception as e:
+        logger.error(f"Odoo Health Check DOWN: {e}")
+        return False
+
+
+@api_view(["GET"])
+def odoo_health_check(request):
+    from django.http import JsonResponse
+    from django.utils.timezone import now
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        if is_odoo_available():
+            return JsonResponse(
+                {
+                    "status": 200,
+                    "timestamp": now().isoformat()
+                },
+                status=200
+            )
+
+        return JsonResponse(
+            {
+                "status": 503,
+                "timestamp": now().isoformat()
+            },
+            status=503
+        )
+
+    except Exception as e:
+        logger.error(f"Odoo Health Check Error: {e}")
+        return JsonResponse(
+            {
+                "status": 503,
+                "timestamp": now().isoformat()
+            },
+            status=503
+        )
