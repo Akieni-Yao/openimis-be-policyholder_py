@@ -385,3 +385,186 @@ class PolicyHolderUserPending(models.Model):
     class Meta:
         managed = True
         db_table = "tblPolicyHolderUserPending"
+
+
+class PolicyHolderInsureeBatchUpload(core_models.UUIDModel):
+    """
+    Model to track policyholder insuree import progress.
+    """
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        PROCESSING = "PROCESSING", "Processing"
+        COMPLETED = "COMPLETED", "Completed"
+        FAILED = "FAILED", "Failed"
+
+    policy_holder = models.ForeignKey(
+        PolicyHolder,
+        on_delete=models.CASCADE,
+        db_column="PolicyHolderUUID",
+        related_name="insuree_batch_uploads",
+    )
+
+    input_file_name = models.CharField(
+        max_length=255,
+        db_column="InputFileName",
+        help_text="Original uploaded file name",
+    )
+    results = models.JSONField(
+        null=True,
+        blank=True,
+        db_column="Results",
+        help_text="Row-specific results stored as JSON array with ligne, nom, prenom, numero_camu, Etat, remarque",
+    )
+
+    celery_task_id = models.CharField(
+        max_length=255,
+        db_column="CeleryTaskID",
+        unique=True,
+        blank=True,
+        null=True,
+        help_text="Celery AsyncResult task ID",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_column="Status",
+    )
+
+    total_rows = models.IntegerField(
+        default=0,
+        db_column="TotalRows",
+        help_text="Total rows to process (excluding header)",
+    )
+    processed_rows = models.IntegerField(
+        default=0,
+        db_column="ProcessedRows",
+        help_text="Number of rows processed so far",
+    )
+    success_count = models.IntegerField(
+        default=0,
+        db_column="SuccessCount",
+        help_text="Number of successfully processed rows",
+    )
+    error_count = models.IntegerField(
+        default=0, db_column="ErrorCount", help_text="Number of rows with errors"
+    )
+
+    started_at = models.DateTimeField(null=True, blank=True, db_column="StartedAt")
+    completed_at = models.DateTimeField(null=True, blank=True, db_column="CompletedAt")
+
+    error_message = models.TextField(
+        null=True,
+        blank=True,
+        db_column="ErrorMessage",
+        help_text="Error message if status is FAILED",
+    )
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        db_column="CreatedBy",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_column="CreatedAt")
+    updated_at = models.DateTimeField(auto_now=True, db_column="UpdatedAt")
+
+    class Meta:
+        managed = True
+        db_table = "policyholder_PolicyHolderInsureeBatchUpload"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["celery_task_id"]),
+            models.Index(fields=["policy_holder", "created_at"]),
+            models.Index(fields=["status", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"PolicyHolderInsureeUpload-{self.id} ({self.status})"
+
+    @property
+    def progress_percentage(self):
+        """Calculate progress percentage (0-100)"""
+        if self.total_rows == 0:
+            return 0
+        return int((self.processed_rows / self.total_rows) * 100)
+
+    @property
+    def is_complete(self):
+        """Check if processing is complete"""
+        return self.status in [self.Status.COMPLETED, self.Status.FAILED]
+
+    @property
+    def duration_seconds(self):
+        """Calculate duration in seconds"""
+        if self.started_at and self.completed_at:
+            return (self.completed_at - self.started_at).total_seconds()
+        return None
+
+    def mark_as_processing(self, total_rows):
+        """Mark batch as processing with total row count"""
+        from django.utils import timezone
+
+        self.status = self.Status.PROCESSING
+        self.total_rows = total_rows
+        self.started_at = timezone.now()
+        self.save(update_fields=["status", "total_rows", "started_at", "updated_at"])
+
+    def update_progress(self, processed_rows, success_count=None, error_count=None):
+        """Update progress counters"""
+        self.processed_rows = processed_rows
+        if success_count is not None:
+            self.success_count = success_count
+        if error_count is not None:
+            self.error_count = error_count
+        self.save(
+            update_fields=[
+                "processed_rows",
+                "success_count",
+                "error_count",
+                "updated_at",
+            ]
+        )
+
+    def mark_as_completed(self):
+        """Mark batch as completed"""
+        from django.utils import timezone
+
+        self.status = self.Status.COMPLETED
+        self.completed_at = timezone.now()
+        self.save(update_fields=["status", "completed_at", "updated_at"])
+
+    def mark_as_failed(self, error_message):
+        """Mark batch as failed with error message"""
+        from django.utils import timezone
+
+        self.status = self.Status.FAILED
+        self.completed_at = timezone.now()
+        self.error_message = error_message
+        self.save(
+            update_fields=["status", "completed_at", "error_message", "updated_at"]
+        )
+
+
+class PolicyHolderInsureeUploadedFile(core_models.UUIDModel):
+    """
+    Model to track uploaded files for policyholder insuree imports.
+    Files are stored in S3 bucket.
+    """
+    policy_holder = models.ForeignKey(
+        PolicyHolder,
+        on_delete=models.deletion.CASCADE,
+        db_column="PolicyHolderUUID",
+        related_name="insuree_uploaded_files",
+    )
+    file_name_hash = models.CharField(max_length=255, db_column="FileNameHash")
+    file_path = models.CharField(
+        max_length=255, db_column="FilePath", null=True, blank=True
+    )
+
+    class Meta:
+        managed = True
+        db_table = "policyholder_PolicyHolderInsureeUploadedFile"
+
+    def __str__(self):
+        return f"PolicyHolderInsureeUploadedFile-{self.id}"
