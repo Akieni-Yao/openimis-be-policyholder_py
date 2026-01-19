@@ -4,17 +4,22 @@ import json
 import logging
 import math
 import re
-import hashlib
-import tempfile
-import os
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 import pandas as pd
+from contract.models import Contract
+from contract.utils import map_enrolment_type_to_category
+from contract.services import Contract as ContractService
+from contribution_plan.models import ContributionPlan, ContributionPlanBundleDetails
+from core.constants import *
+from core.models import Banks, InteractiveUser, Role
+from core.notification_service import base64_encode, create_camu_notification
+from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import EmailMessage
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.utils import timezone
@@ -22,55 +27,79 @@ from django.utils.dateparse import parse_date
 from django.utils.encoding import force_text
 from django.utils.http import urlsafe_base64_decode
 from graphql import GraphQLError
-
-from contract.models import Contract
-from contract.services import Contract as ContractService
-from contract.utils import map_enrolment_type_to_category
-from contribution_plan.models import ContributionPlan, ContributionPlanBundleDetails
-from core.constants import *
-from core.models import Banks, InteractiveUser, Role
-from core.notification_service import base64_encode, create_camu_notification
-from dateutil.relativedelta import relativedelta
-from insuree.dms_utils import send_mail_to_temp_insuree_with_pdf
-from insuree.models import Gender, Insuree, InsureePolicy
+from insuree.abis_api import create_abis_insuree
+from insuree.dms_utils import (
+    create_openKm_folder_for_bulkupload,
+    send_mail_to_temp_insuree_with_pdf,
+)
+from insuree.gql_mutations import temp_generate_employee_camu_registration_number
+from insuree.models import Family, Gender, Insuree, InsureePolicy
 from location.models import Location
 from payment.models import Payment, PaymentPenaltyAndSanction
 from payment.views import get_payment_product_config
 from policy.models import Policy
-from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.decorators import (
+    api_view,
+    authentication_classes,
+    permission_classes,
+)
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_api.lib.file_bucket import upload_file_to_s3_bucket
+from workflow.workflow_stage import insuree_add_to_workflow
 
-from policyholder.apps import PolicyholderConfig
+from policyholder.apps import *
 from policyholder.constants import (
+    CC_APPROVED,
+    CC_PENDING,
+    CC_PROCESSING,
+    CC_WAITING_FOR_APPROVAL,
+    CC_WAITING_FOR_DOCUMENT,
     PH_STATUS_CREATED,
     PH_STATUS_LOCKED,
     TIPL_PAYMENT_METHOD_ID,
 )
-from policyholder.dms_utils import validate_enrolment_type
+from policyholder.dms_utils import (
+    create_folder_for_cat_chnage_req,
+    send_notification_to_head,
+    validate_enrolment_type,
+)
 from policyholder.models import (
     CategoryChange,
     PolicyHolder,
     PolicyHolderContributionPlan,
     PolicyHolderInsuree,
     PolicyHolderUser,
-    PolicyHolderInsureeBatchUpload,
-    PolicyHolderInsureeUploadedFile
 )
-from policyholder.tasks import sync_policyholders_to_erp, import_policyholder_insurees_async
+from policyholder.tasks import sync_policyholders_to_erp
 
-from policyholder.import_utils import (
-    clean_line,
-    get_village_from_line,
-    get_or_create_family_from_line,
-    get_or_create_insuree_from_line,
-    validating_insuree_on_name_dob,
-    soft_delete_insuree,
-    check_for_category_change_request,
-    get_policy_holder_from_code,
-    mapping_marital_status,
+logger = logging.getLogger(__name__)
+
+MINIMUM_AGE_LIMIT = 18
+MINIMUM_AGE_LIMIT_FOR_STUDENTS = 16
+HEADER_INSUREE_CAMU_NO = "camu_number"
+HEADER_FAMILY_HEAD = "family_head"
+HEADER_FAMILY_LOCATION_CODE = "family_location_code"
+HEADER_INSUREE_OTHER_NAMES = "insuree_other_names"
+HEADER_INSUREE_LAST_NAME = "insuree_last_names"
+HEADER_INSUREE_DOB = "insuree_dob"
+HEADER_BIRTH_LOCATION_CODE = "birth_location_code"
+HEADER_INSUREE_GENDER = "insuree_gender"
+HEADER_CIVILITY = "civility"
+HEADER_PHONE = "phone"
+HEADER_ADDRESS = "address"
+HEADER_INSUREE_ID = "insuree_id"
+HEADER_INCOME = "income"
+HEADER_EMAIL = "email"
+HEADER_EMPLOYER_NUMBER = "employer_number"
+HEADER_EMPLOYER_PERCENTAGE = "employer_percentage"
+HEADER_EMPLOYER_SHARE = "employerContribution"
+HEADER_EMPLOYEE_PERCENTAGE = "employee_percentage"
+HEADER_EMPLOYEE_SHARE = "employeeContribution"
+HEADER_TOTAL_SHARE = "totalContribution"
+HEADER_DELETE = "Delete"
+HEADERS = [
     HEADER_INSUREE_CAMU_NO,
+    # HEADER_FAMILY_HEAD,
     HEADER_FAMILY_LOCATION_CODE,
     HEADER_INSUREE_OTHER_NAMES,
     HEADER_INSUREE_LAST_NAME,
@@ -81,23 +110,21 @@ from policyholder.import_utils import (
     HEADER_PHONE,
     HEADER_ADDRESS,
     HEADER_INSUREE_ID,
+    # HEADER_INCOME,
     HEADER_EMAIL,
-    HEADER_INCOME,
-    HEADER_EMPLOYER_NUMBER,
+    # HEADER_EMPLOYER_NUMBER,
+    # HEADER_EMPLOYER_PERCENTAGE,
+    # HEADER_EMPLOYER_SHARE,
+    # HEADER_EMPLOYEE_PERCENTAGE,
+    # HEADER_EMPLOYEE_SHARE,
+    # HEADER_TOTAL_SHARE,
     HEADER_DELETE,
-    MINIMUM_AGE_LIMIT,
-    MINIMUM_AGE_LIMIT_FOR_STUDENTS
-)
+]
 
-logger = logging.getLogger(__name__)
-
-# Constants used only in Views
-HEADER_FAMILY_HEAD = "family_head"
-HEADER_EMPLOYER_PERCENTAGE = "employer_percentage"
-HEADER_EMPLOYER_SHARE = "employerContribution"
-HEADER_EMPLOYEE_PERCENTAGE = "employee_percentage"
-HEADER_EMPLOYEE_SHARE = "employeeContribution"
-HEADER_TOTAL_SHARE = "totalContribution"
+GENDERS = {
+    "F": Gender.objects.get(code="F"),
+    "M": Gender.objects.get(code="M"),
+}
 
 RANDOM_INSUREE_ID_MIN_VALUE = 900_000_000_000
 RANDOM_INSUREE_ID_MAX_VALUE = 999_999_999_999
@@ -113,6 +140,23 @@ def check_user_with_rights(rights):
     return UserWithRights
 
 
+def clean_line(line):
+    for header in HEADERS:
+        value = line[header]
+        if value is None:
+            pass
+        elif isinstance(value, str):
+            line[header] = value.strip()
+        elif isinstance(value, datetime):
+            logger.info(f" ======    value is datetime : {value}   =======")
+        elif math.isnan(value):
+            logger.info(f" ======    value is nan : {value}   =======")
+            line[header] = None
+            logger.info(f" ======    after change value is : {line[header]}   =======")
+        elif header == HEADER_PHONE and isinstance(value, float):
+            line[header] = int(value)
+
+
 def validate_line(line):
     errors = ""
     # add here any additional cleaning/conditions/formatting:
@@ -123,6 +167,223 @@ def validate_line(line):
     # ...
     # if something is not right, append an error message to errors
     return errors
+
+
+def get_village_from_line(line):
+    village_code = line[HEADER_FAMILY_LOCATION_CODE]
+    village = Location.objects.filter(
+        validity_to__isnull=True, type="V", code=village_code
+    ).first()
+    return village
+
+
+def get_or_create_family_from_line(
+    line, audit_user_id: int, enrolment_type, insuree, village
+):
+    family = Family.objects.filter(
+        validity_to__isnull=True, head_insuree=insuree
+    ).first()
+
+    if family:
+        return family, True
+
+    if not village:
+        return None, False
+
+    family = Family.objects.create(
+        head_insuree=insuree,
+        location=village,
+        audit_user_id=audit_user_id,
+        status="PRE_REGISTERED",
+        address=line[HEADER_ADDRESS],
+        json_ext={"enrolmentType": map_enrolment_type_to_category(enrolment_type)},
+    )
+
+    if family:
+        insurees = Insuree.objects.filter(id=insuree.id).first()
+        insurees.family = family
+        insurees.head = True
+        insurees.save()
+        return family, True
+
+    return None, False
+
+
+def generate_available_chf_id(gender, village, dob, insureeEnrolmentType):
+    data = {
+        "gender_id": gender.upper(),
+        "json_ext": {
+            "insureelocations": {
+                "parent": {
+                    "parent": {"parent": {"code": village.parent.parent.parent.code}}
+                }
+            }
+        },
+        "dob": dob,
+        "insureeEnrolmentType": map_enrolment_type_to_category(insureeEnrolmentType),
+    }
+    return temp_generate_employee_camu_registration_number(None, data)
+
+
+def get_or_create_insuree_from_line(
+    line,
+    village,
+    audit_user_id: int,
+    request,
+    core_user_id=None,
+    enrolment_type=None,
+):
+    id = line[HEADER_INSUREE_ID]
+    camu_num = line[HEADER_INSUREE_CAMU_NO]
+    insuree = None
+
+    if id:
+        insuree = (
+            Insuree.objects.filter(validity_to__isnull=True).filter(chf_id=id).first()
+        )
+
+    if camu_num:
+        insuree = (
+            Insuree.objects.filter(validity_to__isnull=True)
+            .filter(camu_number=camu_num)
+            .first()
+        )
+
+    if insuree:
+        print(f"===> insuree found {insuree.chf_id} {insuree.last_name}")
+        age = (datetime.now().date() - insuree.dob) // timedelta(days=365.25)
+        
+        # Set minimum age limit based on enrolment type
+        current_minimum_age = MINIMUM_AGE_LIMIT  # Default to global value
+        if enrolment_type == "Etudiants":
+            current_minimum_age = MINIMUM_AGE_LIMIT_FOR_STUDENTS
+            
+        if age < current_minimum_age:
+            return (
+                insuree,
+                f"L'assuré doit être âgé d'au moins {current_minimum_age} ans.",
+            )
+        return insuree, None
+
+    print("===> create new insuree")
+
+    # create new insuree
+    if not insuree:
+        insuree_dob = line[HEADER_INSUREE_DOB]
+        if not isinstance(insuree_dob, datetime):
+            datetime_obj = (
+                datetime.strptime(f"{insuree_dob}", "%d/%m/%Y")
+                if isinstance(insuree_dob, str)
+                else datetime.combine(insuree_dob, datetime.min.time())
+            )
+            line[HEADER_INSUREE_DOB] = timezone.make_aware(datetime_obj).date()
+
+        insuree_id = generate_available_chf_id(
+            line[HEADER_INSUREE_GENDER],
+            village,
+            line[HEADER_INSUREE_DOB],
+            enrolment_type,
+        )
+
+        print(f"====> insuree_id {insuree_id}")
+        current_village = village
+        response_string = json.dumps(current_village, cls=LocationEncoder)
+        response_data = json.loads(response_string)
+        insuree = Insuree.objects.create(
+            other_names=line[HEADER_INSUREE_OTHER_NAMES],
+            last_name=line[HEADER_INSUREE_LAST_NAME],
+            dob=line[HEADER_INSUREE_DOB],
+            # family=family,
+            audit_user_id=audit_user_id,
+            card_issued=False,
+            chf_id=insuree_id,
+            gender=GENDERS[line[HEADER_INSUREE_GENDER]],
+            head=False,
+            current_village=current_village,
+            current_address=line[HEADER_ADDRESS],
+            phone=line[HEADER_PHONE],
+            created_by=core_user_id,
+            modified_by=core_user_id,
+            marital=mapping_marital_status(line[HEADER_CIVILITY]),
+            email=line[HEADER_EMAIL],
+            json_ext={
+                "insureeEnrolmentType": map_enrolment_type_to_category(enrolment_type),
+                "insureelocations": response_data,
+                "BirthPlace": line[HEADER_BIRTH_LOCATION_CODE],
+                "insureeaddress": line[HEADER_ADDRESS],
+            },
+        )
+
+        print(f"====> insuree {insuree.id} {insuree.last_name}")
+
+        try:
+            user = request.user
+            create_openKm_folder_for_bulkupload(user, insuree)
+            insuree_add_to_workflow(
+                None, insuree.id, "INSUREE_ENROLLMENT", "Pre_Register"
+            )
+            create_abis_insuree(None, insuree)
+        except Exception as e:
+            logger.error(f"insuree bulk upload error for abis or workflow : {e}")
+
+        if insuree:
+            return insuree, None
+
+    return (
+        None,
+        "Impossible de créer ou de trouver l'assuré. Assurez-vous que les données sont bien correctes",
+    )
+
+
+def validating_insuree_on_name_dob(line, policy_holder):
+    insuree_dob = line[HEADER_INSUREE_DOB]
+    if not isinstance(insuree_dob, datetime):
+        datetime_obj = datetime.strptime(insuree_dob, "%d/%m/%Y")
+        line[HEADER_INSUREE_DOB] = timezone.make_aware(datetime_obj).date()
+
+    insuree = Insuree.objects.filter(
+        other_names=line[HEADER_INSUREE_OTHER_NAMES],
+        last_name=line[HEADER_INSUREE_LAST_NAME],
+        dob=line[HEADER_INSUREE_DOB],
+        validity_to__isnull=True,
+        legacy_id__isnull=True,
+    ).first()
+
+    if not insuree:
+        return False
+
+    return True
+
+
+def get_policy_holder_from_code(ph_code: str):
+    return PolicyHolder.objects.filter(code=ph_code, is_deleted=False).first()
+
+
+def soft_delete_insuree(line, policy_holder_code, user_id):
+    id = line[HEADER_INSUREE_ID]
+    camu_num = line[HEADER_INSUREE_CAMU_NO]
+    insuree = None
+    if id:
+        insuree = Insuree.objects.filter(validity_to__isnull=True, chf_id=id).first()
+    if not insuree:
+        insuree = Insuree.objects.filter(
+            validity_to__isnull=True, camu_number=camu_num
+        ).first()
+    if insuree:
+        phn = PolicyHolderInsuree.objects.filter(
+            insuree_id=insuree.id,
+            policy_holder__code=policy_holder_code,
+            policy_holder__date_valid_to__isnull=True,
+            policy_holder__is_deleted=False,
+            date_valid_to__isnull=True,
+            is_deleted=False,
+        ).first()
+        if phn:
+            PolicyHolderInsuree.objects.filter(id=phn.id).update(
+                is_deleted=True, date_valid_to=datetime.now()
+            )
+            return True
+    return False
 
 
 @api_view(["POST"])
@@ -138,8 +399,6 @@ def import_phi(request, policy_holder_code):
     file = request.FILES["file"]
     user_id = request.user.id_for_audit
     core_user_id = request.user.id
-    user_obj = request.user 
-
     logger.info("User (audit id %s) requested import of PolicyHolderInsurees", user_id)
 
     policy_holder = get_policy_holder_from_code(policy_holder_code)
@@ -323,7 +582,7 @@ def import_phi(request, policy_holder_code):
             line,
             village,
             user_id,
-            user_obj, 
+            request,
             core_user_id,
             enrolment_type,
         )
@@ -2093,275 +2352,3 @@ def verify_user_and_update_password(request):
     i_user.save()
 
     return JsonResponse({"message": "Policyholders sync started"}, status=200)
-
-
-@api_view(["POST"])
-@permission_classes(
-    [
-        check_user_with_rights(
-            PolicyholderConfig.gql_query_policyholder_perms,
-        )
-    ]
-)
-def import_policyholder_insurees(request, policyholder_code):
-    """
-    Async upload endpoint for policyholder insuree import.
-    """
-
-    try:
-        policyholder = get_policy_holder_from_code(policyholder_code)
-        if not policyholder:
-            return JsonResponse(
-                {"success": False, "message": "Policy holder not found"}, status=404
-            )
-
-        if "file" not in request.FILES:
-            return JsonResponse(
-                {"success": False, "message": "No file provided"}, status=400
-            )
-
-        uploaded_file = request.FILES["file"]
-
-        if not uploaded_file.name.endswith((".xlsx", ".xls")):
-            return JsonResponse(
-                {
-                    "success": False,
-                    "message": "Invalid file format. Only Excel files (.xlsx, .xls) are supported.",
-                },
-                status=400,
-            )
-
-        file_data = uploaded_file.read()
-        file_hash = hashlib.sha256(file_data).hexdigest()
-
-        app_env = os.environ.get("APP_ENV", "dev")
-        object_key = f"{app_env}/{policyholder.uuid}/{uploaded_file.name}"
-        uploaded_file_record = PolicyHolderInsureeUploadedFile.objects.filter(
-            file_name_hash=file_hash, policy_holder=policyholder
-        ).first()
-
-        if uploaded_file_record:
-            PolicyHolderInsureeUploadedFile.objects.filter(
-                id=uploaded_file_record.id
-            ).update(
-                policy_holder=policyholder,
-                file_name_hash=file_hash,
-                file_path=object_key,
-            )
-        else:
-            uploaded_file_record = PolicyHolderInsureeUploadedFile.objects.create(
-                policy_holder=policyholder, file_name_hash=file_hash, file_path=object_key
-            )
-
-        with tempfile.NamedTemporaryFile(
-            delete=False, suffix=os.path.splitext(uploaded_file.name)[1]
-        ) as temp_file:
-            temp_file.write(file_data)
-            temp_file_path = temp_file.name
-
-        try:
-            upload_file_to_s3_bucket(
-                file_path=temp_file_path,
-                object_key=object_key,
-                key_prefix="policyholder",
-            )
-        finally:
-            if os.path.exists(temp_file_path):
-                os.unlink(temp_file_path)
-
-        batch_upload = PolicyHolderInsureeBatchUpload.objects.create(
-            policy_holder=policyholder,
-            input_file_name=uploaded_file.name,
-            status=PolicyHolderInsureeBatchUpload.Status.PENDING,
-            created_by=request.user,
-        )
-
-        logger.info(
-            f"Policyholder insuree import started: policyholder_code={policyholder_code}, batch_upload_id={batch_upload.id}"
-        )
-
-        task = import_policyholder_insurees_async.delay(
-            user_id=request.user.id,
-            policyholder_code=policyholder_code,
-            batch_upload_id=str(batch_upload.id),
-            uploaded_file_record_id=str(uploaded_file_record.id),
-        )
-
-        batch_upload.celery_task_id = task.id
-        batch_upload.save(update_fields=["celery_task_id"])
-
-        logger.info(
-            f"Policyholder insuree import started: task_id={task.id}, batch_upload_id={batch_upload.id}"
-        )
-
-        return JsonResponse(
-            {
-                "success": True,
-                "message": "Import started",
-                "task_id": task.id,
-                "batch_upload_id": str(batch_upload.id),
-            }
-        )
-
-    except Exception as e:
-        logger.error(f"Error in import_policyholder_insurees: {str(e)}", exc_info=True)
-        return JsonResponse(
-            {"success": False, "message": f"Error uploading file: {str(e)}"}, status=500
-        )
-
-
-def build_response_data_check_active_insuree_task(task, is_active, policyholder_code, task_id):
-    if is_active is False and not task_id:
-        return {
-            "has_active_task": False,
-            "task_id": None,
-            "download_url": f"/api/policyholder/{policyholder_code}/insuree-import-report/{task.celery_task_id}/",
-        }
-
-    response_data = {
-        "has_active_task": is_active,
-        "task_id": task.celery_task_id,
-        "status": task.status,
-        "total": task.total_rows,
-        "processed": task.processed_rows,
-        "percent": task.progress_percentage,
-        "success_count": task.success_count,
-        "error_count": task.error_count,
-        "ready": task.is_complete,
-        "successful": task.status == PolicyHolderInsureeBatchUpload.Status.COMPLETED,
-        "error_message": task.error_message,
-        "created_at": task.created_at.isoformat(),
-        "started_at": task.started_at.isoformat() if task.started_at else None,
-    }
-
-    if task.completed_at:
-        response_data["completed_at"] = task.completed_at.isoformat()
-
-    if task.results and task.results.get("results"):
-        response_data["download_url"] = (
-            f"/api/policyholder/{policyholder_code}/insuree-import-report/{task.celery_task_id}/"
-        )
-
-    return response_data
-
-
-@api_view(["GET"])
-def check_active_insuree_import_task(request, policyholder_code):
-    try:
-        task_id = request.GET.get("task_id", None)
-
-        policyholder = get_policy_holder_from_code(policyholder_code)
-        if not policyholder:
-            return JsonResponse(
-                {"success": False, "message": "Policy holder not found"}, status=404
-            )
-
-        active_task = (
-            PolicyHolderInsureeBatchUpload.objects.filter(policy_holder=policyholder)
-            .order_by("-created_at")
-            .first()
-        )
-
-        if not active_task:
-            return JsonResponse({"has_active_task": False, "task_id": None})
-
-        if active_task.status in [
-            PolicyHolderInsureeBatchUpload.Status.PENDING,
-            PolicyHolderInsureeBatchUpload.Status.PROCESSING,
-        ]:
-            return JsonResponse(
-                build_response_data_check_active_insuree_task(
-                    task=active_task,
-                    is_active=True,
-                    policyholder_code=policyholder_code,
-                    task_id=task_id,
-                )
-            )
-        else:
-            return JsonResponse(
-                build_response_data_check_active_insuree_task(
-                    task=active_task,
-                    is_active=False,
-                    policyholder_code=policyholder_code,
-                    task_id=task_id,
-                )
-            )
-
-    except Exception as e:
-        logger.error(f"Error checking active task: {str(e)}", exc_info=True)
-        return JsonResponse(
-            {"success": False, "message": f"Error: {str(e)}"}, status=500
-        )
-
-
-@api_view(["GET"])
-def download_insuree_import_report(request, policyholder_code, task_id):
-    try:
-        policyholder = get_policy_holder_from_code(policyholder_code)
-        if not policyholder:
-            return JsonResponse(
-                {"success": False, "message": "Policy holder not found"}, status=404
-            )
-
-        batch_upload = PolicyHolderInsureeBatchUpload.objects.filter(
-            policy_holder=policyholder,
-            celery_task_id=task_id,
-            status__in=[
-                PolicyHolderInsureeBatchUpload.Status.COMPLETED,
-                PolicyHolderInsureeBatchUpload.Status.FAILED,
-            ],
-        ).first()
-
-        if not batch_upload:
-            return JsonResponse(
-                {"success": False, "message": "Report not found or not ready"},
-                status=404,
-            )
-
-        if not batch_upload.results or not batch_upload.results.get("results"):
-            return JsonResponse(
-                {"success": False, "message": "Results not generated"}, status=404
-            )
-
-        results_data = batch_upload.results["results"]
-
-        df = pd.DataFrame(results_data)
-
-        column_order = ["ligne", "numero_camu", "nom", "prenom", "Etat", "remarque"]
-        french_column_names = {
-            "ligne": "Ligne",
-            "numero_camu": "Numéro CAMU",
-            "nom": "Nom",
-            "prenom": "Prénom",
-            "Etat": "État",
-            "remarque": "Remarque",
-        }
-
-        # SAFETY PATCH: Ensure all columns exist before selecting
-        for col in column_order:
-            if col not in df.columns:
-                df[col] = ""
-
-        df = df[column_order]
-        df = df.rename(columns=french_column_names)
-
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-            df.to_excel(writer, index=False, sheet_name="Résultats")
-        output.seek(0)
-
-        response = HttpResponse(
-            output.getvalue(),
-            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-        response["Content-Disposition"] = (
-            'attachment; filename="Rapport d\'importation des assurés.xlsx"'
-        )
-        return response
-
-    except Exception as e:
-        logger.error(f"Error in download_insuree_import_report: {str(e)}", exc_info=True)
-        return JsonResponse(
-            {"success": False, "message": f"Error downloading file: {str(e)}"},
-            status=500,
-        )

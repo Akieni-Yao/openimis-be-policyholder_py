@@ -4,9 +4,6 @@ from policyholder import views, erp_intigration
 
 urlpatterns = [
     path("imports/<policy_holder_code>/policyholderinsurees", views.import_phi),
-    path("imports/<str:policyholder_code>/policyholderinsurees/v2", views.import_policyholder_insurees),
-    path("active-insuree-task/<str:policyholder_code>", views.check_active_insuree_import_task),
-    path("<str:policyholder_code>/insuree-import-report/<str:task_id>/", views.download_insuree_import_report),
     path("export/<policy_holder_code>/policyholderinsurees", views.export_phi),
     path("export/notdeclaredpolicyholder", views.not_declared_policy_holder),
     path("not-declared-ph/", views.not_declared_ph_rest),
