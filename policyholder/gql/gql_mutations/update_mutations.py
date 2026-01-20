@@ -419,7 +419,7 @@ class PHApprovalMutation(graphene.Mutation):
 
 def create_new_insuree(policy_holder, user, infoUser):
     from contract.utils import map_enrolment_type_to_category
-    from policyholder.views import generate_available_chf_id
+    from policyholder.import_utils import generate_available_chf_id
     from insuree.models import Family, Insuree
     from insuree.dms_utils import create_openKm_folder_for_bulkupload
     from workflow.workflow_stage import insuree_add_to_workflow
