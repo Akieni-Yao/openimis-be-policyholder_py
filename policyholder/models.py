@@ -495,6 +495,11 @@ class PolicyHolderInsureeBatchUpload(core_models.UUIDModel):
         return self.status in [self.Status.COMPLETED, self.Status.FAILED]
 
     @property
+    def is_in_progress(self):
+        """Returns True if the task is currently being processed (PENDING or PROCESSING)."""
+        return self.status in [self.Status.PENDING, self.Status.PROCESSING]
+
+    @property
     def duration_seconds(self):
         """Calculate duration in seconds"""
         if self.started_at and self.completed_at:

@@ -2256,6 +2256,22 @@ def check_active_insuree_import_task(request, policyholder_code):
                 {"success": False, "message": "Policy holder not found"}, status=404
             )
 
+        if task_id:
+            specific_task = PolicyHolderInsureeBatchUpload.objects.filter(
+                policy_holder=policyholder,
+                celery_task_id=task_id
+            ).first()
+            
+            if specific_task:
+                return JsonResponse(
+                    build_response_data_check_active_insuree_task(
+                        task=specific_task,
+                        is_active=specific_task.is_in_progress,
+                        policyholder_code=policyholder_code,
+                        task_id=task_id,
+                    )
+                )
+
         active_task = (
             PolicyHolderInsureeBatchUpload.objects.filter(policy_holder=policyholder)
             .order_by("-created_at")
@@ -2264,28 +2280,15 @@ def check_active_insuree_import_task(request, policyholder_code):
 
         if not active_task:
             return JsonResponse({"has_active_task": False, "task_id": None})
-
-        if active_task.status in [
-            PolicyHolderInsureeBatchUpload.Status.PENDING,
-            PolicyHolderInsureeBatchUpload.Status.PROCESSING,
-        ]:
-            return JsonResponse(
-                build_response_data_check_active_insuree_task(
-                    task=active_task,
-                    is_active=True,
-                    policyholder_code=policyholder_code,
-                    task_id=task_id,
-                )
+        
+        return JsonResponse(
+            build_response_data_check_active_insuree_task(
+                task=active_task,
+                is_active=active_task.is_in_progress,
+                policyholder_code=policyholder_code,
+                task_id=active_task.celery_task_id,
             )
-        else:
-            return JsonResponse(
-                build_response_data_check_active_insuree_task(
-                    task=active_task,
-                    is_active=False,
-                    policyholder_code=policyholder_code,
-                    task_id=task_id,
-                )
-            )
+        )
 
     except Exception as e:
         logger.error(f"Error checking active task: {str(e)}", exc_info=True)
