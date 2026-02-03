@@ -16,7 +16,7 @@ from core.gql.gql_mutations.base_mutation import (
     BaseMutation,
     BaseHistoryModelUpdateMutationMixin,
 )
-from core.models import InteractiveUser
+from core.models import InteractiveUser, MutationLog
 from core.notification_service import create_camu_notification
 from payment.models import Payment, PaymentPenaltyAndSanction
 from policyholder.apps import PolicyholderConfig
@@ -100,8 +100,27 @@ class UpdatePolicyHolderMutation(BaseHistoryModelUpdateMutationMixin, BaseMutati
     _mutation_module = "policyholder"
     _model = PolicyHolder
 
+    success = graphene.Boolean()
+
+    def resolve_success(self, info):
+        if self.internal_id:
+            log = MutationLog.objects.filter(id=self.internal_id).first()
+            if log:
+                return log.status == MutationLog.SUCCESS or (log.status == MutationLog.ERROR and "no changes in fields" in str(log.error))
+        return False
+
     class Input(PolicyHolderUpdateInputType):
         pass
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        data.pop("is_validation_required", None)
+        try:
+            return super()._mutate(user, **data)
+        except ValidationError as e:
+            if "no changes in fields" in str(e):
+                return None
+            raise
 
     @classmethod
     def _validate_mutation(cls, user, **data):
@@ -400,7 +419,7 @@ class PHApprovalMutation(graphene.Mutation):
 
 def create_new_insuree(policy_holder, user, infoUser):
     from contract.utils import map_enrolment_type_to_category
-    from policyholder.views import generate_available_chf_id
+    from policyholder.import_utils import generate_available_chf_id
     from insuree.models import Family, Insuree
     from insuree.dms_utils import create_openKm_folder_for_bulkupload
     from workflow.workflow_stage import insuree_add_to_workflow

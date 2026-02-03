@@ -55,6 +55,7 @@ class PolicyHolderUpdateInputType(OpenIMISMutation.Input):
     json_ext = graphene.types.json.JSONString(required=False)
     is_review = graphene.Boolean(required=False)
     is_submit = graphene.Boolean(required=False)
+    is_validation_required = graphene.Boolean(required=False)
     status = graphene.String(required=False)
     skip_erp_update = graphene.Boolean(required=False)
 
