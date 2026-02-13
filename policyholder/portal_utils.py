@@ -1,3 +1,4 @@
+from policyholder.utils import aws_ses_service
 from dotenv import load_dotenv
 import os
 
@@ -221,14 +222,19 @@ def send_verification_and_new_password_email(user, token, username):
     </html>
     """.format(last_name=user.last_name, verification_url=verification_url)
 
-    send_mail(
-        subject,
-        message,
-        settings.EMAIL_HOST_USER,
-        [user.email],
-        html_message=html_message,
-    )
-    logger.info("Verification email sent.")
+    USE_AWS_IDENTITY = os.environ.get("USE_AWS_IDENTITY", "smtp")
+
+    if USE_AWS_IDENTITY == "smtp":
+        send_mail(
+            subject,
+            message,
+            settings.EMAIL_HOST_USER,
+            [user.email],
+            html_message=html_message,
+        )
+        logger.info("Verification email sent.")
+    else:
+        aws_ses_service(user.email, subject, message, html_message)
 
 
 def new_user_welcome_email(user, verification_url):
