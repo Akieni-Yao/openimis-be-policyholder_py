@@ -50,12 +50,11 @@ def aws_ses_service(RECIPIENT_EMAIL, subject, message, html_message=None):
         )
         return
 
-    with open(token_file, "r") as f:
-        web_identity_token = f.read()
-
-    sts_client = boto3.client("sts", region_name=AWS_REGION)
-
     try:
+        with open(token_file, "r") as f:
+            web_identity_token = f.read()
+
+        sts_client = boto3.client("sts", region_name=AWS_REGION)
         response_b = sts_client.assume_role_with_web_identity(
             RoleArn=AWS_EKS_ROLE_ARN,
             RoleSessionName="EKSLocalSession",
@@ -65,17 +64,16 @@ def aws_ses_service(RECIPIENT_EMAIL, subject, message, html_message=None):
         print(f"Failed to assume EKS Account role: {e}")
         return
 
-    creds_b = response_b["Credentials"]
-
-    sts_account_a = boto3.client(
-        "sts",
-        aws_access_key_id=creds_b["AccessKeyId"],
-        aws_secret_access_key=creds_b["SecretAccessKey"],
-        aws_session_token=creds_b["SessionToken"],
-        region_name=AWS_REGION,
-    )
-
     try:
+        creds_b = response_b["Credentials"]
+
+        sts_account_a = boto3.client(
+            "sts",
+            aws_access_key_id=creds_b["AccessKeyId"],
+            aws_secret_access_key=creds_b["SecretAccessKey"],
+            aws_session_token=creds_b["SessionToken"],
+            region_name=AWS_REGION,
+        )
         response_a = sts_account_a.assume_role(
             RoleArn=AWS_SES_ROLE_ARN, RoleSessionName="CrossAccountSESSession"
         )
@@ -83,18 +81,17 @@ def aws_ses_service(RECIPIENT_EMAIL, subject, message, html_message=None):
         print(f"Failed to assume SES Account role: {e}")
         return
 
-    creds_a = response_a["Credentials"]
-    print("Successfully assumed Role in SES Account!")
-
-    ses_client = boto3.client(
-        "ses",
-        aws_access_key_id=creds_a["AccessKeyId"],
-        aws_secret_access_key=creds_a["SecretAccessKey"],
-        aws_session_token=creds_a["SessionToken"],
-        region_name=AWS_REGION,
-    )
-
     try:
+        creds_a = response_a["Credentials"]
+        print("Successfully assumed Role in SES Account!")
+
+        ses_client = boto3.client(
+            "ses",
+            aws_access_key_id=creds_a["AccessKeyId"],
+            aws_secret_access_key=creds_a["SecretAccessKey"],
+            aws_session_token=creds_a["SessionToken"],
+            region_name=AWS_REGION,
+        )
         response = ses_client.send_email(
             Source=SENDER_EMAIL,
             Destination={"ToAddresses": [RECIPIENT_EMAIL]},
