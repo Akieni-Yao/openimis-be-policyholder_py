@@ -24,10 +24,11 @@ def aws_ses_service(RECIPIENT_EMAIL, subject, message, html_message=None):
     AWS_EKS_ROLE_ARN = os.environ.get("AWS_EKS_ROLE_ARN")
     AWS_SES_ROLE_ARN = os.environ.get("AWS_SES_ROLE_ARN")
     AWS_REGION = os.environ.get("AWS_REGION")
+    token_file = os.environ.get("AWS_WEB_IDENTITY_TOKEN_FILE")
 
     SENDER_EMAIL = settings.EMAIL_HOST_USER
     # RECIPIENT_EMAIL = os.environ.get("RECIPIENT_EMAIL")
-    token_file = os.environ.get("AWS_WEB_IDENTITY_TOKEN_FILE")
+    # token_file = os.environ.get("AWS_WEB_IDENTITY_TOKEN_FILE")
 
     if not token_file:
         print(
