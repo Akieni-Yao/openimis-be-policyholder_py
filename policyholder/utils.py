@@ -20,26 +20,39 @@ class Utils:
 
 
 def aws_ses_service(RECIPIENT_EMAIL, subject, message, html_message=None):
-    # Configuration
+
     AWS_EKS_ROLE_ARN = os.environ.get("AWS_EKS_ROLE_ARN")
     AWS_SES_ROLE_ARN = os.environ.get("AWS_SES_ROLE_ARN")
     AWS_REGION = os.environ.get("AWS_REGION")
     token_file = os.environ.get("AWS_WEB_IDENTITY_TOKEN_FILE")
 
     SENDER_EMAIL = settings.EMAIL_HOST_USER
-    # RECIPIENT_EMAIL = os.environ.get("RECIPIENT_EMAIL")
-    # token_file = os.environ.get("AWS_WEB_IDENTITY_TOKEN_FILE")
+
+    if not AWS_EKS_ROLE_ARN:
+        print("Error: AWS_EKS_ROLE_ARN not found. Is your ServiceAccount annotated?")
+        return
+
+    if not AWS_SES_ROLE_ARN:
+        print("Error: AWS_SES_ROLE_ARN not found. Is your ServiceAccount annotated?")
+        return
+
+    if not AWS_REGION:
+        print("Error: AWS_REGION not found. Is your ServiceAccount annotated?")
+        return
+
+    if not SENDER_EMAIL:
+        print("Error: SENDER_EMAIL not found. Is your ServiceAccount annotated?")
+        return
 
     if not token_file:
         print(
             "Error: AWS_WEB_IDENTITY_TOKEN_FILE not found. Is your ServiceAccount annotated?"
         )
+        return
 
     with open(token_file, "r") as f:
         web_identity_token = f.read()
 
-    # Step 1: Assume EKS Role
-    print(f"--- Step 1: Assuming Local Role {AWS_EKS_ROLE_ARN} ---")
     sts_client = boto3.client("sts", region_name=AWS_REGION)
 
     try:
@@ -53,9 +66,6 @@ def aws_ses_service(RECIPIENT_EMAIL, subject, message, html_message=None):
         return
 
     creds_b = response_b["Credentials"]
-
-    # Step 2: Assume SES Account Role
-    print(f"--- Step 2: Assuming Worker Role {AWS_SES_ROLE_ARN} ---")
 
     sts_account_a = boto3.client(
         "sts",
@@ -76,7 +86,6 @@ def aws_ses_service(RECIPIENT_EMAIL, subject, message, html_message=None):
     creds_a = response_a["Credentials"]
     print("Successfully assumed Role in SES Account!")
 
-    # Step 3: Create SES Client with SES Account credentials
     ses_client = boto3.client(
         "ses",
         aws_access_key_id=creds_a["AccessKeyId"],
@@ -84,9 +93,6 @@ def aws_ses_service(RECIPIENT_EMAIL, subject, message, html_message=None):
         aws_session_token=creds_a["SessionToken"],
         region_name=AWS_REGION,
     )
-
-    # Step 4: Send Email
-    print("--- Sending Test Email ---")
 
     try:
         response = ses_client.send_email(
