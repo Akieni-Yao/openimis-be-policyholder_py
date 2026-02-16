@@ -26,7 +26,7 @@ PORTAL_SUBSCRIBER_URL = os.getenv(
     "PORTAL_SUBSCRIBER_URL", "https://dev-ims.akieni.tech"
 )
 
-USE_AWS_IDENTITY = os.environ.get("USE_AWS_IDENTITY", "smtp")
+USE_AWS_IDENTITY = True if os.environ.get("USE_AWS_IDENTITY") is not None else False
 
 
 def send_verification_email(user):
@@ -64,7 +64,9 @@ def send_verification_email(user):
     </html>
     """.format(last_name=user.last_name, verification_url=verification_url)
 
-    if USE_AWS_IDENTITY == "smtp":
+    if USE_AWS_IDENTITY:
+        aws_ses_service(user.email, subject, message, html_message)
+    else:
         send_mail(
             subject,
             message,
@@ -73,8 +75,6 @@ def send_verification_email(user):
             html_message=html_message,
         )
         logger.info("Verification email sent.")
-    else:
-        aws_ses_service(user.email, subject, message, html_message)
 
 
 def send_password_reset_email(user):
@@ -92,10 +92,10 @@ def send_password_reset_email(user):
         },
     )
 
-    if USE_AWS_IDENTITY == "smtp":
-        send_mail(subject, message, "from@example.com", [user.email])
-    else:
+    if USE_AWS_IDENTITY:
         aws_ses_service(user.email, subject, message)
+    else:
+        send_mail(subject, message, settings.EMAIL_HOST_USER, [user.email])
 
 
 class ForgotPassword(graphene.Mutation):
@@ -187,7 +187,9 @@ def send_approved_or_rejected_email(user, subject, message):
     </html>
     """.format(last_name=user["last_name"], message=message)
 
-    if USE_AWS_IDENTITY == "smtp":
+    if USE_AWS_IDENTITY:
+        aws_ses_service(user["email"], subject, body_message, html_message)
+    else:
         send_mail(
             subject,
             body_message,
@@ -196,8 +198,6 @@ def send_approved_or_rejected_email(user, subject, message):
             html_message=html_message,
         )
         logger.info("Verification email sent.")
-    else:
-        aws_ses_service(user["email"], subject, body_message, html_message)
 
 
 def send_verification_and_new_password_email(user, token, username):
@@ -234,7 +234,9 @@ def send_verification_and_new_password_email(user, token, username):
     </html>
     """.format(last_name=user.last_name, verification_url=verification_url)
 
-    if USE_AWS_IDENTITY == "smtp":
+    if USE_AWS_IDENTITY:
+        aws_ses_service(user.email, subject, message, html_message)
+    else:
         send_mail(
             subject,
             message,
@@ -243,8 +245,6 @@ def send_verification_and_new_password_email(user, token, username):
             html_message=html_message,
         )
         logger.info("Verification email sent.")
-    else:
-        aws_ses_service(user.email, subject, message, html_message)
 
 
 def new_user_welcome_email(user, verification_url):
@@ -274,7 +274,9 @@ def new_user_welcome_email(user, verification_url):
     </html>
     """.format(last_name=user.last_name, verification_url=verification_url)
 
-    if USE_AWS_IDENTITY == "smtp":
+    if USE_AWS_IDENTITY:
+        aws_ses_service(user.email, subject, message, html_message)
+    else:
         send_mail(
             subject,
             message,
@@ -283,8 +285,6 @@ def new_user_welcome_email(user, verification_url):
             html_message=html_message,
         )
         logger.info("Verification email sent.")
-    else:
-        aws_ses_service(user.email, subject, message, html_message)
 
 
 def new_forgot_password_email(user, verification_url):
@@ -315,7 +315,9 @@ def new_forgot_password_email(user, verification_url):
     </html>
     """.format(last_name=user.last_name, verification_url=verification_url)
 
-    if USE_AWS_IDENTITY == "smtp":
+    if USE_AWS_IDENTITY:
+        aws_ses_service(user.email, subject, message, html_message)
+    else:
         send_mail(
             subject,
             message,
@@ -324,5 +326,3 @@ def new_forgot_password_email(user, verification_url):
             html_message=html_message,
         )
         logger.info("Verification email sent.")
-    else:
-        aws_ses_service(user.email, subject, message, html_message)
