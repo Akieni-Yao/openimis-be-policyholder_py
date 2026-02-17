@@ -1,3 +1,4 @@
+from policyholder.utils import aws_ses_service
 from dotenv import load_dotenv
 import os
 
@@ -24,6 +25,8 @@ load_dotenv()
 PORTAL_SUBSCRIBER_URL = os.getenv(
     "PORTAL_SUBSCRIBER_URL", "https://dev-ims.akieni.tech"
 )
+
+USE_AWS_IDENTITY = True if os.environ.get("USE_AWS_IDENTITY") is not None else False
 
 
 def send_verification_email(user):
@@ -61,14 +64,17 @@ def send_verification_email(user):
     </html>
     """.format(last_name=user.last_name, verification_url=verification_url)
 
-    send_mail(
-        subject,
-        message,
-        settings.EMAIL_HOST_USER,
-        [user.email],
-        html_message=html_message,
-    )
-    logger.info("Verification email sent.")
+    if USE_AWS_IDENTITY:
+        aws_ses_service(user.email, subject, message, html_message)
+    else:
+        send_mail(
+            subject,
+            message,
+            settings.EMAIL_HOST_USER,
+            [user.email],
+            html_message=html_message,
+        )
+        logger.info("Verification email sent.")
 
 
 def send_password_reset_email(user):
@@ -85,7 +91,11 @@ def send_password_reset_email(user):
             "reset_url": reset_url,
         },
     )
-    send_mail(subject, message, "from@example.com", [user.email])
+
+    if USE_AWS_IDENTITY:
+        aws_ses_service(user.email, subject, message)
+    else:
+        send_mail(subject, message, settings.EMAIL_HOST_USER, [user.email])
 
 
 class ForgotPassword(graphene.Mutation):
@@ -177,14 +187,17 @@ def send_approved_or_rejected_email(user, subject, message):
     </html>
     """.format(last_name=user["last_name"], message=message)
 
-    send_mail(
-        subject,
-        body_message,
-        settings.EMAIL_HOST_USER,
-        [user["email"]],
-        html_message=html_message,
-    )
-    logger.info("Verification email sent.")
+    if USE_AWS_IDENTITY:
+        aws_ses_service(user["email"], subject, body_message, html_message)
+    else:
+        send_mail(
+            subject,
+            body_message,
+            settings.EMAIL_HOST_USER,
+            [user["email"]],
+            html_message=html_message,
+        )
+        logger.info("Verification email sent.")
 
 
 def send_verification_and_new_password_email(user, token, username):
@@ -221,14 +234,17 @@ def send_verification_and_new_password_email(user, token, username):
     </html>
     """.format(last_name=user.last_name, verification_url=verification_url)
 
-    send_mail(
-        subject,
-        message,
-        settings.EMAIL_HOST_USER,
-        [user.email],
-        html_message=html_message,
-    )
-    logger.info("Verification email sent.")
+    if USE_AWS_IDENTITY:
+        aws_ses_service(user.email, subject, message, html_message)
+    else:
+        send_mail(
+            subject,
+            message,
+            settings.EMAIL_HOST_USER,
+            [user.email],
+            html_message=html_message,
+        )
+        logger.info("Verification email sent.")
 
 
 def new_user_welcome_email(user, verification_url):
@@ -258,14 +274,17 @@ def new_user_welcome_email(user, verification_url):
     </html>
     """.format(last_name=user.last_name, verification_url=verification_url)
 
-    send_mail(
-        subject,
-        message,
-        settings.EMAIL_HOST_USER,
-        [user.email],
-        html_message=html_message,
-    )
-    logger.info("Verification email sent.")
+    if USE_AWS_IDENTITY:
+        aws_ses_service(user.email, subject, message, html_message)
+    else:
+        send_mail(
+            subject,
+            message,
+            settings.EMAIL_HOST_USER,
+            [user.email],
+            html_message=html_message,
+        )
+        logger.info("Verification email sent.")
 
 
 def new_forgot_password_email(user, verification_url):
@@ -296,11 +315,14 @@ def new_forgot_password_email(user, verification_url):
     </html>
     """.format(last_name=user.last_name, verification_url=verification_url)
 
-    send_mail(
-        subject,
-        message,
-        settings.EMAIL_HOST_USER,
-        [user.email],
-        html_message=html_message,
-    )
-    logger.info("Verification email sent.")
+    if USE_AWS_IDENTITY:
+        aws_ses_service(user.email, subject, message, html_message)
+    else:
+        send_mail(
+            subject,
+            message,
+            settings.EMAIL_HOST_USER,
+            [user.email],
+            html_message=html_message,
+        )
+        logger.info("Verification email sent.")
