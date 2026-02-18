@@ -326,3 +326,37 @@ def new_forgot_password_email(user, verification_url):
             html_message=html_message,
         )
         logger.info("Verification email sent.")
+
+
+def send_manifest_email(user):
+
+    subject = "Manifest offline généré avec succès"
+
+    message = f"Bonjour {user.last_name}, le manifest offline a été généré avec succès"
+
+    html_message = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Manifest offline généré avec succès</title>
+    </head>
+    <body>
+        <p>Bonjour {last_name},</p>
+        <p>Le manifest offline a été généré avec succès</p>
+    </body>
+    </html>
+    """.format(last_name=user.last_name)
+
+    if USE_AWS_IDENTITY:
+        aws_ses_service(user.email, subject, message, html_message)
+    else:
+        send_mail(
+            subject,
+            message,
+            settings.EMAIL_HOST_USER,
+            [user.email],
+            html_message=html_message,
+        )
+    logger.info("Manifest offline email sent.")
