@@ -26,8 +26,7 @@ PORTAL_SUBSCRIBER_URL = os.getenv(
     "PORTAL_SUBSCRIBER_URL", "https://dev-ims.akieni.tech"
 )
 
-USE_AWS_IDENTITY = True if os.environ.get("USE_AWS_IDENTITY") is not None else False
-
+USE_AWS_IDENTITY = os.environ.get("USE_AWS_IDENTITY", "false") == "true"
 
 def send_verification_email(user):
     token = default_token_generator.make_token(user)
